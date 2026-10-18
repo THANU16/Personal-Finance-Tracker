@@ -28,6 +28,11 @@ One person (the owner) managing personal finances in LKR, with optional foreign-
 - Credit cards: limit, statement day, due day; shows outstanding, utilisation, next due.
 - Flags: `includeInNetWorth`, `countsTowardEmergencyFund`.
 - Reconcile: enter the real balance; app posts an `adjustment` transaction for the difference.
+- **Earmarks (cash buckets):** split an account's balance between Emergency fund, Opportunity fund
+  and Free cash without moving money. Accounts of type `opportunity_fund` are implicitly 100% opportunity; accounts flagged
+  `countsTowardEmergencyFund` are implicitly 100% emergency. A dip guard warns before spending earmarked money.
+- **Auth:** Forgot/reset password, optional email verification, TOTP two-factor with backup codes,
+  active sessions list.
 
 ### 4.2 Transactions (the ledger)
 Types: `income`, `expense`, `transfer`, `invest`, `redeem`, `investment_income`, `debt_payment`,
@@ -60,7 +65,7 @@ Types: `income`, `expense`, `transfer`, `invest`, `redeem`, `investment_income`,
 ### 4.4 SIP planner
 - Plans: name, amount, frequency (`monthly` on day N, `weekly` on weekday), source account,
   start/end date, status (`active`, `paused`, `ended`).
-- **Two-level allocation**: class % (sum 100%) → asset % within class (sum 100%). Final per-asset
+- Allocation defaults to the target allocation (one planned allocation for the whole app); a plan may switch to a custom two-level tree (class % → asset %). Final per-asset
   amount auto-calculated with exact rounding.
 - Step-up: increase by X% every N months.
 - Missed policy: `skip` or `carry_forward` (shortfall added to the next period).
@@ -71,7 +76,9 @@ Types: `income`, `expense`, `transfer`, `invest`, `redeem`, `investment_income`,
   invested vs current value for the plan's assets, XIRR of SIP cashflows.
 - Drift-aware suggestion: optionally tilt this period's split toward under-weight classes.
 
-### 4.5 Rebalancing
+### 4.5 Allocation (target & rebalancing)
+- The target allocation is the single planned allocation used by SIP plans,
+  rebalancing and opportunity deployments by default. Saving it records history. Emergency-flagged holdings are excluded.
 - Target allocation (two-level, independent of SIP) + drift threshold (default 5%).
 - Current vs target by class, then by asset within class; drift in % points and amount.
 - Two plans: **cashflow rebalance** (where to put the next N amount, no selling) and **full
@@ -87,6 +94,8 @@ Types: `income`, `expense`, `transfer`, `invest`, `redeem`, `investment_income`,
 - Record deployment: amount split by its own two-level allocation, posted as invest transactions
   from the fund account; deployment history.
 - Target fund size and progress.
+- Fund balance = opportunity earmarks + balances of opportunity_fund accounts. Deployment allocation
+  defaults to the target allocation.
 
 ### 4.7 Debts & receivables
 - Loans (linked to a `loan` account): principal, annual rate, tenure, start date, EMI (calculated
@@ -111,6 +120,8 @@ Types: `income`, `expense`, `transfer`, `invest`, `redeem`, `investment_income`,
 ### 4.11 Essentials
 - Emergency fund: months target (default 6) × average monthly *essential* expenses (categories
   flagged essential, trailing 6 months). Current = flagged accounts + flagged liquid holdings.
+- Emergency target is configured in Settings: months × monthly basis (essential expenses, all expenses or a manual
+  amount), or a fixed override. Progress bar on the dashboard shows current/target, months covered, available immediately.
 - Insurance policies: type (life, health, vehicle, home, critical illness, other), provider, cover,
   premium, frequency, renewal date, nominee note. Coverage check vs targets (life cover multiple of
   annual income, health cover amount) set in settings.
@@ -121,15 +132,20 @@ Net worth (+ change this month), assets vs liabilities, net worth trend, cashflo
 (income, expense, savings, savings rate), top expense categories, allocation donut, upcoming
 (SIPs, bills, EMIs, FD maturities, renewals — next 14 days), stale valuations count, goal progress,
 essentials summary, opportunity-fund status, budget status.
+Time range controls (Today…All, custom; Day/Week/Month; compare to previous period) drive every chart.
+Standing summary (net worth, savings rate, investment rate, runway, debt load, health score), cash bar (Emergency/Opportunity/Free)
+and Safe to spend.
 
 ### 4.13 Reports
 Monthly summary, income vs expense trend (12 months), category breakdown, investment performance
 (by holding/class: invested, value, realised, unrealised, income, XIRR), realised gains for a
 year, investment income & tax withheld for a year, net worth history. Export each as CSV.
+Monthly review (auto-generated).
 
 ### 4.14 Cashflow forecast
 30/60/90-day projection per account and total using recurring templates, SIP plans and EMIs;
 warns when a projected balance goes below zero or below a minimum.
+Net worth projection (5/10 years, 3 scenarios). Deterministic insights.
 
 ### 4.15 Notifications & reminders
 In-app notification centre + optional email. Daily job (06:00 user timezone) generates: SIP due /
@@ -141,6 +157,8 @@ projected negative balance. Deduplicated; mark read; snooze.
 Settings: base currency, timezone, stale days (30), drift threshold, emergency months, insurance
 targets, big-change threshold (20%), notification preferences. FX rates (manual). Full JSON
 backup/restore; CSV export of transactions. Net-worth snapshots monthly (auto) + manual.
+Auth: forgot/reset password, optional email verification, TOTP two-factor with backup codes,
+active sessions list.
 
 ## 5. Out of scope (V1)
 Bank/broker sync, live price feeds (design an interface for it), family/shared accounts, tax

@@ -6,6 +6,8 @@
 | 1 Foundations | ✅ done (login against Atlas to be tried by owner) | 2026-10-18 | `feat(phase-1)` |
 | 2 Accounts & ledger | ✅ done | 2026-10-18 | `feat(phase-2)` |
 | 3 Holdings & returns | ✅ done | 2026-10-18 | `feat(phase-3)` |
+| MOD-1 Phase 1 additions | ⬜ | | |
+| MOD-2 Phase 2 additions | ⬜ | | |
 | 4 Dashboard, snapshots, FX | ⬜ | | |
 | 5 SIP planner | ⬜ | | |
 | 6 Rebalancing | ⬜ | | |
@@ -71,6 +73,8 @@ Status values: ⬜ not started · 🟡 in progress · ✅ done
 - [3] `tsconfig` target raised to ES2022 (BigInt literals). Holding enums live in `holdings/constants.ts` so client components don't pull Mongoose into the browser bundle (caught by the production build).
 - [3+] **Transfer fee (owner request, after Phase 3):** optional `feeMinor` on transfers, charged to the source account on top of the amount (source currency; receiver gets the full amount/toAmount). The transfer is tagged with the system category "Bank fees" and only the fee counts as expense in cashflow and the /transactions summary. Void/edit/recompute handle it via `accountEffects`. docs/03 and docs/04 §1/§4 updated.
 - [2] Settings gained Categories (tree, add/rename/archive/restore, essential flag) and Asset classes (colour, order, add/archive custom) tabs. System categories/classes can't be renamed or archived; colours and essential flags can change.
+- [mod] One planned allocation; earmarks (partial-account buckets) added; time-range analytics computed on the fly
+  with monthly snapshots as cache; in-transit redemptions use a receivable account — owner decision after Phase 3.
 
 ## Deviations from docs
 <!-- Claude: anything built differently from the docs, and why. Update the doc too if the user agrees. -->

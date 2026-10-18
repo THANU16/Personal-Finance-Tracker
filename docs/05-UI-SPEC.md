@@ -6,7 +6,7 @@
 - **Sidebar groups:**
   Overview: Dashboard · Forecast · Reports
   Money: Accounts · Transactions · Recurring · Budgets
-  Invest: Assets · SIP Planner · Rebalancing · Opportunity Fund
+  Invest: Assets · SIP Planner · Allocation · Opportunity Fund
   Plan: Goals · Debts · Essentials
   System: Notifications · Settings
 - **Quick add** (button + keyboard `N`): sheet with type tabs Expense · Income · Transfer · Invest ·
@@ -19,27 +19,36 @@
 - **Badges:** `Stale · 34d`, `Due`, `Overdue`, `Partial`, `Skipped`, `Missed`, `FX missing`.
 - Light/dark themes; 360px minimum width; tables become stacked cards on mobile.
 - Charts (Recharts): consistent class colours from `assetClasses.color`; tooltips show full amounts.
+- **Shared components:** TimeRangeBar (range presets, Day/Week/Month, compare) and BucketBar (Emergency / Opportunity / Free).
 
 ## 2. Dashboard `/dashboard`
-Row 1 stat cards: Net worth (Δ this month, Δ %), Assets, Liabilities, This month savings rate.
+A **TimeRangeBar** sits under the header and drives every chart.
+Row 1 stat cards: Net worth (Δ this month, Δ %), Assets, Liabilities, This month savings rate, and a **Standing summary**
+card (net worth change, savings rate, investment rate, runway, debt load, health score chip with two reasons).
 Row 2: Net worth trend (area, 12m / 3y / all toggle) · Allocation donut by class (click → Assets filtered).
 Row 3: Cashflow this month (income, expense, savings bars + 6-month mini trend) · Top 5 expense categories.
 Row 4: **Upcoming (14 days)** list — SIPs (Execute button), recurring (Confirm), EMIs, card dues, FD
 maturities, renewals · **Attention** card — stale valuations count (→ Update values), budgets over 80%,
 opportunity-fund banner if triggered, forecast warning.
 Row 5: Goals progress bars · Essentials mini (emergency months, health score) · Opportunity fund (size vs target, current drawdown).
+**Cash bar** ("Where my cash is": Emergency / Opportunity / Free) and **Safe to spend** with a breakdown popover, next to the
+emergency progress bar.
+Charts: net worth, assets vs liabilities (stacked bars), income vs expense with savings-rate line on a right axis, allocation donut
+with drill-down, top categories (click filters Transactions with the same range).
 
 ## 3. Accounts `/accounts`, `/accounts/[id]`
 - Grouped by type with subtotals: Cash & bank, Cards, Loans, Investment cash, Opportunity fund, Receivables/Payables.
 - Card row: outstanding, limit, utilisation bar, next due date.
 - Actions: Add account (type-driven form), Reconcile, Archive.
 - Detail: balance history line, transactions table filtered to the account, running balance column.
+- BucketBar per earmarkable account; "Earmark / Move between buckets" dialog; over-earmarked badge.
 
 ## 4. Transactions `/transactions`
 - Filters bar (date presets, type, account, category, holding, tag, amount, search) synced to URL.
 - Table: date · description · type icon · category/holding · account(s) · amount (signed per context) · tags · attachment icon · menu (edit, duplicate, void).
 - Grouped lines (SIP execution, deployment) show a group chip linking to the owner.
 - Monthly summary strip: income, expense, net.
+- Quick add and transaction forms: ConfirmDialog for NEEDS_CONFIRMATION warnings.
 - Import `/transactions/import`: upload CSV → choose account → map columns → preview with duplicates
   flagged and categories auto-suggested → import → result summary (undo batch).
 
@@ -75,7 +84,8 @@ Tabs: **Planner** · **Upcoming** · **History**.
   per-plan charts: cumulative invested vs estimated value, monthly bars planned vs actual ·
   consistency score · Undo on recent executions.
 
-## 7. Rebalancing `/rebalancing`
+## 7. Allocation `/rebalancing`
+Tabs: Plan · Planned vs Actual · Rebalance · History.
 - Target editor (same tree editor) + threshold.
 - Table: class · current value · current % · target % · drift (bp shown as %) with bar · status chip
   (OK / Over / Under) · expand to assets.
@@ -110,6 +120,8 @@ linked items and shares.
 ## 13. Essentials `/essentials`
 Health score gauge with 4 sub-scores · Emergency fund (target, current, coverage months, which accounts
 count) · Insurance policies table + coverage vs target · Debt-to-income · Savings rate trend.
+Emergency card: target source (months × basis or override), progress bar (red/amber/green), months covered,
+available immediately vs locked, sources, "Use emergency fund".
 
 ## 14. Forecast `/forecast`
 Horizon toggle 30/60/90 · total balance line with danger zone · per-account table of lowest point and
@@ -126,6 +138,8 @@ List grouped Today / This week / Earlier; mark read, snooze 1d/3d/7d; link to ac
 Tabs: Profile · Preferences (currency, timezone, thresholds, emergency months, insurance targets,
 notifications) · Categories (tree, essential flag, rules for import) · Asset classes · FX rates ·
 Data (export JSON, restore JSON, export transactions CSV, rebuild snapshots, recompute caches).
+Preferences gains the Emergency fund card; new Security tab (password, two-factor, sessions); auth pages /forgot-password,
+/reset-password, /verify-email, /two-factor.
 
 ## 18. Onboarding (first login)
 Steps: preferences → add accounts with opening balances → add holdings → (optional) create first SIP →

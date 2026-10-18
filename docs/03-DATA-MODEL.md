@@ -19,6 +19,8 @@ Managed by Better Auth (its own collections, prefixed `auth_` if configurable). 
 userId (unique), baseCurrency: "LKR", timezone: "Asia/Colombo", locale: "en-LK",
 staleDays: 30, bigChangeThresholdBp: 2000, driftThresholdBp: 500,
 emergencyMonths: 6, lifeCoverIncomeMultiple: 10, healthCoverTargetMinor,
+emergencyExpenseBasis: essential|all|manual (default essential), emergencyManualMonthlyMinor?,
+emergencyTargetOverrideMinor?,
 minBalanceWarningMinor: 0, hideAmounts: false,
 notify: { email: boolean, inApp: true, dailyHourLocal: 6 },
 onboardingCompletedAt?, bootstrapVersion: 0   # one-time per-user seeding applied (Phase 2)
@@ -37,6 +39,13 @@ archivedAt?
 idx: {userId, type}, {userId, archivedAt}
 ```
 Sign convention: asset accounts positive; `credit_card`, `loan`, `payable` normally negative.
+
+## earmarks
+```
+bucket: emergency|opportunity, accountId, mode: fixed|percent, amountMinor?, percentBp?, note?
+idx: {userId, accountId}, {userId, bucket, accountId} unique
+```
+Only earmarkable accounts (bank, cash, wallet, broker_cash); dedicated accounts reject earmarks.
 
 ## categories
 ```
@@ -133,7 +142,8 @@ notes?
 ## sipPlanVersions
 ```
 planId, version, effectiveFrom, amountMinor,
-allocation: [{ assetClassId, percentBp, assets: [{ holdingId, percentBp }] }]
+allocationSource: target|custom (default target),
+allocation?: [{ assetClassId, percentBp, assets: [{ holdingId, percentBp }] }]   # required only when custom
 idx: {userId, planId, version} unique
 ```
 
@@ -143,7 +153,8 @@ planId, planVersion, periodKey, dueDate,
 status: due|done|partial|skipped|missed,
 plannedTotalMinor, carryInMinor: 0, actualTotalMinor: 0, executedAt?, skipReason?,
 lines: [{ assetClassId, holdingId, plannedMinor, actualMinor, feeMinor, units?, priceMinor?, transactionId? }],
-groupId?, onTime?: boolean
+groupId?, onTime?: boolean,
+allocationUsed: [{ assetClassId, percentBp, assets: [{ holdingId, percentBp }] }]   # copy of the tree used
 idx: {userId, planId, periodKey} unique, {userId, status, dueDate}
 ```
 
@@ -153,11 +164,17 @@ allocation: [{ assetClassId, percentBp, assets: [{ holdingId, percentBp }] }],  
 thresholdBp, updatedAt
 ```
 
+## targetAllocationHistory
+```
+allocation, thresholdBp, savedAt, note?
+```
+
 ## opportunityFund (one per user)
 ```
 accountId, benchmarkName: "ASPI", targetSizeMinor?,
 rules: [{ drawdownBp, deployPercentBp }],           # ascending drawdown
-allocation: [{ assetClassId, percentBp, assets: [{ holdingId, percentBp }] }],
+allocationSource: target|custom (default target),
+allocation?: [{ assetClassId, percentBp, assets: [{ holdingId, percentBp }] }],   # only when custom
 cycle: { startedAt, referenceHigh, referenceHighDate, fundBalanceAtStartMinor, triggeredRuleIdx: [number] }
 ```
 
@@ -220,11 +237,12 @@ byClass: [{ assetClassId, valueMinor }], byAccountType: [{ type, valueMinor }],
 investedMinor, cashMinor
 idx: {userId, date} unique for kind=auto
 ```
+Monthly month-end snapshots are a cache; day/week series are computed on the fly (docs/04 §22).
 
 ## notifications
 ```
 type: sip_due|sip_overdue|recurring_due|emi_due|card_due|fd_maturing|insurance_renewal|stale_values|
-      budget_80|budget_100|goal_off_track|opportunity_trigger|negative_forecast|system,
+      budget_80|budget_100|goal_off_track|opportunity_trigger|negative_forecast|over_earmarked|system,
 title, body, link, dueDate?, severity: info|warning|critical,
 dedupeKey (unique per user), readAt?, snoozedUntil?, emailedAt?
 ```

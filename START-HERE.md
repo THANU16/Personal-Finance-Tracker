@@ -45,6 +45,8 @@ wealthtrack/
    you disagree with **before** building — the docs are the contract.
 
 ## Build (one phase per session)
+Run MOD-1 and MOD-2 (docs/06 → Post-phase modifications) before Phase 4.
+
 In Claude Code type:
 ```
 /build-phase 0

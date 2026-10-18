@@ -12,7 +12,7 @@ paths:
 - Build with shadcn/ui primitives from `src/components/ui`; shared pieces live in `src/components/shared`.
   Reuse before creating: `Money`, `MoneyInput`, `PercentInput`, `DatePicker`, `AccountSelect`,
   `HoldingSelect`, `AllocationTreeEditor`, `StatCard`, `DataTable`, `EmptyState`, `ConfirmDialog`,
-  `StaleBadge`, `TrendChip`, `PageHeader`.
+  `StaleBadge`, `TrendChip`, `PageHeader`, `TimeRangeBar`, `BucketBar`.
 - **Money:** always render with `<Money valueMinor currency />` (thousands separators, 2 decimals,
   negatives red, respects hide-amounts). Never format money inline. Inputs use `<MoneyInput>` which
   converts to minor units.

@@ -76,17 +76,50 @@ Phase 3. Use the finance-domain skill. Build the holdings module per docs/03 and
 ```
 **Acceptance:** redemption example (40k/50k/20k/fee 100) exact; XIRR 10% test; FD values correct; stale and big-change work.
 
-## Phase 4 — Dashboard, net worth, snapshots, FX
+## Phase 4 — Dashboard, net worth series, FX, time ranges, buckets
+_Revised after Phase 3 (owner decision, MOD-DOCS). Run after MOD-1 and MOD-2 are committed._
 **Prompt**
 ```
-Phase 4. Build fx, snapshots and the dashboard per docs/04 §2, §4, §14, §16 and docs/05 §2:
-- fxRates CRUD in settings; conversion helper with "FX missing" handling.
-- computeNetWorthAsOf(date); snapshots (auto month-end, manual, rebuild history).
-- Cashflow & savings rate queries by month.
-- Dashboard rows 1–3 and 5 (upcoming list can show placeholders until later phases; wire it to a
-  single getUpcoming() query you will extend).
+Phase 4. Use the finance-domain and analytics-charts skills. Read docs/03, docs/04 §2, §4, §14, §16, §20, §21, §22 and
+docs/05 §2. Check the Next.js docs in node_modules/next/dist/docs for cacheComponents/Suspense patterns before writing pages.
+Plan first and wait for approval.
+
+1. FX: fxRates CRUD (Settings → FX rates tab), convertToBase(date) with "FX missing" handling (never 1:1). Then lift the
+   Phase 2/3 per-currency limitations where docs/PROGRESS.md says "until FX": account subtotals, /transactions summary,
+   holding currency vs account currency (still require the same currency unless a cross-currency transfer), portfolio
+   totals. Per-currency earmark/free-cash values from MOD-2 now convert to base.
+2. Net worth: domain/series.ts with computeNetWorthAsOf(date) and computeNetWorthSeries(from, to, granularity) as a SINGLE
+   PASS over sorted events (transactions + valuations), not a replay per date. FDs use the docs/04 §9 formula as of each
+   date, never the cached currentValueMinor. Stored monthly snapshots (auto month-end by a callable job function, manual,
+   "Rebuild history") are a cache used for month granularity over ranges > 1 year and for "All". Tests: series point ==
+   computeNetWorthAsOf for the same date; FD accrual in the series; liabilities negative balances.
+3. Time ranges: extend domain/date-range.ts with resolveRange(preset | custom), defaultGranularity (≤31 days → day,
+   ≤183 → week, else month), buildBuckets (user timezone, Monday week start), previousPeriod (equal length immediately before),
+   bucket-count warning above 400. Client component TimeRangeBar (presets Today/7D/30D/3M/6M/YTD/1Y/All/Custom, Day/Week/Month
+   toggle, compare toggle) storing state in the URL (?from=&to=&g=&cmp=) via a useTimeRange() hook; server components read
+   searchParams.
+4. Analytics queries (modules/dashboard/queries.ts, server-only): netWorthSeries, assetsVsLiabilities (closing values),
+   cashflowSeries (flows summed with $dateTrunc + timezone; income, expense, savings, savings rate per bucket; excludes per
+   docs/04 §4), allocationAsOf(end date) with class → holdings drill-down, topExpenseCategories (range total, children rolled
+   up), portfolioValueSeries (value vs invested). Every series is gap-filled; compare returns aligned previous-period values
+   plus total and % change.
+5. Standing summary getStanding(ctx, range): net worth and change, savings rate, investment rate (Σ invest amounts ÷ income),
+   runway months (cash accounts + high-liquidity holdings ÷ average monthly expense, last 3 complete months), debt load
+   (null until Phase 8), health score (null until Phase 10). Nullable fields render as "—".
+6. Buckets on the dashboard: BucketBar "Where my cash is" (Emergency / Opportunity / Free, base currency) and Safe to spend
+   (docs/04 §21). Extend getUpcoming() items with optional outflowMinor and accountId so later phases feed safe-to-spend
+   automatically; include SIP/recurring/EMI as they arrive. Show the breakdown in a popover; negative value shows a warning.
+7. Dashboard page per docs/05 §2 with TimeRangeBar: stat cards, standing summary card, net worth trend, assets vs
+   liabilities, income vs expense (+ savings-rate line on a right axis), allocation donut (click → Assets filtered),
+   top expense categories (click → Transactions filtered with the same range), cash bar, safe to spend, upcoming,
+   attention card, goals/essentials/opportunity placeholders. Each widget has skeleton, empty and error states; use Suspense so
+   the static shell stays prerendered.
+8. Tests: timezone edge (23:30 Asia/Colombo lands on the right day; month boundary), flows summed vs stocks closing,
+   gap fill, compare period, Monday week start, series == asOf, FD in series, earmark example on the dashboard, FX missing
+   excluded and badged, snapshot rebuild idempotent. E2E: change preset/granularity/custom range and see charts update; URL
+   restores the view on reload.
 ```
-**Acceptance:** dashboard numbers equal reports from the seed scenario; rebuild history produces 12 snapshots.
+**Acceptance:** dashboard numbers equal reports from the seed scenario; rebuild history produces month-end snapshots; day/week/month/custom all render with correct buckets; dashboard < 1s with a few thousand transactions; npm run verify green; docs/PROGRESS.md updated; commit "feat(phase-4): dashboard, series, FX, time ranges".
 
 ## Phase 5 — SIP planner
 **Prompt**
@@ -102,8 +135,19 @@ sipPlanVersions, sipExecutions) and docs/04 §6, §7, docs/05 §6:
   consistency. Add SIP items to getUpcoming().
 ```
 **Acceptance:** 100,000 two-level example splits exactly; step-up and carry-forward tests; undo restores balances and holdings.
+**Edited after Phase 3 (owner decision, MOD-DOCS)** — applies on top of the prompt above:
+```
+Phase 5 (edited). SIP planner. As before, plus:
+- Build the target allocation first: modules/rebalancing (or allocation) gets the targetAllocations service and the shared
+  AllocationTreeEditor in this phase, because SIP depends on it. Saving the target writes a row to targetAllocationHistory.
+- sipPlanVersions carry allocationSource: "target" | "custom". Default "target" (the plan uses the live target tree; the
+  version records a copy of the tree actually used at execution for history). "custom" stores its own tree as today.
+- Execute screen runs the dip guard (docs/04 §20) on the source account and shows ConfirmDialog warnings.
+- Add SIP planned amounts to getUpcoming() with outflowMinor/accountId (feeds safe to spend).
+Acceptance additions: a plan on "target" follows target edits for future executions only; past executions keep the tree they used.
+```
 
-## Phase 6 — Rebalancing
+## Phase 6 — Allocation (rebalancing)
 **Prompt**
 ```
 Phase 6. Build rebalancing per docs/04 §8 and docs/05 §7: target allocation (tree editor +
@@ -112,6 +156,15 @@ threshold), drift by class and asset, full rebalance plan, cashflow rebalance fo
 domain/drift.ts fully tested.
 ```
 **Acceptance:** trades sum to zero; cashflow plan only buys; tilt option appears on execute screen.
+**Edited after Phase 3 (owner decision, MOD-DOCS)** — applies on top of the prompt above:
+```
+Phase 6 (edited). Allocation (renamed from Rebalancing; keep route /rebalancing, label "Allocation", tabs Plan · Planned vs
+Actual · Rebalance · History).
+- Universe excludes holdings flagged countsTowardEmergencyFund and holdings in classes outside the target (docs/04 §8).
+- Tolerance band and drift gauges; History tab lists targetAllocationHistory with a simple diff.
+- "Invest new money" is the cashflow rebalance; "Use for next SIP" tilts the next execution.
+Acceptance additions: flagged holdings do not move drift; saving the target creates a history row.
+```
 
 ## Phase 7 — Opportunity Fund
 **Prompt**
@@ -122,6 +175,18 @@ banner, suggested amount, record deployment (atomic, tree split), deployment his
 domain/opportunity.ts with the worked example as a test.
 ```
 **Acceptance:** example (1,000,000; −12% → 250,000; −21% → 250,000 more) passes; new high resets cycle.
+**Edited after Phase 3 (owner decision, MOD-DOCS)** — applies on top of the prompt above:
+```
+Phase 7 (edited). Opportunity Fund. As before, plus:
+- Fund balance = Σ effective opportunity earmarks (docs/04 §20) + balances of opportunity_fund accounts. fundBalanceAtStart
+  uses this total.
+- Record deployment: choose a source account that holds opportunity money; post invest lines from it (source
+  opportunity_deployment, exempt from the dip guard) and reduce that account's opportunity earmark by the deployed amount (no
+  reduction needed for a dedicated opportunity_fund account).
+- Deployment allocation defaults to the target allocation (custom override allowed); stored with the deployment.
+Acceptance additions: earmark-based example — 200,000 opportunity earmark, rule −10% → 25% suggests 50,000; deploying reduces
+the earmark to 150,000 and balance by 50,000.
+```
 
 ## Phase 8 — Debts & receivables
 **Prompt**
@@ -155,6 +220,17 @@ interface; and the cashflow forecast (domain/forecast.ts, /forecast page). Per d
 §19 and docs/05 §13, §14, §16.
 ```
 **Acceptance:** running the cron twice creates no duplicates; forecast flags a seeded negative balance.
+**Edited after Phase 3 (owner decision, MOD-DOCS)** — applies on top of the prompt above:
+```
+Phase 10 (edited). Essentials, notifications, cron, forecast. As before, plus:
+- Emergency fund uses docs/04 §13 with the MOD-1 basis settings; current = emergency earmarks + flagged accounts + flagged
+  holdings; show "available immediately" (accounts and high-liquidity holdings) vs locked; progress bar red < 50%, amber
+  50–99%, green ≥ 100%; "Use emergency fund" action (expense or transfer that reduces the earmark with a clear label).
+- Wire the health score into getStanding(); wire recurring, EMI and card dues into safe to spend.
+- Net worth projection (5/10 years, three scenarios) and deterministic insights (docs/04 §22) with unit tests.
+- Notifications: add over_earmarked (dedupe `earm:<accountId>`).
+Acceptance additions: emergency target honours override and basis fallback; running the cron twice creates no duplicates.
+```
 
 ## Phase 11 — Reports, import/export, attachments
 **Prompt**
@@ -166,6 +242,14 @@ attachments (StorageProvider local + S3-compatible, authenticated download), and
 Data tab.
 ```
 **Acceptance:** export → wipe → restore reproduces identical net worth; re-importing the same CSV imports 0 rows.
+**Edited after Phase 3 (owner decision, MOD-DOCS)** — applies on top of the prompt above:
+```
+Phase 11 (edited). Reports, import/export, attachments. As before, plus:
+- Monthly review (generated on the 1st by the cron; viewable under Reports): income, expense, savings rate, top categories
+  with change vs previous month, budget results, net worth change, SIPs done/missed, realised gains, fees paid, 3 insights.
+- JSON backup/restore includes the new collections: earmarks, targetAllocationHistory, monthly reviews.
+Acceptance additions: backup → wipe → restore reproduces earmarks and the same free cash.
+```
 
 ## Phase 12 — Hardening & release
 **Prompt**
@@ -177,6 +261,10 @@ security review against docs/02 §5; accessibility pass; PWA manifest and icons;
 (docs/05 §18); README with setup, env, deploy (Vercel + Atlas, and Docker). Fix everything found.
 ```
 **Acceptance:** e2e green; dashboard < 1s with 10k txns; README lets a new machine run the app.
+
+## Post-phase modifications
+After Phase 3 the owner approved MOD-1 (emergency settings + auth hardening) and MOD-2 (earmarks + dip guard). They are recorded here for
+reproducibility; the prompts are in the review pack. Run them before Phase 4.
 
 ---
 

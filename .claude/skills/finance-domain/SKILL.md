@@ -10,6 +10,9 @@ paths:
   - "src/modules/debts/**"
   - "src/modules/opportunity-fund/**"
   - "src/modules/rebalancing/**"
+  - "src/domain/earmarks.ts"
+  - "src/modules/earmarks/**"
+  - "src/modules/dashboard/**"
 ---
 
 # Finance domain rules (summary — full detail in docs/04-BUSINESS-RULES.md)
@@ -26,6 +29,9 @@ the doc disagree, the doc wins; tell the user.
 5. Split amounts with largest remainder — lines must sum exactly to the total.
 6. Business dates in user timezone; store UTC.
 7. Never hard-delete posted transactions: void, then recompute.
+8. Earmarks (docs/04 §20): free cash = balance − effective earmarks; outflows run the dip guard; moving between
+   buckets edits earmarks and posts no transaction.
+9. SIP and opportunity allocation default to the target allocation.
 
 ## Posting cheat sheet
 | Type | from account | to account | holding |
@@ -40,6 +46,7 @@ the doc disagree, the doc wins; tell the user.
 | debt_payment | −amt | loan += principal | interest → "Loan interest" expense |
 
 Liabilities are negative balances. Card payment = transfer bank → card (never expense).
+Spend X from account A with X > free → NEEDS_CONFIRMATION; confirm reduces opportunity then emergency earmarks in the same transaction.
 
 ## Key formulas
 - Redemption: `costRemoved = round(invested × amount / currentValue)`; `realised = amount − costRemoved − fee`.

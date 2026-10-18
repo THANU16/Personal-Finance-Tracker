@@ -57,6 +57,10 @@ Atlas cluster (always a replica set, so transactions work). Keep npm scripts she
    and caches recomputed. Grouped operations (SIP execution, deployment) are voided via their owner.
 10. Base currency LKR by default (user setting). Accounts and holdings may have their own currency;
     reports convert with the latest `fxRates` entry on or before the date.
+11. **Earmarked money is protected.** Emergency/opportunity earmarks (docs/04 §20) must be honoured: outflows from earmarkable accounts go
+    through the dip guard; never spend into earmarks without the confirm flags. Free cash is computed, never stored.
+12. **Flows are summed, stocks are closing values** per bucket; bucket in the user timezone; gap-fill every series (docs/04 §22).
+13. **One planned allocation.** SIP plans and opportunity deployments default to the target allocation; custom trees are the exception.
 
 ## Code conventions
 - Feature modules in `src/modules/<module>/`: `model.ts`, `schemas.ts`, `service.ts`, `actions.ts`,
@@ -72,5 +76,6 @@ Atlas cluster (always a replica set, so transactions work). Keep npm scripts she
 - Build one phase at a time with `/build-phase <n>`; plan first, then build, then `npm run verify`.
 - Use the `finance-domain` skill whenever touching ledger, holdings, SIP, debts or any calculation.
 - Use `new-module` when creating a feature module and `ui-conventions` for any UI work.
+- Use `analytics-charts` for any chart, series or time-range work.
 - Commit at the end of each phase: `feat(phase-<n>): <summary>`.
 - Update `docs/PROGRESS.md` (done, decisions, deviations, open questions) at the end of each phase.
