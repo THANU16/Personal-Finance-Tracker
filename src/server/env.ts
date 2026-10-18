@@ -14,6 +14,8 @@ export const envSchema = z
 
     BETTER_AUTH_SECRET: z.string().min(32, "must be at least 32 characters"),
     BETTER_AUTH_URL: z.url(),
+    /** Extra comma-separated origins allowed to sign in (e.g. a custom domain while BETTER_AUTH_URL is the old one). */
+    BETTER_AUTH_TRUSTED_ORIGINS: optionalString,
     /** Sign-in/up rate limits (production). Only the e2e server turns them off. */
     AUTH_RATE_LIMIT: z.enum(["on", "off"]).default("on"),
     /** Close registration once the owner account exists. */

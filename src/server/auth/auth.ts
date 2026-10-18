@@ -1,5 +1,6 @@
 import "server-only";
 import { betterAuth } from "better-auth";
+import { trustedOrigins } from "@/server/auth/origins";
 import { mongodbAdapter } from "better-auth/adapters/mongodb";
 import { nextCookies } from "better-auth/next-js";
 import { twoFactor } from "better-auth/plugins";
@@ -17,6 +18,8 @@ export interface CreateAuthOptions {
   client: MongoClient;
   secret: string;
   baseURL: string;
+  /** Origins allowed to call the auth API besides baseURL (deployment URLs). */
+  trustedOrigins?: string[];
   disableSignUp?: boolean;
   /** Sign-in/sign-up rate limits. Better Auth enables them in production only by default. */
   rateLimit?: boolean;
@@ -40,6 +43,7 @@ export function createAuth(opts: CreateAuthOptions) {
     appName: APP_NAME,
     secret: opts.secret,
     baseURL: opts.baseURL,
+    trustedOrigins: opts.trustedOrigins ?? [],
     database: mongodbAdapter(opts.db, { client: opts.client }),
     emailAndPassword: {
       enabled: true,
@@ -110,6 +114,7 @@ export function getAuth(): Auth {
       client: cache.client,
       secret: env.BETTER_AUTH_SECRET,
       baseURL: env.BETTER_AUTH_URL,
+      trustedOrigins: trustedOrigins({ ...process.env, ...env }),
       disableSignUp: env.DISABLE_SIGNUP,
       requireEmailVerification: env.REQUIRE_EMAIL_VERIFICATION,
       rateLimit: env.NODE_ENV === "production" && env.AUTH_RATE_LIMIT === "on",
