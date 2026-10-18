@@ -25,6 +25,9 @@ describe("getOrCreateSettings", () => {
       bigChangeThresholdBp: 2000,
       driftThresholdBp: 500,
       emergencyMonths: 6,
+      emergencyExpenseBasis: "essential",
+      emergencyManualMonthlyMinor: null,
+      emergencyTargetOverrideMinor: null,
       lifeCoverIncomeMultiple: 10,
       healthCoverTargetMinor: null,
       minBalanceWarningMinor: 0,
@@ -113,5 +116,51 @@ describe("setHideAmounts", () => {
     await expect(setHideAmounts(ctx, { hideAmounts: "yes" })).rejects.toMatchObject({
       code: "VALIDATION",
     });
+  });
+});
+
+describe("emergency fund settings", () => {
+  it("saves basis, manual amount and override", async () => {
+    const ctx = await makeUser();
+    const s = await updateSettings(ctx, {
+      emergencyExpenseBasis: "manual",
+      emergencyManualMonthlyMinor: 120_000_00,
+      emergencyTargetOverrideMinor: 1_000_000_00,
+    });
+    expect(s).toMatchObject({
+      emergencyExpenseBasis: "manual",
+      emergencyManualMonthlyMinor: 120_000_00,
+      emergencyTargetOverrideMinor: 1_000_000_00,
+    });
+    const cleared = await updateSettings(ctx, {
+      emergencyExpenseBasis: "all",
+      emergencyTargetOverrideMinor: null,
+    });
+    expect(cleared.emergencyTargetOverrideMinor).toBeNull();
+    expect(cleared.emergencyManualMonthlyMinor).toBe(120_000_00); // kept for later
+  });
+
+  it("rejects a manual basis without an amount, including on the merged result", async () => {
+    const ctx = await makeUser();
+    await expect(updateSettings(ctx, { emergencyExpenseBasis: "manual" })).rejects.toMatchObject({
+      code: "VALIDATION",
+      fieldErrors: { emergencyManualMonthlyMinor: expect.any(Array) },
+    });
+    await updateSettings(ctx, { emergencyExpenseBasis: "manual", emergencyManualMonthlyMinor: 5 });
+    await expect(updateSettings(ctx, { emergencyManualMonthlyMinor: null })).rejects.toMatchObject({
+      code: "VALIDATION",
+    });
+  });
+
+  it("rejects zero, negative, fractional amounts and unknown bases", async () => {
+    const ctx = await makeUser();
+    for (const input of [
+      { emergencyManualMonthlyMinor: 0 },
+      { emergencyTargetOverrideMinor: -1 },
+      { emergencyTargetOverrideMinor: 1.5 },
+      { emergencyExpenseBasis: "income" },
+    ]) {
+      await expect(updateSettings(ctx, input)).rejects.toBeInstanceOf(AppError);
+    }
   });
 });

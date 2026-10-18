@@ -127,3 +127,23 @@ test("hide amounts toggle persists across reloads", async ({ page }) => {
   await page.getByRole("button", { name: "Show amounts" }).click();
   await expect(html).not.toHaveAttribute("data-hide-amounts", "");
 });
+
+test("emergency fund card: manual basis needs an amount and saves with an override", async ({
+  page,
+}) => {
+  await register(page, uniqueEmail());
+  await page.goto("/settings");
+  await expect(page.getByRole("radio", { name: /Essential expenses/ })).toBeChecked();
+  await page.getByRole("radio", { name: /A fixed monthly amount/ }).click();
+  await page.getByRole("button", { name: "Save preferences" }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "Enter a monthly amount" })).toBeVisible();
+
+  await field(page, "Monthly amount", true).fill("150000");
+  await field(page, "Fixed target (optional)").fill("1000000");
+  await page.getByRole("button", { name: "Save preferences" }).click();
+  await expect(page.getByText("Preferences saved")).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("radio", { name: /A fixed monthly amount/ })).toBeChecked();
+  await expect(field(page, "Monthly amount", true)).toHaveValue(/150,?000/);
+  await expect(field(page, "Fixed target (optional)")).toHaveValue(/1,?000,?000/);
+});

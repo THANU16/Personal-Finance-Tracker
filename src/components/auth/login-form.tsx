@@ -22,12 +22,20 @@ export function LoginForm() {
   } = useForm<LoginInput>({ resolver: zodResolver(loginSchema) });
 
   async function onSubmit(values: LoginInput) {
-    const { error } = await authClient.signIn.email(values);
+    const { data, error } = await authClient.signIn.email(values);
     if (error) {
+      if (error.code === "EMAIL_NOT_VERIFIED") {
+        router.push(`/verify-email?email=${encodeURIComponent(values.email)}`);
+        return;
+      }
       const message =
         error.status === 401 ? "Incorrect email or password." : (error.message ?? "Login failed");
       setError("root", { message });
       toast.error(message);
+      return;
+    }
+    if (data && "twoFactorRedirect" in data && data.twoFactorRedirect) {
+      router.push(`/two-factor?next=${encodeURIComponent(next)}`);
       return;
     }
     router.replace(next);
@@ -46,7 +54,16 @@ export function LoginForm() {
           {...register("email")}
         />
       </FormField>
-      <FormField id="password" label="Password" error={errors.password?.message}>
+      <FormField
+        id="password"
+        label="Password"
+        error={errors.password?.message}
+        description={
+          <Link href="/forgot-password" className="underline underline-offset-4">
+            Forgot password?
+          </Link>
+        }
+      >
         <Input
           id="password"
           type="password"

@@ -6,7 +6,7 @@
 | 1 Foundations | ✅ done (login against Atlas to be tried by owner) | 2026-10-18 | `feat(phase-1)` |
 | 2 Accounts & ledger | ✅ done | 2026-10-18 | `feat(phase-2)` |
 | 3 Holdings & returns | ✅ done | 2026-10-18 | `feat(phase-3)` |
-| MOD-1 Phase 1 additions | ⬜ | | |
+| MOD-1 Phase 1 additions | ✅ done | 2026-10-18 | `feat(mod-1)` |
 | MOD-2 Phase 2 additions | ⬜ | | |
 | 4 Dashboard, snapshots, FX | ⬜ | | |
 | 5 SIP planner | ⬜ | | |
@@ -75,6 +75,28 @@ Status values: ⬜ not started · 🟡 in progress · ✅ done
 - [2] Settings gained Categories (tree, add/rename/archive/restore, essential flag) and Asset classes (colour, order, add/archive custom) tabs. System categories/classes can't be renamed or archived; colours and essential flags can change.
 - [mod] One planned allocation; earmarks (partial-account buckets) added; time-range analytics computed on the fly
   with monthly snapshots as cache; in-transit redemptions use a receivable account — owner decision after Phase 3.
+- [mod-1] Emergency settings: `emergencyExpenseBasis` (essential|all|manual, default essential), `emergencyManualMonthlyMinor`,
+  `emergencyTargetOverrideMinor` (positive minor units, `null` = unset). "Manual needs an amount" is checked in the service
+  on the merged result (updates are partial) and in the form. `domain/essentials.emergencyTarget()` is pure; the 6-month
+  averages are its inputs (Phase 10). The Preferences card explains the formula but shows no live target until then.
+- [mod-1] Mailer (`src/server/mail`): Resend via its REST API with `fetch` (no SDK); console driver when `RESEND_API_KEY` is
+  empty — development logs the whole email, production logs only "mail not configured" (no link/token). `MAIL_CAPTURE_FILE`
+  (test only) makes the console driver append each email as JSON; only the e2e server sets it.
+- [mod-1] Better Auth: `requestPasswordReset` → `/reset-password?token=` (1 h, revokes all sessions); verification only when
+  `REQUIRE_EMAIL_VERIFICATION=true` (sent on sign-up, 24 h link, auto sign-in after verifying; unverified login → 403
+  `EMAIL_NOT_VERIFIED` → /verify-email with a 60 s resend cooldown). Twofactor plugin: issuer WealthTrack, collection
+  `auth_two_factors`, enabled only after the first code is confirmed, 10 backup codes, lockout after 5 failed codes for 15 min,
+  "trust this device" 30 days. Secret and backup codes are encrypted by Better Auth with `BETTER_AUTH_SECRET` — no new key;
+  rotating that secret breaks existing enrolments (documented in `.env.example`).
+- [mod-1] `session.freshAge: 0` so the session list works on any session (Better Auth otherwise refuses after 1 day); enabling,
+  disabling 2FA and new backup codes still require the password. Session tokens never reach the browser: revoking one
+  device is a server action that takes the session id.
+- [mod-1] Production rate limits added: password-reset requests and verification resends 3/min, `/two-factor/*` 5/min (plus
+  Better Auth's built-in 3 per 10 s). `AUTH_RATE_LIMIT=off` (e2e) still disables them all.
+- [mod-1] Settings: the password form moved from Profile to the new Security tab (password, two-factor, sessions).
+  QR codes are rendered client-side with `qrcode` (SVG). Login keeps `?next=` through /two-factor.
+- [mod-1] `npm run reset-password -- <email> <newPassword>` (`scripts/reset-password.ts`) uses Better Auth's own hashing and
+  adapter (`ctx.password.hash`, `internalAdapter.updatePassword`) and signs the user out everywhere; 2FA is left as is.
 
 ## Deviations from docs
 <!-- Claude: anything built differently from the docs, and why. Update the doc too if the user agrees. -->
@@ -96,6 +118,10 @@ Status values: ⬜ not started · 🟡 in progress · ✅ done
 ## Known issues / tech debt
 - [0] Node v25.8.1 (non-LTS) on the dev machine; everything works so far. Consider Node 24 LTS if a tool breaks.
 - [0] `npm audit` reports 5 high-severity issues in dev-only dependencies; production deps: 0.
+  [mod-1] Now 9 high, all in tooling (`shadcn` CLI and its `ts-morph`/`fast-glob`/`micromatch`/`braces` chain,
+  `eslint-config-next`); none in `qrcode` or runtime code. `shadcn` sits in `dependencies` and could move to devDependencies.
+- [mod-1] Better Auth TOTP has no replay protection inside the 30 s window (a code can be reused once more in that window);
+  lockout and rate limits bound guessing. Email verification is integration-tested only (e2e runs with it off).
 - [1] `periods.ts` builds calendar dates with the process-local `Date` before converting with date-fns-tz; correct for UTC and Asia/Colombo servers, but a server TZ with a DST jump at midnight could misplace a boundary. Revisit if deploying outside UTC.
 - [1] `baseCurrency` can be changed freely for now; once ledger data exists (Phase 2+) it may need a warning or lock.
 - [1] Next 16 keeps visited pages mounted but hidden (`<Activity>`), so forms keep their state across navigation (e2e locators filter to visible fields).

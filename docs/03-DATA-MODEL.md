@@ -13,6 +13,9 @@ Conventions for every collection:
 
 ## users / sessions / accounts(auth)
 Managed by Better Auth (its own collections, prefixed `auth_` if configurable). App code reads `user.id` only.
+Collections: `auth_users` (+ `twoFactorEnabled`), `auth_sessions`, `auth_accounts`, `auth_verifications` (reset/verify tokens,
+pending 2FA sign-ins), `auth_rate_limits`, `auth_two_factors` (`userId`, `secret` and `backupCodes` encrypted with
+BETTER_AUTH_SECRET, `verified`, lockout counters). Unset emergency settings amounts are stored as `null`.
 
 ## settings (one per user)
 ```

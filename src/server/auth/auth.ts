@@ -2,8 +2,15 @@ import "server-only";
 import { betterAuth } from "better-auth";
 import { mongodbAdapter } from "better-auth/adapters/mongodb";
 import { nextCookies } from "better-auth/next-js";
+import { twoFactor } from "better-auth/plugins";
 import { MongoClient, type Db } from "mongodb";
 import { getEnv } from "@/server/env";
+import { getMailer, type Mailer } from "@/server/mail/mailer";
+import { resetPasswordEmail, verifyEmailEmail } from "@/server/mail/templates";
+
+export const APP_NAME = "WealthTrack";
+export const RESET_TOKEN_TTL_SECONDS = 60 * 60;
+export const VERIFY_TOKEN_TTL_SECONDS = 24 * 60 * 60;
 
 export interface CreateAuthOptions {
   db: Db;
@@ -15,11 +22,22 @@ export interface CreateAuthOptions {
   rateLimit?: boolean;
   /** `nextCookies()` sets cookies from server actions; it needs a Next.js request scope. */
   nextJs?: boolean;
+  /** Users must confirm their email before logging in (REQUIRE_EMAIL_VERIFICATION). */
+  requireEmailVerification?: boolean;
+  /** Sends reset and verification emails. Defaults to the app mailer. */
+  mailer?: Mailer;
 }
 
-/** Better Auth with email/password on MongoDB. Collections are prefixed `auth_` (docs/03). */
+/**
+ * Better Auth with email/password on MongoDB. Collections are prefixed `auth_` (docs/03).
+ * Password reset, optional email verification, TOTP two-factor with backup codes (MOD-1).
+ * Two-factor secrets and backup codes are encrypted at rest by Better Auth with `secret`.
+ */
 export function createAuth(opts: CreateAuthOptions) {
+  const mailer = () => opts.mailer ?? getMailer();
+  const requireEmailVerification = opts.requireEmailVerification ?? false;
   return betterAuth({
+    appName: APP_NAME,
     secret: opts.secret,
     baseURL: opts.baseURL,
     database: mongodbAdapter(opts.db, { client: opts.client }),
@@ -28,10 +46,25 @@ export function createAuth(opts: CreateAuthOptions) {
       disableSignUp: opts.disableSignUp ?? false,
       minPasswordLength: 8,
       maxPasswordLength: 128,
-      autoSignIn: true,
+      autoSignIn: !requireEmailVerification,
+      requireEmailVerification,
+      resetPasswordTokenExpiresIn: RESET_TOKEN_TTL_SECONDS,
+      revokeSessionsOnPasswordReset: true,
+      sendResetPassword: async ({ user, url }) => {
+        await mailer().send(resetPasswordEmail(user, url));
+      },
+    },
+    emailVerification: {
+      sendOnSignUp: requireEmailVerification,
+      autoSignInAfterVerification: true,
+      expiresIn: VERIFY_TOKEN_TTL_SECONDS,
+      sendVerificationEmail: async ({ user, url }) => {
+        await mailer().send(verifyEmailEmail(user, url));
+      },
     },
     user: { modelName: "auth_users" },
-    session: { modelName: "auth_sessions" },
+    // freshAge 0: listing sessions works on any session; sensitive actions still ask for the password.
+    session: { modelName: "auth_sessions", freshAge: 0 },
     account: { modelName: "auth_accounts" },
     verification: { modelName: "auth_verifications" },
     rateLimit: {
@@ -43,10 +76,21 @@ export function createAuth(opts: CreateAuthOptions) {
       customRules: {
         "/sign-in/email": { window: 60, max: 5 },
         "/sign-up/email": { window: 60, max: 5 },
+        "/request-password-reset": { window: 60, max: 3 },
+        "/send-verification-email": { window: 60, max: 3 },
+        "/two-factor/*": { window: 60, max: 5 },
       },
     },
-    // nextCookies must be the last plugin
-    plugins: opts.nextJs === false ? [] : [nextCookies()],
+    plugins: [
+      twoFactor({
+        issuer: APP_NAME,
+        twoFactorTable: "auth_two_factors",
+        backupCodeOptions: { amount: 10, length: 10, storeBackupCodes: "encrypted" },
+        accountLockout: { enabled: true, maxFailedAttempts: 5, durationSeconds: 15 * 60 },
+      }),
+      // nextCookies must be the last plugin
+      ...(opts.nextJs === false ? [] : [nextCookies()]),
+    ],
   });
 }
 
@@ -67,6 +111,7 @@ export function getAuth(): Auth {
       secret: env.BETTER_AUTH_SECRET,
       baseURL: env.BETTER_AUTH_URL,
       disableSignUp: env.DISABLE_SIGNUP,
+      requireEmailVerification: env.REQUIRE_EMAIL_VERIFICATION,
       rateLimit: env.NODE_ENV === "production" && env.AUTH_RATE_LIMIT === "on",
     });
   }

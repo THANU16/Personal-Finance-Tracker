@@ -8,6 +8,8 @@ import type { CategoryNode } from "@/modules/categories/schemas";
 import type { SettingsDTO } from "@/modules/settings/schemas";
 import { PreferencesForm } from "@/modules/settings/components/preferences-form";
 import { ProfileForm } from "@/modules/settings/components/profile-form";
+import { SecurityTab } from "@/modules/settings/components/security/security-tab";
+import type { SecurityDTO } from "@/modules/settings/security";
 
 // docs/05 §17 — FX rates (Phase 4) and Data (Phase 11) tabs arrive with their phases.
 export function SettingsTabs({
@@ -16,12 +18,14 @@ export function SettingsTabs({
   timezones,
   categories,
   assetClasses,
+  security,
 }: {
   user: { name: string; email: string };
   settings: SettingsDTO;
   timezones: string[];
   categories: CategoryNode[];
   assetClasses: AssetClassDTO[];
+  security: SecurityDTO;
 }) {
   return (
     <Tabs defaultValue="preferences">
@@ -30,6 +34,7 @@ export function SettingsTabs({
         <TabsTrigger value="preferences">Preferences</TabsTrigger>
         <TabsTrigger value="categories">Categories</TabsTrigger>
         <TabsTrigger value="asset-classes">Asset classes</TabsTrigger>
+        <TabsTrigger value="security">Security</TabsTrigger>
       </TabsList>
       <TabsContent value="profile" className="pt-4">
         <ProfileForm name={user.name} email={user.email} />
@@ -42,6 +47,9 @@ export function SettingsTabs({
       </TabsContent>
       <TabsContent value="asset-classes" className="pt-4">
         <AssetClassesManager classes={assetClasses} />
+      </TabsContent>
+      <TabsContent value="security" className="pt-4">
+        <SecurityTab security={security} locale={settings.locale} timeZone={settings.timezone} />
       </TabsContent>
     </Tabs>
   );

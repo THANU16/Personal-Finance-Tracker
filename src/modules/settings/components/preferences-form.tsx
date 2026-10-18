@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Select,
   SelectContent,
@@ -23,7 +24,12 @@ import { COMMON_CURRENCIES, LOCALES } from "@/lib/constants";
 import { updateSettingsAction } from "@/modules/settings/actions";
 import { updateSettingsSchema, type SettingsDTO } from "@/modules/settings/schemas";
 
-const formSchema = updateSettingsSchema.required();
+const formSchema = updateSettingsSchema
+  .required()
+  .refine((v) => v.emergencyExpenseBasis !== "manual" || v.emergencyManualMonthlyMinor !== null, {
+    path: ["emergencyManualMonthlyMinor"],
+    message: "Enter a monthly amount",
+  });
 type FormValues = z.infer<typeof formSchema>;
 
 function toFormValues(s: SettingsDTO): FormValues {
@@ -35,12 +41,25 @@ function toFormValues(s: SettingsDTO): FormValues {
     bigChangeThresholdBp: s.bigChangeThresholdBp,
     driftThresholdBp: s.driftThresholdBp,
     emergencyMonths: s.emergencyMonths,
+    emergencyExpenseBasis: s.emergencyExpenseBasis,
+    emergencyManualMonthlyMinor: s.emergencyManualMonthlyMinor,
+    emergencyTargetOverrideMinor: s.emergencyTargetOverrideMinor,
     lifeCoverIncomeMultiple: s.lifeCoverIncomeMultiple,
     healthCoverTargetMinor: s.healthCoverTargetMinor,
     minBalanceWarningMinor: s.minBalanceWarningMinor,
     notify: { ...s.notify },
   };
 }
+
+const BASES = [
+  {
+    value: "essential",
+    label: "Essential expenses",
+    hint: "Spending in categories flagged essential. Uses all expenses if none are flagged.",
+  },
+  { value: "all", label: "All expenses", hint: "Everything you spent." },
+  { value: "manual", label: "A fixed monthly amount", hint: "Enter the amount below." },
+] as const;
 
 const HOURS = Array.from({ length: 24 }, (_, h) => ({
   value: String(h),
@@ -62,7 +81,7 @@ function Section({
         <CardTitle>{title}</CardTitle>
         <CardDescription>{description}</CardDescription>
       </CardHeader>
-      <CardContent className="grid gap-5 sm:grid-cols-2">{children}</CardContent>
+      <CardContent className="grid items-start gap-5 sm:grid-cols-2">{children}</CardContent>
     </Card>
   );
 }
@@ -87,6 +106,7 @@ export function PreferencesForm({
     formState: { errors, isSubmitting, isDirty },
   } = form;
   const currency = useWatch({ control, name: "baseCurrency" });
+  const basis = useWatch({ control, name: "emergencyExpenseBasis" });
   const currencies = Array.from(new Set([settings.baseCurrency, ...COMMON_CURRENCIES]));
   const zones = timezones.includes(settings.timezone)
     ? timezones
@@ -284,12 +304,11 @@ export function PreferencesForm({
         </FormField>
       </Section>
 
-      <Section title="Safety net" description="Targets used by Essentials and the health score.">
-        <FormField
-          id="emergencyMonths"
-          label="Emergency fund (months of expenses)"
-          error={err("emergencyMonths")}
-        >
+      <Section
+        title="Emergency fund"
+        description="Target = fixed target if set, otherwise monthly basis × months. Essential and all-expense bases use your average monthly spending over the last 6 complete months."
+      >
+        <FormField id="emergencyMonths" label="Months of expenses" error={err("emergencyMonths")}>
           <Input
             id="emergencyMonths"
             type="number"
@@ -300,6 +319,86 @@ export function PreferencesForm({
             {...register("emergencyMonths", { valueAsNumber: true })}
           />
         </FormField>
+        <div className="grid gap-2 sm:col-span-2">
+          <Label id="emergencyExpenseBasis-label">Monthly basis</Label>
+          <Controller
+            control={control}
+            name="emergencyExpenseBasis"
+            render={({ field }) => (
+              <RadioGroup
+                aria-labelledby="emergencyExpenseBasis-label"
+                value={field.value}
+                onValueChange={(v) => field.onChange(v)}
+                className="gap-3"
+              >
+                {BASES.map((b) => (
+                  <Label
+                    key={b.value}
+                    className="flex items-start gap-3 rounded-lg border p-3 font-normal"
+                  >
+                    <RadioGroupItem value={b.value} className="mt-0.5" />
+                    <span className="grid gap-0.5">
+                      <span className="font-medium">{b.label}</span>
+                      <span className="text-xs text-muted-foreground">{b.hint}</span>
+                    </span>
+                  </Label>
+                ))}
+              </RadioGroup>
+            )}
+          />
+        </div>
+        {basis === "manual" ? (
+          <FormField
+            id="emergencyManualMonthlyMinor"
+            label="Monthly amount"
+            error={err("emergencyManualMonthlyMinor")}
+          >
+            <Controller
+              control={control}
+              name="emergencyManualMonthlyMinor"
+              render={({ field }) => (
+                <MoneyInput
+                  id="emergencyManualMonthlyMinor"
+                  currency={currency}
+                  value={field.value}
+                  onChange={field.onChange}
+                  onBlur={field.onBlur}
+                  ref={field.ref}
+                  {...fieldAria("emergencyManualMonthlyMinor", err("emergencyManualMonthlyMinor"))}
+                />
+              )}
+            />
+          </FormField>
+        ) : null}
+        <FormField
+          id="emergencyTargetOverrideMinor"
+          label="Fixed target (optional)"
+          error={err("emergencyTargetOverrideMinor")}
+          description="Replaces the calculated target. Leave empty to calculate it."
+        >
+          <Controller
+            control={control}
+            name="emergencyTargetOverrideMinor"
+            render={({ field }) => (
+              <MoneyInput
+                id="emergencyTargetOverrideMinor"
+                currency={currency}
+                value={field.value}
+                onChange={field.onChange}
+                onBlur={field.onBlur}
+                ref={field.ref}
+                {...fieldAria(
+                  "emergencyTargetOverrideMinor",
+                  err("emergencyTargetOverrideMinor"),
+                  true,
+                )}
+              />
+            )}
+          />
+        </FormField>
+      </Section>
+
+      <Section title="Insurance" description="Targets used by Essentials and the health score.">
         <FormField
           id="lifeCoverIncomeMultiple"
           label="Life cover (× annual income)"

@@ -21,6 +21,9 @@ function toDTO(doc: SettingsDoc): SettingsDTO {
     bigChangeThresholdBp: doc.bigChangeThresholdBp,
     driftThresholdBp: doc.driftThresholdBp,
     emergencyMonths: doc.emergencyMonths,
+    emergencyExpenseBasis: doc.emergencyExpenseBasis ?? "essential",
+    emergencyManualMonthlyMinor: doc.emergencyManualMonthlyMinor ?? null,
+    emergencyTargetOverrideMinor: doc.emergencyTargetOverrideMinor ?? null,
     lifeCoverIncomeMultiple: doc.lifeCoverIncomeMultiple,
     healthCoverTargetMinor: doc.healthCoverTargetMinor ?? null,
     minBalanceWarningMinor: doc.minBalanceWarningMinor,
@@ -93,6 +96,20 @@ export async function updateSettings(ctx: Ctx, input: unknown): Promise<Settings
   const $set: Record<string, unknown> = { ...rest };
   if (notify) {
     for (const [k, v] of Object.entries(notify)) $set[`notify.${k}`] = v;
+  }
+  // Cross-field rule on the merged result (updates are partial): a manual basis needs an amount.
+  if (rest.emergencyExpenseBasis !== undefined || rest.emergencyManualMonthlyMinor !== undefined) {
+    const current = await getOrCreateSettings(ctx.userId);
+    const basis = rest.emergencyExpenseBasis ?? current.emergencyExpenseBasis;
+    const manual =
+      rest.emergencyManualMonthlyMinor !== undefined
+        ? rest.emergencyManualMonthlyMinor
+        : current.emergencyManualMonthlyMinor;
+    if (basis === "manual" && manual === null) {
+      throw new AppError("VALIDATION", "Enter the monthly amount for a manual basis", {
+        emergencyManualMonthlyMinor: ["Enter a monthly amount"],
+      });
+    }
   }
   return applySet(ctx, $set);
 }

@@ -21,6 +21,11 @@ export const envSchema = z
       .enum(["true", "false", ""])
       .default("false")
       .transform((v) => v === "true"),
+    /** Users must confirm their email before they can log in. */
+    REQUIRE_EMAIL_VERIFICATION: z
+      .enum(["true", "false", ""])
+      .default("false")
+      .transform((v) => v === "true"),
 
     APP_URL: z.url(),
     DEFAULT_TIMEZONE: z.string().min(1).default("Asia/Colombo"),
@@ -33,6 +38,8 @@ export const envSchema = z
 
     RESEND_API_KEY: optionalString,
     MAIL_FROM: optionalString,
+    /** Test only: the console mail driver also appends every email to this file (e2e reads links). */
+    MAIL_CAPTURE_FILE: optionalString,
 
     STORAGE_DRIVER: z.enum(["local", "s3"]).default("local"),
     STORAGE_LOCAL_DIR: z.string().min(1).default("./.uploads"),

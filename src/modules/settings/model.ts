@@ -1,4 +1,5 @@
 import { Schema, type Types } from "mongoose";
+import { EMERGENCY_BASES, type EmergencyBasis } from "@/domain/essentials";
 import { intField, userScopedModel } from "@/server/db/model";
 
 // docs/03-DATA-MODEL.md — settings (one per user)
@@ -12,6 +13,9 @@ export interface SettingsDoc {
   bigChangeThresholdBp: number;
   driftThresholdBp: number;
   emergencyMonths: number;
+  emergencyExpenseBasis: EmergencyBasis;
+  emergencyManualMonthlyMinor: number | null;
+  emergencyTargetOverrideMinor: number | null;
   lifeCoverIncomeMultiple: number;
   healthCoverTargetMinor: number | null;
   minBalanceWarningMinor: number;
@@ -34,6 +38,14 @@ const settingsSchema = new Schema<SettingsDoc>(
     bigChangeThresholdBp: intField({ required: true, default: 2000, min: 0 }),
     driftThresholdBp: intField({ required: true, default: 500, min: 0 }),
     emergencyMonths: intField({ required: true, default: 6, min: 0 }),
+    emergencyExpenseBasis: {
+      type: String,
+      enum: EMERGENCY_BASES,
+      required: true,
+      default: "essential",
+    },
+    emergencyManualMonthlyMinor: intField({ default: null, min: 1 }),
+    emergencyTargetOverrideMinor: intField({ default: null, min: 1 }),
     lifeCoverIncomeMultiple: intField({ required: true, default: 10, min: 0 }),
     healthCoverTargetMinor: intField({ default: null, min: 0 }),
     minBalanceWarningMinor: intField({ required: true, default: 0, min: 0 }),

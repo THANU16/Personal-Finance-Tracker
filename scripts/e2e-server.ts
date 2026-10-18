@@ -5,10 +5,14 @@
  * Usage (via playwright.config.ts): tsx scripts/e2e-server.ts
  */
 import { spawn, type ChildProcess } from "node:child_process";
+import { writeFileSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { MongoMemoryReplSet } from "mongodb-memory-server";
 
 const PORT = 3100;
+/** The console mail driver appends every email here; tests/e2e/auth.spec.ts reads it (same path). */
+const E2E_MAIL_FILE = path.join(os.tmpdir(), "wealthtrack-e2e-mail.jsonl");
 const NEXT_BIN = path.join(process.cwd(), "node_modules", "next", "dist", "bin", "next");
 
 function runNext(args: string[], env: NodeJS.ProcessEnv): ChildProcess {
@@ -30,7 +34,12 @@ async function main() {
     DISABLE_SIGNUP: "false",
     // Tests register many users per minute; production limits would block them.
     AUTH_RATE_LIMIT: "off",
+    // No real email in e2e: capture messages instead (the console driver logs nothing sensitive).
+    RESEND_API_KEY: "",
+    MAIL_CAPTURE_FILE: E2E_MAIL_FILE,
+    REQUIRE_EMAIL_VERIFICATION: "false",
   };
+  writeFileSync(E2E_MAIL_FILE, "");
 
   let child: ChildProcess | undefined;
   const shutdown = async (code: number) => {

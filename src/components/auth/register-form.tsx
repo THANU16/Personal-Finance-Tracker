@@ -21,7 +21,12 @@ export function RegisterForm() {
   } = useForm<RegisterInput>({ resolver: zodResolver(registerSchema) });
 
   async function onSubmit({ name, email, password }: RegisterInput) {
-    const { error } = await authClient.signUp.email({ name, email, password });
+    const { data, error } = await authClient.signUp.email({
+      name,
+      email,
+      password,
+      callbackURL: "/verify-email?verified=1",
+    });
     if (error) {
       const message =
         error.code === "USER_ALREADY_EXISTS" || error.status === 422
@@ -29,6 +34,11 @@ export function RegisterForm() {
           : (error.message ?? "Could not create the account");
       setError("root", { message });
       toast.error(message);
+      return;
+    }
+    if (!data?.token) {
+      // REQUIRE_EMAIL_VERIFICATION: no session until the emailed link is used
+      router.replace(`/verify-email?email=${encodeURIComponent(email)}&sent=1`);
       return;
     }
     toast.success("Welcome to WealthTrack");

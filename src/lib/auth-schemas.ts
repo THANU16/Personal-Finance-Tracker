@@ -41,6 +41,46 @@ export const changePasswordSchema = z
   });
 export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
 
+export const forgotPasswordSchema = z.object({ email });
+export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
+
+export const resetPasswordSchema = z
+  .object({ newPassword: password, confirmPassword: z.string() })
+  .refine((v) => v.newPassword === v.confirmPassword, {
+    path: ["confirmPassword"],
+    message: "Passwords do not match",
+  });
+export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
+
+/** Authenticator code: 6 digits; spaces and dashes are ignored. */
+export const totpCodeSchema = z.object({
+  code: z
+    .string()
+    .transform((v) => v.replace(/[\s-]/g, ""))
+    .pipe(z.string().regex(/^\d{6}$/, "Enter the 6-digit code from your app")),
+});
+export const backupCodeSchema = z.object({
+  code: z
+    .string()
+    .transform((v) => v.trim())
+    .pipe(z.string().min(4, "Enter one of your backup codes")),
+});
+
+export const passwordConfirmSchema = z.object({
+  password: z.string().min(1, "Enter your password"),
+});
+export type PasswordConfirmInput = z.infer<typeof passwordConfirmSchema>;
+
+/** Auth pages that never need a session (src/proxy.ts). */
+export const PUBLIC_AUTH_PATHS = [
+  "/login",
+  "/register",
+  "/forgot-password",
+  "/reset-password",
+  "/verify-email",
+  "/two-factor",
+] as const;
+
 export const profileSchema = z.object({
   name: z.string().trim().min(1, "Enter your name").max(100),
 });

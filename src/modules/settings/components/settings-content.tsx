@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { listAssetClasses } from "@/modules/asset-classes/service";
 import { getCategoryTree } from "@/modules/categories/service";
+import { getSecurityOverview } from "@/modules/settings/security";
 import { getCurrentUser } from "@/server/auth/require-user";
 import { SettingsTabs } from "@/modules/settings/components/settings-tabs";
 
@@ -8,9 +9,10 @@ import { SettingsTabs } from "@/modules/settings/components/settings-tabs";
 export async function SettingsContent() {
   const current = await getCurrentUser();
   if (!current) redirect("/login");
-  const [categories, assetClasses] = await Promise.all([
+  const [categories, assetClasses, security] = await Promise.all([
     getCategoryTree(current.ctx, { includeArchived: true }),
     listAssetClasses(current.ctx),
+    getSecurityOverview(),
   ]);
   return (
     <SettingsTabs
@@ -19,6 +21,7 @@ export async function SettingsContent() {
       timezones={Intl.supportedValuesOf("timeZone")}
       categories={categories}
       assetClasses={assetClasses}
+      security={security}
     />
   );
 }

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { EMERGENCY_BASES, type EmergencyBasis } from "@/domain/essentials";
 import { minorUnitDigits } from "@/domain/money";
 
 const isValidTimezone = (tz: string) => {
@@ -40,6 +41,12 @@ const minorAmount = z
   .min(0, "Cannot be negative")
   .max(Number.MAX_SAFE_INTEGER);
 
+const positiveMinorAmount = z
+  .number()
+  .int("Must be a whole amount")
+  .min(1, "Must be more than zero")
+  .max(Number.MAX_SAFE_INTEGER);
+
 export const updateSettingsSchema = z
   .object({
     baseCurrency: z
@@ -52,6 +59,9 @@ export const updateSettingsSchema = z
     bigChangeThresholdBp: int(100, 10_000),
     driftThresholdBp: int(50, 5_000),
     emergencyMonths: int(1, 24),
+    emergencyExpenseBasis: z.enum(EMERGENCY_BASES),
+    emergencyManualMonthlyMinor: positiveMinorAmount.nullable(),
+    emergencyTargetOverrideMinor: positiveMinorAmount.nullable(),
     lifeCoverIncomeMultiple: int(1, 30),
     healthCoverTargetMinor: minorAmount.nullable(),
     minBalanceWarningMinor: minorAmount,
@@ -78,6 +88,9 @@ export interface SettingsDTO {
   bigChangeThresholdBp: number;
   driftThresholdBp: number;
   emergencyMonths: number;
+  emergencyExpenseBasis: EmergencyBasis;
+  emergencyManualMonthlyMinor: number | null;
+  emergencyTargetOverrideMinor: number | null;
   lifeCoverIncomeMultiple: number;
   healthCoverTargetMinor: number | null;
   minBalanceWarningMinor: number;

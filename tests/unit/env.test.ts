@@ -37,6 +37,17 @@ describe("parseEnv", () => {
     expect(() => parseEnv({ ...valid, ...override })).toThrow(key);
   });
 
+  it("parses REQUIRE_EMAIL_VERIFICATION (default off) and MAIL_CAPTURE_FILE", () => {
+    expect(parseEnv(valid).REQUIRE_EMAIL_VERIFICATION).toBe(false);
+    expect(
+      parseEnv({ ...valid, REQUIRE_EMAIL_VERIFICATION: "true" }).REQUIRE_EMAIL_VERIFICATION,
+    ).toBe(true);
+    expect(() => parseEnv({ ...valid, REQUIRE_EMAIL_VERIFICATION: "yes" })).toThrow(
+      "REQUIRE_EMAIL_VERIFICATION",
+    );
+    expect(parseEnv({ ...valid, MAIL_CAPTURE_FILE: "" }).MAIL_CAPTURE_FILE).toBeUndefined();
+  });
+
   it("treats empty optional values as unset", () => {
     const env = parseEnv({ ...valid, RESEND_API_KEY: "", MAIL_FROM: "" });
     expect(env.RESEND_API_KEY).toBeUndefined();
