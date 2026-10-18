@@ -1,5 +1,7 @@
 import "server-only";
+import { Types, type ClientSession } from "mongoose";
 import { businessDateToUtc } from "@/domain/dates";
+import { HoldingModel, type HoldingDoc } from "@/modules/holdings/model";
 import {
   OWNER_MANAGED_SOURCES,
   TransactionModel,
@@ -59,8 +61,8 @@ function toDraft(ctx: Ctx, data: TransactionData): LedgerDraft {
       return {
         ...common,
         type: "transfer",
-        fromAccountId: data.fromAccountId,
-        toAccountId: data.toAccountId,
+        fromAccountId: data.fromAccountId ?? null,
+        toAccountId: data.toAccountId ?? null,
         toAmountMinor: data.toAmountMinor ?? null,
         feeMinor: data.feeMinor,
       };
@@ -99,9 +101,105 @@ function toDraft(ctx: Ctx, data: TransactionData): LedgerDraft {
   }
 }
 
+type TransferData = Extract<TransactionData, { type: "transfer" }>;
+
+/**
+ * A transfer with an asset on either side (owner request): account → asset = invest, asset →
+ * account = redeem, asset → asset = switch (redeem from A + invest into B in one DB transaction,
+ * sharing a groupId). The amount arrives at the destination; the fee leaves the source on top.
+ */
+async function postAssetTransfer(
+  ctx: Ctx,
+  data: TransferData,
+  session: ClientSession,
+): Promise<{ id: string }> {
+  const common = {
+    date: businessDateToUtc(data.date, ctx.tz),
+    description: data.description,
+    counterparty: data.counterparty,
+    notes: data.notes,
+    tags: data.tags,
+    confirmOpportunity: data.confirmOpportunity ?? false,
+    confirmEmergency: data.confirmEmergency ?? false,
+  };
+  const amount = data.amountMinor;
+  const fee = data.feeMinor;
+  if (data.fromAccountId && data.toHoldingId) {
+    const txn = await postTransaction(
+      ctx,
+      {
+        ...common,
+        type: "invest",
+        amountMinor: amount,
+        feeMinor: fee,
+        fromAccountId: data.fromAccountId,
+        holdingId: data.toHoldingId,
+      },
+      session,
+    );
+    return { id: String(txn._id) };
+  }
+  if (data.fromHoldingId && data.toAccountId) {
+    const txn = await postTransaction(
+      ctx,
+      {
+        ...common,
+        type: "redeem",
+        amountMinor: amount + fee,
+        feeMinor: fee,
+        toAccountId: data.toAccountId,
+        holdingId: data.fromHoldingId,
+      },
+      session,
+    );
+    return { id: String(txn._id) };
+  }
+  const userId = toObjectId(ctx.userId, "User");
+  const holdings = await HoldingModel.find({
+    userId,
+    _id: {
+      $in: [toObjectId(data.fromHoldingId!, "Holding"), toObjectId(data.toHoldingId!, "Holding")],
+    },
+  })
+    .session(session)
+    .lean<HoldingDoc[]>();
+  const a = holdings.find((h) => String(h._id) === data.fromHoldingId);
+  const b = holdings.find((h) => String(h._id) === data.toHoldingId);
+  if (!a)
+    throw new AppError("VALIDATION", "Holding not found", { fromAccountId: ["Holding not found"] });
+  if (!b)
+    throw new AppError("VALIDATION", "Holding not found", { toAccountId: ["Holding not found"] });
+  if (a.currency !== b.currency) {
+    const message = `"${a.name}" is in ${a.currency} but "${b.name}" is in ${b.currency}; switch between assets of one currency`;
+    throw new AppError("VALIDATION", message, { toAccountId: [message] });
+  }
+  const groupId = new Types.ObjectId();
+  const leg = { ...common, switchLeg: true, groupId, source: { kind: "switch" as const } };
+  await postTransaction(
+    ctx,
+    {
+      ...leg,
+      type: "redeem",
+      amountMinor: amount + fee,
+      feeMinor: fee,
+      holdingId: data.fromHoldingId!,
+    },
+    session,
+  );
+  const invest = await postTransaction(
+    ctx,
+    { ...leg, type: "invest", amountMinor: amount, feeMinor: 0, holdingId: data.toHoldingId! },
+    session,
+  );
+  return { id: String(invest._id) };
+}
+
 export async function createTransaction(ctx: Ctx, input: unknown): Promise<{ id: string }> {
   const data = parseInput(transactionInputSchema, input);
   return withTransaction(async (session) => {
+    if (data.type === "transfer" && (data.fromHoldingId || data.toHoldingId)) {
+      return postAssetTransfer(ctx, data, session);
+    }
     const txn = await postTransaction(ctx, toDraft(ctx, data), session);
     return { id: String(txn._id) };
   });
@@ -124,6 +222,15 @@ export async function updateTransaction(
       throw new AppError("CONFLICT", "A void transaction cannot be edited");
     if (OWNER_MANAGED_SOURCES.includes(old.source.kind)) {
       throw new AppError("FORBIDDEN", "Edit this through the operation that created it");
+    }
+    if (old.source.kind === "switch") {
+      throw new AppError(
+        "FORBIDDEN",
+        "A switch between assets cannot be edited; void it and enter it again",
+      );
+    }
+    if (data.type === "transfer" && (data.fromHoldingId || data.toHoldingId)) {
+      throw new AppError("VALIDATION", "Void this entry and add the asset transfer as a new one");
     }
     if (!(USER_EDITABLE_TYPES as readonly string[]).includes(old.type)) {
       throw new AppError("FORBIDDEN", "This transaction cannot be edited; void it instead");
@@ -159,6 +266,18 @@ export async function voidTransaction(
 ): Promise<{ id: string }> {
   const { reason } = parseInput(voidTransactionSchema, input);
   return withTransaction(async (session) => {
+    const userId = toObjectId(ctx.userId, "User");
+    const txn = await TransactionModel.findOne({ _id: toObjectId(id, "Transaction"), userId })
+      .session(session)
+      .lean<TransactionDoc>();
+    // Both legs of an asset → asset switch are voided together.
+    if (txn?.source.kind === "switch" && txn.groupId && txn.status === "posted") {
+      const legs = await TransactionModel.find({ userId, groupId: txn.groupId, status: "posted" })
+        .session(session)
+        .lean<TransactionDoc[]>();
+      for (const leg of legs) await ledgerVoid(ctx, String(leg._id), reason, session);
+      return { id };
+    }
     await ledgerVoid(ctx, id, reason, session);
     return { id };
   });

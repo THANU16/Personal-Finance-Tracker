@@ -132,3 +132,37 @@ test("Fixed Income lists money market and FD; an FD without terms uses its curre
   await expect(page.getByText("LKR 102,500.00").first()).toBeVisible();
   await expect(page.getByRole("button", { name: "Withdraw" })).toHaveCount(0);
 });
+
+test("Transfer tab moves money from an account into an asset", async ({ page }) => {
+  await register(page);
+  await addBank(page);
+  await page.goto("/assets");
+  await page.getByRole("button", { name: "Add your first holding" }).click();
+  const wizard = page.getByRole("dialog");
+  await wizard.getByRole("radio", { name: "Fixed Income" }).click();
+  await wizard.getByRole("button", { name: "Next" }).click();
+  await wizard.getByRole("radio", { name: "Money market" }).click();
+  await wizard.getByRole("button", { name: "Next" }).click();
+  await wizard.getByLabel("Name").fill("CAL Money Market");
+  await wizard.getByRole("button", { name: "Next" }).click();
+  await wizard.getByLabel("Amount invested").fill("10000");
+  await wizard.getByLabel("Current value").fill("10000");
+  await wizard.getByRole("button", { name: "Add holding" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "CAL Money Market" })).toBeVisible();
+
+  await page.goto("/transactions");
+  await page.getByRole("button", { name: "Add transaction" }).first().click();
+  const sheet = page.getByRole("dialog", { name: "Quick add" });
+  await sheet.getByRole("tab", { name: "Transfer", exact: true }).click();
+  await sheet.getByLabel("Amount").fill("5000");
+  await field(page, "From", true).click();
+  await page.getByRole("option", { name: /^Sampath Savings/ }).click();
+  await field(page, "To", true).click();
+  await page.getByRole("option", { name: /^CAL Money Market/ }).click();
+  await expect(sheet.getByText("Recorded as an investment into CAL Money Market.")).toBeVisible();
+  await sheet.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByText(/saved/).first()).toBeVisible();
+
+  await page.goto("/assets");
+  await expect(page.getByText("LKR 15,000.00").first()).toBeVisible();
+});

@@ -220,6 +220,11 @@ Status values: ⬜ not started · 🟡 in progress · ✅ done
 - [mm] FD terms are optional (owner decision, docs/04 §9 updated): Add holding has an "Enter deposit terms" switch; without terms
   an FD is valued from opening/current value and valuations. The import can create such FDs (suggested for names with "FD" /
   "Fixed deposit", low liquidity); FDs with terms are still refused as import targets because their value is calculated.
+- [mm] Transfer tab accepts assets (owner request, docs/04 §1 updated): From/To list accounts, then assets (FDs with terms
+  excluded). account → asset posts invest, asset → account redeem (amount + fee, so the account receives the amount), asset →
+  asset a switch (redeem + invest, groupId, `source.kind = switch`, internal `switchLeg` draft flag lets the legs skip
+  the account). The fee is entered manually like an account transfer and leaves the source on top. Switches can't be
+  edited; voiding one leg voids both. Invest/Redeem tabs remain for units, price and tax.
 - [mm] e2e `allocation.spec` raced (`isVisible()` right after navigation); it now waits for the editor first.
 
 ## Deviations from docs

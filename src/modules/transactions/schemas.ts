@@ -97,21 +97,52 @@ const nonNegativeMinor = z
   .max(Number.MAX_SAFE_INTEGER)
   .default(0);
 
+/**
+ * Transfer between accounts and/or assets. account → account is a transfer; account → asset posts an
+ * invest, asset → account a redeem, asset → asset a switch (redeem + invest). The amount is what
+ * arrives; the optional fee leaves the source on top of it.
+ */
 const transferSchema = z
   .object({
     ...base,
     type: z.literal("transfer"),
-    fromAccountId: objectId,
-    toAccountId: objectId,
+    fromAccountId: objectId.nullish(),
+    toAccountId: objectId.nullish(),
+    fromHoldingId: objectId.nullish(),
+    toHoldingId: objectId.nullish(),
     /** Required when the two accounts use different currencies. */
     toAmountMinor: amountMinor.nullish(),
-    /** Optional bank fee, charged to the source account on top of the amount. */
+    /** Optional fee, charged to the source on top of the amount. */
     feeMinor: nonNegativeMinor,
   })
   .strict()
-  .refine((v) => v.fromAccountId !== v.toAccountId, {
-    path: ["toAccountId"],
-    message: "Choose a different account",
+  .superRefine((v, ctx) => {
+    if (Boolean(v.fromAccountId) === Boolean(v.fromHoldingId)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["fromAccountId"],
+        message: "Choose where it comes from",
+      });
+    }
+    if (Boolean(v.toAccountId) === Boolean(v.toHoldingId)) {
+      ctx.addIssue({ code: "custom", path: ["toAccountId"], message: "Choose where it goes" });
+    }
+    const from = v.fromAccountId ?? v.fromHoldingId;
+    const to = v.toAccountId ?? v.toHoldingId;
+    if (from && from === to) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["toAccountId"],
+        message: "Choose a different account",
+      });
+    }
+    if ((v.fromHoldingId || v.toHoldingId) && v.toAmountMinor) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["toAmountMinor"],
+        message: "Moves with an asset use one currency",
+      });
+    }
   });
 
 const units = z

@@ -11,7 +11,10 @@ import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
+  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -59,6 +62,11 @@ import type { ActionWarning } from "@/server/errors";
 type FormValues = QuickAddFormValues;
 
 const INVESTMENT_TYPES: QuickAddType[] = ["invest", "redeem", "investment_income"];
+
+/** Transfer From/To values: an account id, or `h:<holdingId>` for an asset (owner request). */
+const HOLDING_PREFIX = "h:";
+const holdingRef = (value: string) =>
+  value.startsWith(HOLDING_PREFIX) ? value.slice(HOLDING_PREFIX.length) : null;
 
 const LAST_ACCOUNTS_KEY = "wt-quick-add-accounts";
 type LastAccounts = Partial<
@@ -151,7 +159,16 @@ function initialValues(request: QuickAddRequest, options: QuickAddOptions): Form
       : (options.accounts.find((a) => !holding || a.currency === holding.currency)?.id ??
           pick(undefined));
   };
-  const from = pick(request.accountId ?? (type === "transfer" ? last.transferFrom : last.expense));
+  const endpointIds = new Set([
+    ...ids,
+    ...options.holdings.filter((h) => !h.isFd).map((h) => `${HOLDING_PREFIX}${h.id}`),
+  ]);
+  const pickEndpoint = (id: string | undefined, fallback: string) =>
+    id && endpointIds.has(id) ? id : fallback;
+  const from =
+    type === "transfer" && !request.accountId
+      ? pickEndpoint(last.transferFrom, pick(undefined))
+      : pick(request.accountId ?? (type === "transfer" ? last.transferFrom : last.expense));
   const toFallback = options.accounts.find((a) => a.id !== from)?.id ?? "";
   return {
     type,
@@ -161,7 +178,9 @@ function initialValues(request: QuickAddRequest, options: QuickAddOptions): Form
     toAccountId:
       type === "income"
         ? pick(request.accountId ?? last.income)
-        : pick(last.transferTo !== from ? last.transferTo : undefined, toFallback),
+        : type === "transfer"
+          ? pickEndpoint(last.transferTo !== from ? last.transferTo : undefined, toFallback)
+          : pick(last.transferTo !== from ? last.transferTo : undefined, toFallback),
     toAmountMinor: null,
     categoryId: "",
     splitMode: false,
@@ -202,12 +221,14 @@ function toInput(v: FormValues) {
   if (v.type === "income")
     return { ...base, type: "income", toAccountId: v.toAccountId, categoryId: v.categoryId };
   if (v.type === "transfer") {
+    const fromHolding = holdingRef(v.fromAccountId);
+    const toHolding = holdingRef(v.toAccountId);
     return {
       ...base,
       type: "transfer",
-      fromAccountId: v.fromAccountId,
-      toAccountId: v.toAccountId,
-      toAmountMinor: v.toAmountMinor,
+      ...(fromHolding ? { fromHoldingId: fromHolding } : { fromAccountId: v.fromAccountId }),
+      ...(toHolding ? { toHoldingId: toHolding } : { toAccountId: v.toAccountId }),
+      toAmountMinor: fromHolding || toHolding ? null : v.toAmountMinor,
       feeMinor: v.feeMinor ?? 0,
     };
   }
@@ -263,39 +284,75 @@ function toInput(v: FormValues) {
 function AccountSelect({
   id,
   accounts,
+  holdings,
   value,
   onChange,
   invalid,
 }: {
   id: string;
   accounts: QuickAddOptions["accounts"];
+  /** Transfer only: assets listed below the accounts (values `h:<id>`). */
+  holdings?: QuickAddOptions["holdings"];
   value: string;
   onChange: (id: string) => void;
   invalid?: boolean;
 }) {
+  const accountItem = (a: QuickAddOptions["accounts"][number]) => (
+    <SelectItem key={a.id} value={a.id}>
+      <span className="flex w-full justify-between gap-4">
+        <span>{a.name}</span>
+        <Money
+          valueMinor={a.balanceMinor}
+          currency={a.currency}
+          className="text-muted-foreground"
+          colorNegative={false}
+        />
+      </span>
+    </SelectItem>
+  );
   return (
     <Select
       value={value}
       onValueChange={(v) => onChange(String(v ?? ""))}
-      items={accounts.map((a) => ({ value: a.id, label: `${a.name} · ${a.currency}` }))}
+      items={[
+        ...accounts.map((a) => ({ value: a.id, label: `${a.name} · ${a.currency}` })),
+        ...(holdings ?? []).map((h) => ({
+          value: `${HOLDING_PREFIX}${h.id}`,
+          label: `${h.name} · asset · ${h.currency}`,
+        })),
+      ]}
     >
       <SelectTrigger id={id} className="w-full" aria-invalid={invalid}>
-        <SelectValue placeholder="Choose an account" />
+        <SelectValue placeholder={holdings ? "Choose an account or asset" : "Choose an account"} />
       </SelectTrigger>
       <SelectContent className="max-h-80">
-        {accounts.map((a) => (
-          <SelectItem key={a.id} value={a.id}>
-            <span className="flex w-full justify-between gap-4">
-              <span>{a.name}</span>
-              <Money
-                valueMinor={a.balanceMinor}
-                currency={a.currency}
-                className="text-muted-foreground"
-                colorNegative={false}
-              />
-            </span>
-          </SelectItem>
-        ))}
+        {holdings?.length ? (
+          <>
+            <SelectGroup>
+              <SelectLabel>Accounts</SelectLabel>
+              {accounts.map(accountItem)}
+            </SelectGroup>
+            <SelectSeparator />
+            <SelectGroup>
+              <SelectLabel>Assets</SelectLabel>
+              {holdings.map((h) => (
+                <SelectItem key={h.id} value={`${HOLDING_PREFIX}${h.id}`}>
+                  <span className="flex w-full justify-between gap-4">
+                    <span>{h.name}</span>
+                    <Money
+                      valueMinor={h.currentValueMinor}
+                      currency={h.currency}
+                      className="text-muted-foreground"
+                      colorNegative={false}
+                    />
+                  </span>
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          </>
+        ) : (
+          accounts.map(accountItem)
+        )}
       </SelectContent>
     </Select>
   );
@@ -334,8 +391,17 @@ function QuickAddForm({
     name: ["holdingId", "redeemBy", "reinvest", "units", "priceMinorE4", "feeMinor", "taxMinor"],
   });
   const account = (id: string) => options.accounts.find((a) => a.id === id);
-  const from = account(fromId);
-  const to = account(toId);
+  /** Transfer endpoint (account or asset) as name + currency. */
+  const endpoint = (id: string): { name: string; currency: string } | undefined => {
+    const h = holdingRef(id);
+    return h ? options.holdings.find((x) => x.id === h) : account(id);
+  };
+  const from = endpoint(fromId);
+  const to = endpoint(toId);
+  const assetTransfer =
+    type === "transfer" && (Boolean(holdingRef(fromId)) || Boolean(holdingRef(toId)));
+  // FDs with deposit terms are withdrawn or renewed from their page, not transferred.
+  const transferHoldings = options.holdings.filter((h) => !h.isFd);
   const investment = INVESTMENT_TYPES.includes(type);
   const holding = options.holdings.find((h) => h.id === holdingId);
   const holdingChoices = options.holdings.filter((h) => type === "investment_income" || !h.isFd);
@@ -353,7 +419,8 @@ function QuickAddForm({
     type === "redeem"
       ? redeemPreview(holding, byUnits, { amount, units, priceE4, fee, tax })
       : null;
-  const crossCurrency = type === "transfer" && from && to && from.currency !== to.currency;
+  const crossCurrency =
+    type === "transfer" && !assetTransfer && from && to && from.currency !== to.currency;
   const splitTotal = splits.reduce(
     (s, l) => s + (l.amountMinor && !Number.isNaN(l.amountMinor) ? l.amountMinor : 0),
     0,
@@ -384,7 +451,10 @@ function QuickAddForm({
     const last = readLast();
     const valid = (id: string | undefined): id is string =>
       Boolean(id) && options.accounts.some((a) => a.id === id);
-    const current = cur.type === "income" ? cur.toAccountId : cur.fromAccountId;
+    const validEndpoint = (id: string | undefined): id is string =>
+      valid(id) || Boolean(id && options.holdings.some((h) => `${HOLDING_PREFIX}${h.id}` === id));
+    const picked = cur.type === "income" ? cur.toAccountId : cur.fromAccountId;
+    const current = valid(picked) ? picked : (options.accounts[0]?.id ?? "");
     if (next === "income") setValue("toAccountId", valid(last.income) ? last.income : current);
     if (next === "expense") setValue("fromAccountId", valid(last.expense) ? last.expense : current);
     if (next === "invest") setValue("fromAccountId", valid(last.invest) ? last.invest : current);
@@ -393,12 +463,12 @@ function QuickAddForm({
       setValue("toAccountId", valid(last.investmentIncome) ? last.investmentIncome : current);
     }
     if (next === "transfer") {
-      const from = valid(last.transferFrom) ? last.transferFrom : current;
+      const from = validEndpoint(last.transferFrom) ? last.transferFrom : current;
       const other = options.accounts.find((a) => a.id !== from)?.id ?? "";
       setValue("fromAccountId", from);
       setValue(
         "toAccountId",
-        valid(last.transferTo) && last.transferTo !== from ? last.transferTo : other,
+        validEndpoint(last.transferTo) && last.transferTo !== from ? last.transferTo : other,
       );
     }
   }
@@ -587,6 +657,7 @@ function QuickAddForm({
                 <AccountSelect
                   id="qa-from"
                   accounts={options.accounts}
+                  holdings={type === "transfer" ? transferHoldings : undefined}
                   value={field.value}
                   onChange={field.onChange}
                   invalid={Boolean(err("fromAccountId"))}
@@ -608,6 +679,7 @@ function QuickAddForm({
                 <AccountSelect
                   id="qa-to"
                   accounts={options.accounts}
+                  holdings={type === "transfer" ? transferHoldings : undefined}
                   value={field.value}
                   onChange={field.onChange}
                   invalid={Boolean(err("toAccountId"))}
@@ -651,7 +723,11 @@ function QuickAddForm({
             id="qa-transfer-fee"
             label={`Fee (optional${from ? `, ${from.currency}` : ""})`}
             error={err("feeMinor")}
-            description="Bank charge taken from the source account on top of the amount; recorded under Bank fees."
+            description={
+              assetTransfer
+                ? "Charge (e.g. exit load) taken from the source on top of the amount; recorded as an investment fee."
+                : "Bank charge taken from the source account on top of the amount; recorded under Bank fees."
+            }
           >
             <Controller
               control={control}
@@ -669,6 +745,15 @@ function QuickAddForm({
               )}
             />
           </FormField>
+        ) : null}
+        {assetTransfer && from && to ? (
+          <p className="text-xs text-muted-foreground" aria-live="polite">
+            {holdingRef(fromId) && holdingRef(toId)
+              ? `Switch: sells from ${from.name} and buys ${to.name} (realised gain is recorded on ${from.name}).`
+              : holdingRef(toId)
+                ? `Recorded as an investment into ${to.name}.`
+                : `Recorded as a redemption from ${from.name} (realised gain is calculated).`}
+          </p>
         ) : null}
         {type === "transfer" &&
         fee &&

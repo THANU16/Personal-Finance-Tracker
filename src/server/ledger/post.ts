@@ -67,6 +67,11 @@ export interface LedgerDraft {
    * the total once). Never set from user input — the transaction schemas don't carry it.
    */
   dipGuardDone?: boolean;
+  /**
+   * Internal: one leg of an asset → asset switch (redeem without a destination account, invest
+   * without a source account). Never set from user input.
+   */
+  switchLeg?: boolean;
 }
 
 /** Sources that move earmarked money on purpose and are never guarded (docs/04 §20). */
@@ -260,11 +265,11 @@ export async function postTransaction(
   const t = draft.type;
   const fee = draft.feeMinor ?? 0;
   const tax = draft.taxMinor ?? 0;
-  const needsFrom = t === "expense" || t === "transfer" || t === "invest";
+  const needsFrom = t === "expense" || t === "transfer" || (t === "invest" && !draft.switchLeg);
   const needsTo =
     t === "income" ||
     t === "transfer" ||
-    t === "redeem" ||
+    (t === "redeem" && !draft.switchLeg) ||
     (t === "investment_income" && !draft.reinvest);
   const needsHolding =
     t === "invest" || t === "redeem" || t === "investment_income" || t === "opening_balance";

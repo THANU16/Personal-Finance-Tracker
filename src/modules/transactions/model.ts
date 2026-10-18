@@ -16,6 +16,8 @@ export const SOURCE_KINDS = [
   "reconcile",
   "fd_maturity",
   "system",
+  /** Asset → asset transfer: a redeem and an invest sharing a groupId, voided together. */
+  "switch",
 ] as const;
 export type SourceKind = (typeof SOURCE_KINDS)[number];
 

@@ -25,6 +25,15 @@ Rounding helper: `roundHalfAwayFromZero`. Never use floats for stored money.
 Transfer fee (optional, owner request): charged to the source account on top of the amount, in the
 source currency; the transfer is tagged with the system category "Bank fees".
 
+Transfers with assets (owner request): the Transfer entry may have an asset on either side. The amount
+is what arrives; the optional fee leaves the source on top of it.
+- account → asset = `invest` (amount, fee) — account −(amount + fee).
+- asset → account = `redeem` of amount + fee with that fee (§3 cost removed / realised gain) — account +amount.
+- asset → asset = **switch**: `redeem` of amount + fee (fee) from A and `invest` of amount into B, posted in one DB
+  transaction with a shared groupId and `source.kind = switch`; no account changes. Both assets must use one
+  currency. A switch is not edited; voiding either leg voids both. Excluded from cashflow like invest/redeem.
+- FDs with deposit terms are withdrawn or renewed from their page, not transferred.
+
 Sign convention: liabilities (`credit_card`, `loan`, `payable`) sit below zero. Card spend makes the
 card more negative; paying the card is a **transfer** bank → card (never an expense).
 A new loan account is created with `openingBalanceMinor = −outstanding`. Loan disbursement into a

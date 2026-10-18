@@ -99,6 +99,7 @@ export function toTransactionDTO(doc: TransactionDoc, refs: RefMaps, tz: string)
     editable:
       doc.status === "posted" &&
       !ownerManaged &&
+      doc.source.kind !== "switch" &&
       (USER_EDITABLE_TYPES as readonly string[]).includes(doc.type),
   };
 }
