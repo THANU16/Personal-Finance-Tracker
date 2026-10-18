@@ -108,3 +108,27 @@ test("fixed deposit wizard computes the maturity value", async ({ page }) => {
   await expect(page.getByText("Matures in")).toBeVisible();
   await expect(page.getByRole("button", { name: "Withdraw" })).toBeVisible();
 });
+
+test("Fixed Income lists money market and FD; an FD without terms uses its current value", async ({
+  page,
+}) => {
+  await register(page);
+  await page.goto("/assets");
+  await page.getByRole("button", { name: "Add your first holding" }).click();
+  const wizard = page.getByRole("dialog");
+  await wizard.getByRole("radio", { name: "Fixed Income" }).click();
+  await wizard.getByRole("button", { name: "Next" }).click();
+  await expect(wizard.getByRole("radio", { name: "Money market" })).toBeVisible();
+  await expect(wizard.getByRole("radio", { name: "Stock" })).toHaveCount(0);
+  await wizard.getByRole("radio", { name: "Fixed deposit" }).click();
+  await wizard.getByRole("button", { name: "Next" }).click();
+  await wizard.getByLabel("Name").fill("Sampath FD");
+  await wizard.getByRole("button", { name: "Next" }).click();
+  await wizard.getByRole("switch", { name: "Enter deposit terms" }).click();
+  await wizard.getByLabel("Amount invested").fill("100000");
+  await wizard.getByLabel("Current value").fill("102500");
+  await wizard.getByRole("button", { name: "Add holding" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Sampath FD" })).toBeVisible();
+  await expect(page.getByText("LKR 102,500.00").first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "Withdraw" })).toHaveCount(0);
+});

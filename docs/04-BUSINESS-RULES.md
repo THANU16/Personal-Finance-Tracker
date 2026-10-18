@@ -163,6 +163,9 @@ Crypto 10% → A 20,000; B 10,000; MF 20,000; UT 30,000; Gold 10,000; BTC 10,000
   Within a class, split by asset targets, or by the SIP version's asset percents if none.
 
 ## 9. Fixed deposits
+- Deposit terms are optional (owner decision). An FD **with** terms is valued by the formulas below; an FD
+  **without** terms takes opening invested + current value and later valuations like any market holding (§3),
+  and has no maturity reminders or withdraw/renew actions. The Money Manager import creates FDs without terms.
 - days = maturity or today (whichever earlier) − start; years = days / 365.
 - Simple: `P × (1 + r × years)`. Compounding m per year: `P × (1 + r/m)^(m × years)`.
 - Payout FDs (`monthly`/`quarterly`): value = principal; interest per period

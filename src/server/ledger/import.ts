@@ -107,7 +107,8 @@ export async function postImportBatch(
     const h = holdingById.get(String(id));
     if (!h) return fail(i, "holding not found");
     if (h.status === "closed") fail(i, `"${h.name}" is closed`);
-    if (h.fd) fail(i, `"${h.name}" is a fixed deposit; imports cannot value it`);
+    if (h.fd)
+      fail(i, `"${h.name}" has deposit terms (its value is calculated); imports cannot value it`);
     return h;
   };
   const category = (i: number, id: Types.ObjectId | null | undefined, kind: CategoryKind) => {

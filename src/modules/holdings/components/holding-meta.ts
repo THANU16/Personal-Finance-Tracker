@@ -1,4 +1,8 @@
-import type { InstrumentType, Liquidity } from "@/modules/holdings/constants";
+import {
+  INSTRUMENT_TYPES,
+  type InstrumentType,
+  type Liquidity,
+} from "@/modules/holdings/constants";
 
 export const INSTRUMENT_LABEL: Record<InstrumentType, string> = {
   stock: "Stock",
@@ -21,6 +25,29 @@ export const LIQUIDITY_LABEL: Record<Liquidity, string> = {
   medium: "Medium (weeks)",
   low: "Low (months+)",
 };
+
+const CLASS_INSTRUMENTS: Record<string, InstrumentType[]> = {
+  equity: ["stock", "unit_trust", "mutual_fund", "etf", "other"],
+  "fixed income": [
+    "money_market",
+    "fd",
+    "bond",
+    "treasury",
+    "unit_trust",
+    "mutual_fund",
+    "epf_etf",
+    "other",
+  ],
+  gold: ["gold", "etf", "other"],
+  crypto: ["crypto", "other"],
+  "real estate": ["real_estate", "other"],
+  "cash & equivalents": ["money_market", "fd", "treasury", "other"],
+};
+
+/** Instrument types offered for an asset class (by its name); unknown/custom classes get every type. */
+export function instrumentsForClass(className: string | null | undefined): InstrumentType[] {
+  return CLASS_INSTRUMENTS[(className ?? "").trim().toLowerCase()] ?? [...INSTRUMENT_TYPES];
+}
 
 /** Instruments that usually have units and a NAV/price. */
 export const UNIT_INSTRUMENTS: InstrumentType[] = [

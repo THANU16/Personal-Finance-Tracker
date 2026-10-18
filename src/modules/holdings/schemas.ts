@@ -105,10 +105,9 @@ export const createHoldingSchema = z
   })
   .strict()
   .superRefine((v, ctx) => {
-    if (v.instrumentType === "fd") {
-      if (!v.fd) ctx.addIssue({ code: "custom", path: ["fd"], message: "Enter the deposit terms" });
-      return;
-    }
+    // An FD with terms has a calculated value (docs/04 §9); without terms it takes opening values
+    // and later valuations like any other holding.
+    if (v.instrumentType === "fd" && v.fd) return;
     if (v.fd)
       ctx.addIssue({ code: "custom", path: ["fd"], message: "Only fixed deposits have terms" });
     if (!v.openingDate)

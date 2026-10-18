@@ -58,7 +58,8 @@ with drill-down, top categories (click filters Transactions with the same range)
 - Holding row: name · instrument · invested · value · gain (abs, %) · weight · XIRR · last updated (stale badge) · quick actions (Buy, Redeem, Update value).
 - "Update values" button → `/assets/update-values`: table (holding, invested, last value, last updated,
   **new value** input, Δ preview, optional NAV input when trackUnits) → Save all (big-change rows require a tick).
-- Add holding wizard: class → instrument → name/details → opening invested & current value (or FD fields) → optional track units.
+- Add holding wizard: class → instrument (only the types of that class; custom classes show all) → name/details →
+  opening invested & current value (or FD terms, switchable off) → optional track units.
 
 ### Holding detail `/assets/[id]`
 Header (value, gain, XIRR, income) · value vs invested line chart · tabs: Transactions · Valuations ·

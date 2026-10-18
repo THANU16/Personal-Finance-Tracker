@@ -213,6 +213,13 @@ Status values: ⬜ not started · 🟡 in progress · ✅ done
   skips /api). Pages: /transactions/import (upload + recent imports) and /transactions/import/money-manager/[batchId] (wizard;
   every Next saves the mapping; steps 6–7 rerun the dry run). Entry points: Transactions header "Import", Settings → Data.
 - [mm] `npm run recompute [-- <email>]` implemented (`recomputeAllForUser`; a second run reports 0 changed).
+- [mm] Instrument type `money_market` added (units/NAV like a unit trust). Instrument choices follow the asset class
+  (`instrumentsForClass`: Fixed Income → Money market, FD, Bond, Treasury, Unit trust, Mutual fund, EPF/ETF, Other; Cash &
+  Equivalents → Money market, FD, Treasury, Other; Equity, Gold, Crypto, Real estate their own; custom classes → all), in Add
+  holding and in the import mapping. Changing the class clears an instrument that no longer fits.
+- [mm] FD terms are optional (owner decision, docs/04 §9 updated): Add holding has an "Enter deposit terms" switch; without terms
+  an FD is valued from opening/current value and valuations. The import can create such FDs (suggested for names with "FD" /
+  "Fixed deposit", low liquidity); FDs with terms are still refused as import targets because their value is calculated.
 - [mm] e2e `allocation.spec` raced (`isVisible()` right after navigation); it now waits for the editor first.
 
 ## Deviations from docs

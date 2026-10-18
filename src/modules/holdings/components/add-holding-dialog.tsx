@@ -39,14 +39,10 @@ import { createHoldingAction } from "@/modules/holdings/actions";
 import {
   INSTRUMENT_LABEL,
   LIQUIDITY_LABEL,
+  instrumentsForClass,
   UNIT_INSTRUMENTS,
 } from "@/modules/holdings/components/holding-meta";
-import {
-  INSTRUMENT_TYPES,
-  LIQUIDITY,
-  type InstrumentType,
-  type Liquidity,
-} from "@/modules/holdings/constants";
+import { LIQUIDITY, type InstrumentType, type Liquidity } from "@/modules/holdings/constants";
 import { createHoldingSchema } from "@/modules/holdings/schemas";
 
 export interface AddHoldingOptions {
@@ -78,6 +74,8 @@ interface Draft {
   fdCompounding: (typeof FD_COMPOUNDING)[number];
   fdPayout: (typeof FD_PAYOUTS)[number];
   fdPayoutAccountId: string;
+  /** FD only: value calculated from the terms (on) or from opening/current values (off). */
+  fdTerms: boolean;
 }
 
 const STEPS = ["Class", "Instrument", "Details", "Opening values"] as const;
@@ -113,6 +111,7 @@ function emptyDraft(o: AddHoldingOptions): Draft {
     fdCompounding: "simple",
     fdPayout: "at_maturity",
     fdPayoutAccountId: "",
+    fdTerms: true,
   };
 }
 
@@ -127,7 +126,7 @@ function toInput(d: Draft) {
     liquidity: d.liquidity,
     countsTowardEmergencyFund: d.countsTowardEmergencyFund,
   };
-  if (d.instrumentType === "fd") {
+  if (d.instrumentType === "fd" && d.fdTerms) {
     return {
       ...base,
       fd: {
@@ -170,6 +169,9 @@ export function AddHoldingDialog({
   const [pending, setPending] = React.useState(false);
   const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setD((prev) => ({ ...prev, [k]: v }));
   const isFd = d.instrumentType === "fd";
+  const fdWithTerms = isFd && d.fdTerms;
+  const className = options.classes.find((c) => c.id === d.assetClassId)?.name;
+  const instruments = instrumentsForClass(className);
   const err = (k: string) => errors[k];
 
   function reset(o: boolean) {
@@ -215,7 +217,7 @@ export function AddHoldingDialog({
   }
 
   const maturityPreview =
-    isFd &&
+    fdWithTerms &&
     d.fdPrincipal &&
     d.fdRateBp !== null &&
     d.fdStart &&
@@ -261,7 +263,15 @@ export function AddHoldingDialog({
                   type="button"
                   role="radio"
                   aria-checked={d.assetClassId === c.id}
-                  onClick={() => set("assetClassId", c.id)}
+                  onClick={() => {
+                    set("assetClassId", c.id);
+                    if (
+                      d.instrumentType &&
+                      !instrumentsForClass(c.name).includes(d.instrumentType)
+                    ) {
+                      set("instrumentType", "");
+                    }
+                  }}
                   className={cn(
                     "flex items-center gap-2 rounded-lg border p-3 text-left text-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
                     d.assetClassId === c.id && "border-primary bg-primary/5",
@@ -280,7 +290,7 @@ export function AddHoldingDialog({
 
           {step === 1 ? (
             <div role="radiogroup" aria-label="Instrument" className="grid grid-cols-2 gap-2">
-              {INSTRUMENT_TYPES.map((t) => (
+              {instruments.map((t) => (
                 <button
                   key={t}
                   type="button"
@@ -387,6 +397,24 @@ export function AddHoldingDialog({
           ) : null}
 
           {step === 3 && isFd ? (
+            <div className="flex items-center justify-between gap-3 rounded-lg border p-3">
+              <div>
+                <Label htmlFor="fd-terms">Enter deposit terms</Label>
+                <p className="text-xs text-muted-foreground">
+                  {d.fdTerms
+                    ? "The value is calculated from the rate and dates."
+                    : "No terms: enter the current value now and update it like any other holding."}
+                </p>
+              </div>
+              <Switch
+                id="fd-terms"
+                checked={d.fdTerms}
+                onCheckedChange={(c) => set("fdTerms", c)}
+              />
+            </div>
+          ) : null}
+
+          {step === 3 && fdWithTerms ? (
             <div className="grid gap-4 sm:grid-cols-2">
               <FormField id="fd-principal" label="Principal" error={err("fd.principalMinor")}>
                 <MoneyInput
@@ -488,7 +516,7 @@ export function AddHoldingDialog({
             </div>
           ) : null}
 
-          {step === 3 && !isFd ? (
+          {step === 3 && !fdWithTerms ? (
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="sm:col-span-2">
                 <FormField

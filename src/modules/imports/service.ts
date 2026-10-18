@@ -299,7 +299,12 @@ function defaultState(
               name: s.name,
               assetClassId: String(cls._id),
               instrumentType: hint.instrument,
-              liquidity: hint.instrument === "money_market" ? "high" : "medium",
+              liquidity:
+                hint.instrument === "money_market"
+                  ? "high"
+                  : hint.instrument === "fd"
+                    ? "low"
+                    : "medium",
             },
           }
         : {
@@ -552,7 +557,7 @@ async function buildImport(
           names.set(ch.existingId, h.name);
           if (h.fd)
             blockers.push(
-              `"${h.name}" is a fixed deposit; imports cannot value it — choose another holding`,
+              `"${h.name}" has deposit terms, so its value is calculated and Money Manager cannot set it — choose another holding`,
             );
           if (h.currency !== ctx.baseCurrency) blockers.push(`"${h.name}" is in ${h.currency}`);
         }

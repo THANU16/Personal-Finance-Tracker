@@ -306,6 +306,11 @@ describe("mapping resolution and suggestions", () => {
       instrument: "money_market",
     });
     expect(suggestAccount("Binance")).toMatchObject({ treatAs: "holding", assetClass: "Crypto" });
+    expect(suggestAccount("Sampath FD")).toMatchObject({
+      assetClass: "Fixed Income",
+      instrument: "fd",
+    });
+    expect(suggestAccount("NSB Fixed Deposit")).toMatchObject({ instrument: "fd" });
     expect(suggestAccount("CDS Account")).toMatchObject({
       treatAs: "holding",
       assetClass: "Equity",

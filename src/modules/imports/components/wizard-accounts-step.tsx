@@ -6,8 +6,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ACCOUNT_TYPES } from "@/domain/accounts";
-import { INSTRUMENT_LABEL, LIQUIDITY_LABEL } from "@/modules/holdings/components/holding-meta";
-import { INSTRUMENT_TYPES, LIQUIDITY } from "@/modules/holdings/constants";
+import {
+  INSTRUMENT_LABEL,
+  LIQUIDITY_LABEL,
+  instrumentsForClass,
+} from "@/modules/holdings/components/holding-meta";
+import { LIQUIDITY, type InstrumentType } from "@/modules/holdings/constants";
 import type { AccountChoice, WizardData, WizardState } from "@/modules/imports/schemas";
 import { accountResolved } from "@/modules/imports/components/wizard-helpers";
 import { Pick } from "@/modules/imports/components/wizard-pick";
@@ -23,11 +27,10 @@ const TYPE_LABEL: Record<(typeof ACCOUNT_TYPES)[number], string> = {
   receivable: "Receivable (owed to you)",
   payable: "Payable (you owe)",
 };
-// Same choices and labels as the Add holding wizard (fixed deposits excluded: their value is calculated).
-const instrumentOptions = INSTRUMENT_TYPES.filter((t) => t !== "fd").map((t) => ({
-  value: t,
-  label: INSTRUMENT_LABEL[t],
-}));
+// Same choices and labels as the Add holding wizard: the instrument types of the chosen asset class.
+// An FD created here has no deposit terms, so Money Manager's balances set its value.
+const instrumentOptions = (className: string | undefined) =>
+  instrumentsForClass(className).map((t) => ({ value: t, label: INSTRUMENT_LABEL[t] }));
 const liquidityOptions = LIQUIDITY.map((l) => ({ value: l, label: LIQUIDITY_LABEL[l] }));
 const TREAT_AS = [
   { value: "account", label: "Account" },
@@ -221,7 +224,7 @@ export function AccountsStep({
                           { value: CREATE, label: "Create new holding" },
                           ...data.options.holdings.map((o) => ({
                             value: o.id,
-                            label: o.isFd ? `${o.name} (fixed deposit)` : o.name,
+                            label: o.isFd ? `${o.name} (FD with terms)` : o.name,
                           })),
                         ]}
                         onChange={(v) =>
@@ -258,23 +261,35 @@ export function AccountsStep({
                               value: o.id,
                               label: o.name,
                             }))}
-                            onChange={(v) =>
-                              set(a.key, { ...c, create: { ...c.create!, assetClassId: v } })
-                            }
+                            onChange={(v) => {
+                              const allowed = instrumentsForClass(
+                                data.options.assetClasses.find((o) => o.id === v)?.name,
+                              );
+                              set(a.key, {
+                                ...c,
+                                create: {
+                                  ...c.create!,
+                                  assetClassId: v,
+                                  instrumentType: allowed.includes(c.create!.instrumentType)
+                                    ? c.create!.instrumentType
+                                    : allowed[0]!,
+                                },
+                              });
+                            }}
                           />
                           <Pick
                             label={`Instrument type for ${a.name}`}
                             value={c.create.instrumentType}
-                            options={instrumentOptions}
+                            options={instrumentOptions(
+                              data.options.assetClasses.find((o) => o.id === c.create!.assetClassId)
+                                ?.name,
+                            )}
                             onChange={(v) =>
                               set(a.key, {
                                 ...c,
                                 create: {
                                   ...c.create!,
-                                  instrumentType: v as Exclude<
-                                    (typeof INSTRUMENT_TYPES)[number],
-                                    "fd"
-                                  >,
+                                  instrumentType: v as InstrumentType,
                                 },
                               })
                             }
@@ -318,8 +333,8 @@ export function AccountsStep({
               </div>
               {holdingIsFd ? (
                 <p role="alert" className="mt-2 text-sm text-destructive">
-                  Fixed deposits are valued from their terms, so Money Manager rows cannot be
-                  imported into one. Choose another holding or create one.
+                  This FD has deposit terms, so its value is calculated and Money Manager rows
+                  cannot be imported into one. Choose another holding or create one.
                 </p>
               ) : null}
               <details className="mt-2 text-sm">

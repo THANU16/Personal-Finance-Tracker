@@ -316,6 +316,37 @@ describe("valuations: big change, stale, bulk", () => {
 });
 
 describe("fixed deposits (docs/04 §9)", () => {
+  it("an FD without terms takes opening values and later valuations like any holding", async () => {
+    const ctx = await makeUser();
+    const fd = await createHolding(ctx, {
+      name: "Sampath FD",
+      assetClassId: await assetClassId(ctx, "Fixed Income"),
+      instrumentType: "fd",
+      currency: "LKR",
+      openingDate: "2026-01-01",
+      investedMinor: 10_000_000,
+      currentValueMinor: 10_250_000,
+    });
+    expect(fd.fd).toBeNull();
+    expect(fd.investedMinor).toBe(10_000_000);
+    expect(fd.currentValueMinor).toBe(10_250_000);
+    const valued = await recordValuation(ctx, fd.id, {
+      date: "2026-03-01",
+      valueMinor: 10_400_000,
+    });
+    expect(valued.currentValueMinor).toBe(10_400_000);
+
+    const err = await errorOf(
+      createHolding(ctx, {
+        name: "No values",
+        assetClassId: await assetClassId(ctx, "Fixed Income"),
+        instrumentType: "fd",
+        currency: "LKR",
+      }),
+    );
+    expect(err.fieldErrors).toHaveProperty("currentValueMinor");
+  });
+
   async function fdSetup() {
     const ctx = await makeUser();
     const bank = await makeAccount(ctx, { openingBalanceMinor: 0, openingDate: "2025-01-01" });

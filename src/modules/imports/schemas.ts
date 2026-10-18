@@ -19,9 +19,8 @@ export const newAccountSchema = z.object({
 export const newHoldingSchema = z.object({
   name,
   assetClassId: objectId,
-  instrumentType: z.enum(INSTRUMENT_TYPES).refine((t) => t !== "fd", {
-    message: "Fixed deposits cannot be imported (their value is calculated); choose another type",
-  }),
+  /** An FD created by the import has no terms, so Money Manager's balances value it. */
+  instrumentType: z.enum(INSTRUMENT_TYPES),
   liquidity: z.enum(LIQUIDITY),
 });
 
