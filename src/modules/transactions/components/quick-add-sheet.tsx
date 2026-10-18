@@ -34,6 +34,12 @@ import { minorUnitDigits } from "@/domain/money";
 import { zodFieldErrors } from "@/server/action-result";
 import { CategorySelect } from "@/modules/categories/components/category-select";
 import {
+  InvestmentFields,
+  InvestmentHeader,
+  redeemPreview,
+  type QuickAddFormValues,
+} from "@/modules/transactions/components/investment-fields";
+import {
   createTransactionAction,
   getQuickAddOptionsAction,
   updateTransactionAction,
@@ -45,24 +51,17 @@ import type {
 } from "@/modules/transactions/components/quick-add-context";
 import { transactionInputSchema, type TransactionDTO } from "@/modules/transactions/schemas";
 
-interface FormValues {
-  type: QuickAddType;
-  date: string;
-  amountMinor: number | null;
-  fromAccountId: string;
-  toAccountId: string;
-  toAmountMinor: number | null;
-  categoryId: string;
-  splitMode: boolean;
-  splits: { categoryId: string; amountMinor: number | null }[];
-  description: string;
-  counterparty: string;
-  tags: string;
-  notes: string;
-}
+type FormValues = QuickAddFormValues;
+
+const INVESTMENT_TYPES: QuickAddType[] = ["invest", "redeem", "investment_income"];
 
 const LAST_ACCOUNTS_KEY = "wt-quick-add-accounts";
-type LastAccounts = Partial<Record<"expense" | "income" | "transferFrom" | "transferTo", string>>;
+type LastAccounts = Partial<
+  Record<
+    "expense" | "income" | "transferFrom" | "transferTo" | "invest" | "redeem" | "investmentIncome",
+    string
+  >
+>;
 
 function readLast(): LastAccounts {
   try {
@@ -81,6 +80,9 @@ function rememberLast(v: FormValues) {
       last.transferFrom = v.fromAccountId;
       last.transferTo = v.toAccountId;
     }
+    if (v.type === "invest") last.invest = v.fromAccountId;
+    if (v.type === "redeem") last.redeem = v.toAccountId;
+    if (v.type === "investment_income" && !v.reinvest) last.investmentIncome = v.toAccountId;
     localStorage.setItem(LAST_ACCOUNTS_KEY, JSON.stringify(last));
   } catch {
     // storage unavailable — remembering is a convenience only
@@ -97,7 +99,9 @@ function initialValues(request: QuickAddRequest, options: QuickAddOptions): Form
   const pick = (id: string | undefined, fallback = options.accounts[0]?.id ?? "") =>
     id && ids.has(id) ? id : fallback;
   const fromTxn = (t: TransactionDTO, date: string): FormValues => ({
-    type: t.type === "income" || t.type === "transfer" ? t.type : "expense",
+    type: (["income", "transfer", ...INVESTMENT_TYPES] as string[]).includes(t.type)
+      ? (t.type as QuickAddType)
+      : "expense",
     date,
     amountMinor: t.amountMinor,
     fromAccountId: t.fromAccount?.id ?? "",
@@ -112,12 +116,36 @@ function initialValues(request: QuickAddRequest, options: QuickAddOptions): Form
     counterparty: t.counterparty ?? "",
     tags: t.tags.join(", "),
     notes: t.notes ?? "",
+    holdingId: t.holding?.id ?? "",
+    feeMinor: t.feeMinor || null,
+    taxMinor: t.taxMinor || null,
+    units: t.units,
+    priceMinorE4: t.priceMinorE4,
+    redeemBy: t.type === "redeem" && t.units ? "units" : "amount",
+    incomeKind: t.incomeKind ?? "dividend",
+    reinvest: Boolean(t.reinvest),
   });
   if (request.mode === "edit") return fromTxn(request.txn, request.txn.date);
   if (request.duplicateOf) return fromTxn(request.duplicateOf, options.todayKey);
 
   const last = readLast();
   const type = request.type ?? "expense";
+  const holdingIds = new Set(options.holdings.map((h) => h.id));
+  const holdingId =
+    request.holdingId && holdingIds.has(request.holdingId)
+      ? request.holdingId
+      : (options.holdings.find((h) => !h.isFd)?.id ?? "");
+  const holding = options.holdings.find((h) => h.id === holdingId);
+  /** A remembered account if it matches the holding's currency, else the first that does. */
+  const forHolding = (remembered: string | undefined) => {
+    const ok = (id: string | undefined) =>
+      Boolean(id) &&
+      options.accounts.some((a) => a.id === id && (!holding || a.currency === holding.currency));
+    return ok(remembered)
+      ? remembered!
+      : (options.accounts.find((a) => !holding || a.currency === holding.currency)?.id ??
+          pick(undefined));
+  };
   const from = pick(request.accountId ?? (type === "transfer" ? last.transferFrom : last.expense));
   const toFallback = options.accounts.find((a) => a.id !== from)?.id ?? "";
   return {
@@ -137,6 +165,19 @@ function initialValues(request: QuickAddRequest, options: QuickAddOptions): Form
     counterparty: "",
     tags: "",
     notes: "",
+    holdingId,
+    feeMinor: null,
+    taxMinor: null,
+    units: null,
+    priceMinorE4: null,
+    redeemBy: "amount",
+    incomeKind: "dividend",
+    reinvest: false,
+    ...(type === "invest" ? { fromAccountId: forHolding(request.accountId ?? last.invest) } : {}),
+    ...(type === "redeem" ? { toAccountId: forHolding(request.accountId ?? last.redeem) } : {}),
+    ...(type === "investment_income"
+      ? { toAccountId: forHolding(request.accountId ?? last.investmentIncome) }
+      : {}),
   };
 }
 
@@ -162,6 +203,42 @@ function toInput(v: FormValues) {
       fromAccountId: v.fromAccountId,
       toAccountId: v.toAccountId,
       toAmountMinor: v.toAmountMinor,
+    };
+  }
+  if (v.type === "invest") {
+    return {
+      ...base,
+      type: "invest",
+      fromAccountId: v.fromAccountId,
+      holdingId: v.holdingId,
+      feeMinor: v.feeMinor ?? 0,
+      units: v.units,
+      priceMinorE4: v.priceMinorE4,
+    };
+  }
+  if (v.type === "redeem") {
+    const byUnits = v.redeemBy === "units";
+    return {
+      ...base,
+      type: "redeem",
+      amountMinor: byUnits ? null : base.amountMinor,
+      toAccountId: v.toAccountId,
+      holdingId: v.holdingId,
+      feeMinor: v.feeMinor ?? 0,
+      taxMinor: v.taxMinor ?? 0,
+      units: byUnits ? (v.units ?? Number.NaN) : null,
+      priceMinorE4: byUnits ? v.priceMinorE4 : null,
+    };
+  }
+  if (v.type === "investment_income") {
+    return {
+      ...base,
+      type: "investment_income",
+      holdingId: v.holdingId,
+      incomeKind: v.incomeKind,
+      taxMinor: v.taxMinor ?? 0,
+      reinvest: v.reinvest,
+      toAccountId: v.reinvest ? null : v.toAccountId,
     };
   }
   return v.splitMode
@@ -246,10 +323,30 @@ function QuickAddForm({
     name: ["type", "fromAccountId", "toAccountId", "amountMinor", "splitMode", "splits"],
   });
 
+  const [holdingId, redeemBy, reinvest, units, priceE4, fee, tax] = useWatch({
+    control,
+    name: ["holdingId", "redeemBy", "reinvest", "units", "priceMinorE4", "feeMinor", "taxMinor"],
+  });
   const account = (id: string) => options.accounts.find((a) => a.id === id);
   const from = account(fromId);
   const to = account(toId);
-  const currency = (type === "income" ? to?.currency : from?.currency) ?? options.baseCurrency;
+  const investment = INVESTMENT_TYPES.includes(type);
+  const holding = options.holdings.find((h) => h.id === holdingId);
+  const holdingChoices = options.holdings.filter((h) => type === "investment_income" || !h.isFd);
+  const currency = investment
+    ? (holding?.currency ?? options.baseCurrency)
+    : ((type === "income" ? to?.currency : from?.currency) ?? options.baseCurrency);
+  const showFrom = type === "expense" || type === "transfer" || type === "invest";
+  const showTo =
+    type === "income" ||
+    type === "transfer" ||
+    type === "redeem" ||
+    (type === "investment_income" && !reinvest);
+  const byUnits = type === "redeem" && redeemBy === "units";
+  const preview =
+    type === "redeem"
+      ? redeemPreview(holding, byUnits, { amount, units, priceE4, fee, tax })
+      : null;
   const crossCurrency = type === "transfer" && from && to && from.currency !== to.currency;
   const splitTotal = splits.reduce(
     (s, l) => s + (l.amountMinor && !Number.isNaN(l.amountMinor) ? l.amountMinor : 0),
@@ -284,6 +381,11 @@ function QuickAddForm({
     const current = cur.type === "income" ? cur.toAccountId : cur.fromAccountId;
     if (next === "income") setValue("toAccountId", valid(last.income) ? last.income : current);
     if (next === "expense") setValue("fromAccountId", valid(last.expense) ? last.expense : current);
+    if (next === "invest") setValue("fromAccountId", valid(last.invest) ? last.invest : current);
+    if (next === "redeem") setValue("toAccountId", valid(last.redeem) ? last.redeem : current);
+    if (next === "investment_income") {
+      setValue("toAccountId", valid(last.investmentIncome) ? last.investmentIncome : current);
+    }
     if (next === "transfer") {
       const from = valid(last.transferFrom) ? last.transferFrom : current;
       const other = options.accounts.find((a) => a.id !== from)?.id ?? "";
@@ -358,40 +460,99 @@ function QuickAddForm({
                 field.onChange(v);
               }}
             >
-              <TabsList className="w-full">
+              <TabsList className="grid w-full grid-cols-3 group-data-horizontal/tabs:h-auto">
                 <TabsTrigger value="expense">Expense</TabsTrigger>
                 <TabsTrigger value="income">Income</TabsTrigger>
                 <TabsTrigger value="transfer">Transfer</TabsTrigger>
+                <TabsTrigger value="invest">Invest</TabsTrigger>
+                <TabsTrigger value="redeem">Redeem</TabsTrigger>
+                <TabsTrigger value="investment_income">Inv. income</TabsTrigger>
               </TabsList>
             </Tabs>
           )}
         />
 
-        <FormField
-          id="qa-amount"
-          label={crossCurrency ? `Amount sent (${from!.currency})` : "Amount"}
-          error={err("amountMinor")}
-        >
-          <Controller
+        {investment ? (
+          <InvestmentHeader
             control={control}
-            name="amountMinor"
-            render={({ field }) => (
-              <MoneyInput
-                id="qa-amount"
-                currency={currency}
-                value={field.value}
-                onChange={field.onChange}
-                onBlur={field.onBlur}
-                ref={field.ref}
-                autoFocus
-                className="h-11 text-lg"
-                {...fieldAria("qa-amount", err("amountMinor"))}
-              />
-            )}
+            type={type}
+            holdings={holdingChoices}
+            holding={holding}
+            err={err}
+            onDone={onDone}
           />
-        </FormField>
+        ) : null}
 
-        {type !== "income" ? (
+        {!byUnits ? (
+          <FormField
+            id="qa-amount"
+            label={
+              crossCurrency
+                ? `Amount sent (${from!.currency})`
+                : type === "invest"
+                  ? "Amount invested"
+                  : type === "redeem"
+                    ? "Amount redeemed (gross)"
+                    : type === "investment_income"
+                      ? "Gross amount"
+                      : "Amount"
+            }
+            error={err("amountMinor")}
+          >
+            <Controller
+              control={control}
+              name="amountMinor"
+              render={({ field }) => (
+                <MoneyInput
+                  id="qa-amount"
+                  currency={currency}
+                  value={field.value}
+                  onChange={field.onChange}
+                  onBlur={field.onBlur}
+                  ref={field.ref}
+                  autoFocus
+                  className="h-11 text-lg"
+                  {...fieldAria("qa-amount", err("amountMinor"))}
+                />
+              )}
+            />
+          </FormField>
+        ) : null}
+
+        {investment ? (
+          <InvestmentFields
+            control={control}
+            type={type}
+            currency={currency}
+            holding={holding}
+            byUnits={byUnits}
+            reinvest={reinvest}
+            err={err}
+          />
+        ) : null}
+        {preview ? (
+          <div className="grid gap-1 rounded-lg bg-muted px-3 py-2 text-sm" aria-live="polite">
+            <span className="flex justify-between">
+              Cost removed <Money valueMinor={preview.costRemovedMinor} currency={currency} />
+            </span>
+            <span className="flex justify-between">
+              Realised gain{" "}
+              <Money
+                valueMinor={preview.realizedGainMinor}
+                currency={currency}
+                signed={preview.realizedGainMinor > 0}
+              />
+            </span>
+            <span className="flex justify-between font-medium">
+              Cash to account <Money valueMinor={preview.cashToAccountMinor} currency={currency} />
+            </span>
+            {preview.full ? (
+              <span className="text-xs text-muted-foreground">Sells the whole holding.</span>
+            ) : null}
+          </div>
+        ) : null}
+
+        {showFrom ? (
           <FormField
             id="qa-from"
             label={type === "transfer" ? "From" : "Paid from"}
@@ -412,7 +573,7 @@ function QuickAddForm({
             />
           </FormField>
         ) : null}
-        {type !== "expense" ? (
+        {showTo ? (
           <FormField
             id="qa-to"
             label={type === "transfer" ? "To" : "Received into"}
@@ -463,7 +624,7 @@ function QuickAddForm({
           </FormField>
         ) : null}
 
-        {type !== "transfer" && !(type === "expense" && splitMode) ? (
+        {(type === "income" || type === "expense") && !(type === "expense" && splitMode) ? (
           <FormField id="qa-category" label="Category" error={err("categoryId")}>
             <Controller
               control={control}
@@ -610,7 +771,7 @@ function QuickAddForm({
         <FormField id="qa-description" label="Description" error={err("description")}>
           <Input id="qa-description" autoComplete="off" {...register("description")} />
         </FormField>
-        {type !== "transfer" ? (
+        {type === "income" || type === "expense" ? (
           <FormField
             id="qa-counterparty"
             label={type === "income" ? "Payer (optional)" : "Payee (optional)"}

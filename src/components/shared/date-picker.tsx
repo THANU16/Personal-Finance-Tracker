@@ -9,6 +9,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { cn } from "@/lib/utils";
 
 const KEY_FORMAT = "yyyy-MM-dd";
+const RANGE_START = new Date(1980, 0, 1);
+const RANGE_END = new Date(new Date().getFullYear() + 40, 11, 31);
 
 function keyToDate(key: string | null | undefined): Date | undefined {
   if (!key) return undefined;
@@ -66,6 +68,10 @@ export function DatePicker({
           selected={selected}
           defaultMonth={selected}
           captionLayout="dropdown"
+          // With dropdown captions DayPicker limits navigation to the current year unless a range
+          // is given — FD maturities and loan ends need years ahead.
+          startMonth={RANGE_START}
+          endMonth={RANGE_END}
           onSelect={(d) => {
             onChange(d ? format(d, KEY_FORMAT) : null);
             setOpen(false);

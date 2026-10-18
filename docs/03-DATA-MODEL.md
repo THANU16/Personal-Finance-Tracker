@@ -1,6 +1,8 @@
 # 03 — Data Model (MongoDB)
 
 Conventions for every collection:
+- Prices per unit (NAV): `*PriceMinorE4` / `priceMinorE4` = minor units × 10⁴ (4 decimals beyond the
+  currency, e.g. NAV 12.3456 LKR = 123456). Units are numbers kept to 6 decimals. (Owner decision, Phase 3.)
 - `_id: ObjectId`, `userId: ObjectId` (indexed, required), `createdAt`, `updatedAt` (timestamps).
 - Money: `*Minor: number` (integer, minor units). Percent: `*Bp: number` (basis points, 10000 = 100%).
 - Currency: ISO code string (`"LKR"`, `"USD"`), crypto allowed (`"BTC"` only for holdings).
@@ -67,13 +69,13 @@ countsTowardEmergencyFund: false,
 status: active|closed, closedAt?,
 # caches (recomputeHolding)
 investedMinor, currentValueMinor, units?, avgCostMinor?, realizedGainMinor,
-incomeReceivedMinor, feesPaidMinor, taxWithheldMinor, firstInvestedAt?, lastValuedAt?, lastPriceMinor?
+incomeReceivedMinor, feesPaidMinor, taxWithheldMinor, firstInvestedAt?, lastValuedAt?, lastPriceMinorE4?
 idx: {userId, status}, {userId, assetClassId}
 ```
 
 ## valuations
 ```
-holdingId, date, valueMinor, priceMinor?, units?, source: manual|auto_on_buy|auto_on_redeem|fd_calc|bulk|price_feed,
+holdingId, date, valueMinor, priceMinorE4?, units?, source: manual|auto_on_buy|auto_on_redeem|fd_calc|bulk|price_feed,
 note?
 idx: {userId, holdingId, date:-1}
 ```
@@ -88,7 +90,7 @@ fromAccountId?, toAccountId?,
 toAmountMinor?, fxRate?,                      # cross-currency transfer
 categoryId?, splits?: [{ categoryId, amountMinor, note? }],
 holdingId?,
-units?, priceMinor?,                          # invest/redeem when trackUnits
+units?, priceMinorE4?,                        # invest/redeem when trackUnits
 feeMinor: 0, taxMinor: 0,
 incomeKind?: dividend|interest|distribution|rent|other, reinvest?: boolean,   # investment_income
 redemption?: { costRemovedMinor, realizedGainMinor, unitsRemoved? },          # redeem (computed)

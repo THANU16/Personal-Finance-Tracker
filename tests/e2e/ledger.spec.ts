@@ -45,9 +45,9 @@ test("account → quick-add expense → balance updates → void restores it", a
   const sheet = page.getByRole("dialog", { name: "Quick add" });
   await expect(sheet).toBeVisible();
   // Regression: switching tabs keeps the account (income once went to a different account)
-  await sheet.getByRole("tab", { name: "Income" }).click();
+  await sheet.getByRole("tab", { name: "Income", exact: true }).click();
   await expect(field(page, "Received into", true)).toContainText("Sampath Savings");
-  await sheet.getByRole("tab", { name: "Expense" }).click();
+  await sheet.getByRole("tab", { name: "Expense", exact: true }).click();
   await expect(field(page, "Paid from", true)).toContainText("Sampath Savings");
   await sheet.getByLabel("Amount").fill("1,250.50");
   await choose(page, "Category", /Groceries/);
@@ -92,7 +92,7 @@ test("transfer to a card and the transactions page summary", async ({ page }) =>
   await page.goto("/transactions");
   await page.getByRole("button", { name: "Add transaction" }).first().click();
   const sheet = page.getByRole("dialog", { name: "Quick add" });
-  await sheet.getByRole("tab", { name: "Transfer" }).click();
+  await sheet.getByRole("tab", { name: "Transfer", exact: true }).click();
   await sheet.getByLabel("Amount").fill("12000");
   await choose(page, "From", /^Bank/);
   await choose(page, "To", /^Visa/);

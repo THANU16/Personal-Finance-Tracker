@@ -9,7 +9,7 @@ import { writeAudit } from "@/server/audit/model";
 import type { Ctx } from "@/server/ctx";
 import { toObjectId } from "@/server/db/ids";
 import { AppError } from "@/server/errors";
-import { recomputeAccounts } from "@/server/ledger/recompute";
+import { recomputeAccounts, recomputeHolding } from "@/server/ledger/recompute";
 
 /**
  * Voids a posted transaction (never deleted) and recomputes the accounts it touched.
@@ -45,6 +45,7 @@ export async function voidTransaction(
     { session },
   );
   await recomputeAccounts(userId, [txn.fromAccountId, txn.toAccountId], session);
+  if (txn.holdingId) await recomputeHolding(ctx, txn.holdingId, session);
   await writeAudit(
     {
       userId: ctx.userId,

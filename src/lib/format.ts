@@ -1,6 +1,11 @@
 // Display formatting (client-safe). Money is formatted from integer minor units via an exact
 // decimal string — never through float division.
-import { minorToDecimalString, minorUnitDigits } from "@/domain/money";
+import {
+  minorToDecimalString,
+  minorUnitDigits,
+  priceDigits,
+  scaledToDecimalString,
+} from "@/domain/money";
 
 export const DEFAULT_LOCALE = "en-LK";
 
@@ -60,4 +65,28 @@ export function formatPercentBp(bp: number, { signed = false }: { signed?: boole
   if (tenths === 0) return "0.0%";
   if (bp < 0) return `-${text}`;
   return signed ? `+${text}` : text;
+}
+
+/**
+ * Price per unit (minor units × 10⁴) → `LKR 12.3456`: at least the currency's decimals, up to 4
+ * more, trailing zeros trimmed.
+ */
+export function formatPrice(
+  priceMinorE4: number,
+  currency: string,
+  locale = DEFAULT_LOCALE,
+): string {
+  const code = currency.toUpperCase();
+  const min = minorUnitDigits(code);
+  const text = scaledToDecimalString(priceMinorE4, priceDigits(code));
+  const nf = new Intl.NumberFormat(locale, {
+    minimumFractionDigits: min,
+    maximumFractionDigits: min + 4,
+  });
+  return `${code} ${nf.format(text as unknown as number)}`;
+}
+
+/** Units with thousands separators and up to 6 decimals: `1,234.5678`. */
+export function formatUnits(units: number, locale = DEFAULT_LOCALE): string {
+  return new Intl.NumberFormat(locale, { maximumFractionDigits: 6 }).format(units);
 }

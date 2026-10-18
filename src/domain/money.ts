@@ -157,3 +157,39 @@ export function minorToDecimalString(amountMinor: number, currency: string): str
   const padded = abs.padStart(digits + 1, "0");
   return `${sign}${padded.slice(0, -digits)}.${padded.slice(-digits)}`;
 }
+
+/**
+ * round(a × b / c) half away from zero, exact for any safe integers (BigInt intermediate), so
+ * products like invested × amount never lose precision beyond 2^53.
+ */
+export function mulDivRound(a: number, b: number, c: number): number {
+  assertMinor(a, "a");
+  assertMinor(b, "b");
+  assertMinor(c, "c");
+  if (c === 0) throw new RangeError("division by zero");
+  const num = BigInt(a) * BigInt(b);
+  const den = BigInt(c);
+  const q = num / den;
+  const r = num - q * den;
+  const abs = (x: bigint) => (x < 0n ? -x : x);
+  let result = q;
+  if (2n * abs(r) >= abs(den)) result += num < 0n === den < 0n ? 1n : -1n;
+  const out = Number(result);
+  assertMinor(out, "result");
+  return out === 0 ? 0 : out;
+}
+
+/** Integer scaled by 10^digits → plain decimal string ("123456", 4 → "12.3456"). */
+export function scaledToDecimalString(value: number, digits: number): string {
+  assertMinor(value);
+  const abs = Math.abs(value).toString();
+  const sign = value < 0 ? "-" : "";
+  if (digits === 0) return sign + abs;
+  const padded = abs.padStart(digits + 1, "0");
+  return `${sign}${padded.slice(0, -digits)}.${padded.slice(-digits)}`;
+}
+
+/** Decimal places of a price: the currency's minor digits + 4 (NAV precision). */
+export function priceDigits(currency: string): number {
+  return minorUnitDigits(currency) + 4;
+}

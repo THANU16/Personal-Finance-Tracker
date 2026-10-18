@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { formatCompact, formatMoney, formatPercentBp } from "@/lib/format";
+import {
+  formatCompact,
+  formatMoney,
+  formatPercentBp,
+  formatPrice,
+  formatUnits,
+} from "@/lib/format";
 
 describe("formatMoney", () => {
   it.each([
@@ -55,5 +61,18 @@ describe("formatPercentBp", () => {
 
   it("rejects non-integer bp", () => {
     expect(() => formatPercentBp(1.5)).toThrow(RangeError);
+  });
+});
+
+describe("formatPrice / formatUnits", () => {
+  it("shows NAV precision without trailing zeros", () => {
+    expect(formatPrice(12_345_600, "LKR")).toBe("LKR 12.3456");
+    expect(formatPrice(120_000_000, "LKR")).toBe("LKR 120.00");
+    expect(formatPrice(1_234_567_890, "LKR")).toBe("LKR 1,234.56789"); // 6 decimals max for LKR
+  });
+
+  it("groups units and keeps up to 6 decimals", () => {
+    expect(formatUnits(1234.5678)).toBe("1,234.5678");
+    expect(formatUnits(0.000001)).toBe("0.000001");
   });
 });

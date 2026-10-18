@@ -7,6 +7,7 @@ import {
   type AssetClassDTO,
 } from "@/modules/asset-classes/schemas";
 import { SYSTEM_ASSET_CLASSES } from "@/modules/asset-classes/seed";
+import { countActiveHoldingsInClass } from "@/modules/holdings/service";
 import { parseInput } from "@/server/action-result";
 import type { Ctx } from "@/server/ctx";
 import { connectDb } from "@/server/db/connect";
@@ -132,12 +133,19 @@ export async function updateAssetClass(
   });
 }
 
-/** Archives a custom asset class. (Phase 3 adds: refuse while active holdings use it.) */
+/** Archives a custom asset class; refused while active holdings use it. */
 export async function archiveAssetClass(ctx: Ctx, id: string): Promise<AssetClassDTO> {
   return withTransaction(async (session) => {
     const current = await loadOwned(ctx, id, session);
     if (current.isSystem)
       throw new AppError("FORBIDDEN", "System asset classes cannot be archived");
+    const inUse = await countActiveHoldingsInClass(ctx, current._id, session);
+    if (inUse > 0) {
+      throw new AppError(
+        "CONFLICT",
+        `${inUse} active holding${inUse === 1 ? " uses" : "s use"} "${current.name}". Move or close them first.`,
+      );
+    }
     const doc = await AssetClassModel.findOneAndUpdate(
       { _id: current._id, userId: current.userId },
       { $set: { archivedAt: new Date() } },

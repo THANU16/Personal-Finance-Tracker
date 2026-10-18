@@ -4,6 +4,7 @@ import { nextDayKey, resolveDateRange, type DateKeyRange } from "@/domain/date-r
 import { businessDateToUtc, utcToBusinessDate } from "@/domain/dates";
 import { AccountModel, type AccountDoc } from "@/modules/accounts/model";
 import { CategoryModel, type CategoryDoc } from "@/modules/categories/model";
+import { HoldingModel, type HoldingDoc } from "@/modules/holdings/model";
 import { categoryWithChildrenIds } from "@/modules/categories/service";
 import {
   OWNER_MANAGED_SOURCES,
@@ -23,17 +24,20 @@ import { toObjectId } from "@/server/db/ids";
 export interface RefMaps {
   accounts: Map<string, AccountDoc>;
   categories: Map<string, CategoryDoc>;
+  holdings: Map<string, HoldingDoc>;
 }
 
 /** All of the user's accounts and categories (archived included) for joining names. */
 export async function loadRefMaps(userId: Types.ObjectId): Promise<RefMaps> {
-  const [accounts, categories] = await Promise.all([
+  const [accounts, categories, holdings] = await Promise.all([
     AccountModel.find({ userId }).lean<AccountDoc[]>(),
     CategoryModel.find({ userId }).lean<CategoryDoc[]>(),
+    HoldingModel.find({ userId }).select({ name: 1 }).lean<HoldingDoc[]>(),
   ]);
   return {
     accounts: new Map(accounts.map((a) => [String(a._id), a])),
     categories: new Map(categories.map((c) => [String(c._id), c])),
+    holdings: new Map(holdings.map((h) => [String(h._id), h])),
   };
 }
 
@@ -64,6 +68,25 @@ export function toTransactionDTO(doc: TransactionDoc, refs: RefMaps, tz: string)
       amountMinor: s.amountMinor,
       note: s.note ?? null,
     })),
+    holding: doc.holdingId
+      ? {
+          id: String(doc.holdingId),
+          name: refs.holdings.get(String(doc.holdingId))?.name ?? "Unknown holding",
+        }
+      : null,
+    feeMinor: doc.feeMinor ?? 0,
+    taxMinor: doc.taxMinor ?? 0,
+    units: doc.units ?? null,
+    priceMinorE4: doc.priceMinorE4 ?? null,
+    incomeKind: doc.incomeKind ?? null,
+    reinvest: doc.reinvest ?? null,
+    redemption: doc.redemption
+      ? {
+          costRemovedMinor: doc.redemption.costRemovedMinor,
+          realizedGainMinor: doc.redemption.realizedGainMinor,
+          unitsRemoved: doc.redemption.unitsRemoved ?? null,
+        }
+      : null,
     description: doc.description ?? null,
     counterparty: doc.counterparty ?? null,
     notes: doc.notes ?? null,
@@ -102,6 +125,7 @@ async function buildFilter(ctx: Ctx, f: TransactionFilters, range: DateKeyRange)
     const ids = await categoryWithChildrenIds(ctx, f.category);
     and.push({ $or: [{ categoryId: { $in: ids } }, { "splits.categoryId": { $in: ids } }] });
   }
+  if (f.holding) filter.holdingId = toObjectId(f.holding, "Holding");
   if (f.tag) filter.tags = f.tag;
   if (f.min || f.max) {
     filter.amountMinor = { ...(f.min ? { $gte: f.min } : {}), ...(f.max ? { $lte: f.max } : {}) };
@@ -142,8 +166,20 @@ export async function listTransactions(
   const range = resolveDateRange(filters.preset, todayKey, { from: filters.from, to: filters.to });
   const filter = await buildFilter(ctx, filters, range);
 
+  // docs/04 §4: income = income + investment income paid out (reinvested is not cash);
+  // expense = expense. A type filter narrows it further.
+  const cashflowTypes = ["income", "expense", "investment_income"].filter(
+    (t) => !filters.types.length || (filters.types as string[]).includes(t),
+  );
   const summaryPipeline: PipelineStage[] = [
-    { $match: { ...filter, status: "posted", type: { $in: ["income", "expense"] } } },
+    {
+      $match: {
+        ...filter,
+        status: "posted",
+        type: { $in: cashflowTypes },
+        reinvest: { $ne: true },
+      },
+    },
     {
       $group: {
         _id: { type: "$type", currency: "$currency" },
@@ -152,11 +188,6 @@ export async function listTransactions(
       },
     },
   ];
-  // Respect a type filter that excludes income/expense entirely.
-  if (filters.types.length) {
-    const wanted = filters.types.filter((t) => t === "income" || t === "expense");
-    (summaryPipeline[0] as { $match: Record<string, unknown> }).$match.type = { $in: wanted };
-  }
 
   const [total, docs, groups, refs] = await Promise.all([
     TransactionModel.countDocuments(filter),
@@ -176,8 +207,8 @@ export async function listTransactions(
   let other = 0;
   for (const g of groups) {
     if (g._id.currency !== ctx.baseCurrency) other += g.n;
-    else if (g._id.type === "income") income += g.sum;
-    else expense += g.sum;
+    else if (g._id.type === "expense") expense += g.sum;
+    else income += g.sum;
   }
 
   return {

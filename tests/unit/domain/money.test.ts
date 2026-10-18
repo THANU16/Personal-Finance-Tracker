@@ -7,6 +7,7 @@ import {
   minorToDecimalString,
   minorUnitDigits,
   mulBp,
+  mulDivRound,
   parseMoneyToMinor,
   parsePercentToBp,
   roundHalfAwayFromZero,
@@ -241,5 +242,30 @@ describe("minorToDecimalString", () => {
     for (const v of [0, 1, -1, 99, 100, 123_456_789, -987_654]) {
       expect(parseMoneyToMinor(minorToDecimalString(v, "LKR"), "LKR")).toBe(v);
     }
+  });
+});
+
+describe("mulDivRound", () => {
+  it.each([
+    [40_000, 20_000, 50_000, 16_000],
+    [1, 1, 3, 0],
+    [2, 1, 3, 1],
+    [1, 1, 2, 1], // .5 → away from zero
+    [-1, 1, 2, -1],
+    [5, -3, 2, -8], // -7.5 → -8
+    [0, 99, 7, 0],
+  ])("%s × %s / %s → %s", (a, b, c, expected) => {
+    expect(mulDivRound(a, b, c)).toBe(expected);
+  });
+
+  it("stays exact when the product exceeds 2^53", () => {
+    // 900 billion × 700 billion / 1,000 billion — float math would be off
+    expect(mulDivRound(900_000_000_000, 700_000_000_000, 1_000_000_000_000)).toBe(630_000_000_000);
+    expect(mulDivRound(123_456_789_012_345, 3, 7)).toBe(52_910_052_433_862);
+  });
+
+  it("rejects division by zero and non-integers", () => {
+    expect(() => mulDivRound(1, 1, 0)).toThrow(RangeError);
+    expect(() => mulDivRound(1.5, 1, 1)).toThrow(RangeError);
   });
 });

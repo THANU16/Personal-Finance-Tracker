@@ -1,6 +1,10 @@
 import { Types } from "mongoose";
 import { businessDateToUtc } from "@/domain/dates";
 import { AccountModel } from "@/modules/accounts/model";
+import { AssetClassModel } from "@/modules/asset-classes/model";
+import { HoldingModel, type HoldingDoc } from "@/modules/holdings/model";
+import type { CreateHoldingInput, HoldingDTO } from "@/modules/holdings/schemas";
+import { createHolding } from "@/modules/holdings/service";
 import { createAccount } from "@/modules/accounts/service";
 import type { AccountDTO, CreateAccountInput } from "@/modules/accounts/schemas";
 import { CategoryModel, type CategoryDoc, type CategoryKind } from "@/modules/categories/model";
@@ -60,3 +64,40 @@ export async function balanceOf(ctx: Ctx, accountId: string): Promise<number> {
 }
 
 export const at = (dateKey: string, tz = "Asia/Colombo") => businessDateToUtc(dateKey, tz);
+
+/** Seeded asset class id by name (e.g. "Equity"). */
+export async function assetClassId(ctx: Ctx, name: string): Promise<string> {
+  const doc = await AssetClassModel.findOne({
+    userId: new Types.ObjectId(ctx.userId),
+    name,
+  }).lean();
+  if (!doc) throw new Error(`asset class ${name} not seeded`);
+  return String(doc._id);
+}
+
+/** Creates a market holding through the service (opening invested + value on OPENING_DATE). */
+export async function makeHolding(
+  ctx: Ctx,
+  overrides: Partial<CreateHoldingInput> = {},
+): Promise<HoldingDTO> {
+  return createHolding(ctx, {
+    name: `Holding ${Math.random().toString(36).slice(2, 7)}`,
+    assetClassId: await assetClassId(ctx, "Equity"),
+    instrumentType: "unit_trust",
+    currency: "LKR",
+    openingDate: OPENING_DATE,
+    investedMinor: 0,
+    currentValueMinor: 0,
+    ...overrides,
+  });
+}
+
+/** Cached holding fields straight from the database. */
+export async function holdingDoc(ctx: Ctx, holdingId: string): Promise<HoldingDoc> {
+  const doc = await HoldingModel.findOne({
+    _id: new Types.ObjectId(holdingId),
+    userId: new Types.ObjectId(ctx.userId),
+  }).lean<HoldingDoc>();
+  if (!doc) throw new Error("holding missing");
+  return doc;
+}

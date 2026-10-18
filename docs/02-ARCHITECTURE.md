@@ -131,7 +131,8 @@ wealthtrack/
 │   │   ├── db/user-id-guard.ts · db/ids.ts · ctx.ts (Ctx) · run-action.ts (runAction → ActionResult)
 │   │   ├── bootstrap.ts (first-login seeding) · audit/model.ts (auditLog + writeAudit)
 │   │   ├── auth/auth.ts · auth/require-user.ts
-│   │   ├── ledger/post.ts · ledger/void.ts · ledger/recompute.ts
+│   │   ├── ledger/post.ts · ledger/void.ts · ledger/recompute.ts (accounts + holdings)
+│   │   ├── ledger/holding-events.ts (txns + valuations → replay events, FD value)
 │   │   ├── cron/daily.ts (orchestrates jobs) · cron/jobs/*.ts
 │   │   ├── errors.ts (AppError, codes) · action-result.ts
 │   │   ├── storage/ (StorageProvider) · mail/ (Mailer)

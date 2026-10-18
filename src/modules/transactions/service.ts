@@ -19,12 +19,19 @@ import { postTransaction, type LedgerDraft } from "@/server/ledger/post";
 import { voidTransaction as ledgerVoid } from "@/server/ledger/void";
 
 /** Types a user can create and edit directly; others come from their owning feature. */
-export const USER_EDITABLE_TYPES = ["income", "expense", "transfer"] as const;
+export const USER_EDITABLE_TYPES = [
+  "income",
+  "expense",
+  "transfer",
+  "invest",
+  "redeem",
+  "investment_income",
+] as const;
 
 function toDraft(ctx: Ctx, data: TransactionData): LedgerDraft {
   const common = {
     date: businessDateToUtc(data.date, ctx.tz),
-    amountMinor: data.amountMinor,
+    amountMinor: data.amountMinor ?? 0,
     description: data.description,
     counterparty: data.counterparty,
     notes: data.notes,
@@ -53,6 +60,38 @@ function toDraft(ctx: Ctx, data: TransactionData): LedgerDraft {
         fromAccountId: data.fromAccountId,
         toAccountId: data.toAccountId,
         toAmountMinor: data.toAmountMinor ?? null,
+      };
+    case "invest":
+      return {
+        ...common,
+        type: "invest",
+        fromAccountId: data.fromAccountId,
+        holdingId: data.holdingId,
+        feeMinor: data.feeMinor,
+        units: data.units ?? null,
+        priceMinorE4: data.priceMinorE4 ?? null,
+      };
+    case "redeem":
+      return {
+        ...common,
+        type: "redeem",
+        toAccountId: data.toAccountId,
+        holdingId: data.holdingId,
+        feeMinor: data.feeMinor,
+        taxMinor: data.taxMinor,
+        units: data.units ?? null,
+        priceMinorE4: data.priceMinorE4 ?? null,
+      };
+    case "investment_income":
+      return {
+        ...common,
+        type: "investment_income",
+        holdingId: data.holdingId,
+        toAccountId: data.reinvest ? null : (data.toAccountId ?? null),
+        taxMinor: data.taxMinor,
+        incomeKind: data.incomeKind,
+        reinvest: data.reinvest,
+        units: data.reinvest ? (data.units ?? null) : null,
       };
   }
 }

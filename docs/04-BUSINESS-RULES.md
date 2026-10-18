@@ -49,8 +49,11 @@ Process posted transactions for the holding in date order (ties: createdAt).
 | investment_income paid out | – | – | incomeReceived += amount; taxWithheld += tax |
 | investment_income reinvest | + (amount − tax) | + (amount − tax) | incomeReceived += amount; taxWithheld += tax |
 
-**Current value:** take the latest valuation `V` at date `D` (a valuation includes all flows dated
-≤ `D`). Then `currentValue = V.value + Σ value effects of transactions dated > D`. With no
+**Current value:** take the latest valuation `V` at date `D`. Events are processed by date and,
+within the same date, **in the order they were entered** (owner decision, Phase 3): `V` includes
+flows dated before `D` and same-day flows entered before it; flows entered after it on `D`, and
+flows dated after `D`, adjust it. `currentValue = V.value + Σ value effects of those later flows`.
+(Example: add a holding today with today's value, then buy today → the buy adds to the value.) With no
 valuation, start from 0. For `trackUnits` holdings with a known price: `currentValue = units × lastPrice`
 where `lastPrice` is the most recent price from a valuation or transaction.
 `fd` holdings: value from §9, not manual valuations.

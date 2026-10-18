@@ -43,7 +43,8 @@ export interface TransactionDoc {
   splits: { categoryId: Types.ObjectId; amountMinor: number; note: string | null }[];
   holdingId: Types.ObjectId | null;
   units: number | null;
-  priceMinor: number | null;
+  /** Price per unit in minor units × 10⁴ (NAV to 4 extra decimals). */
+  priceMinorE4: number | null;
   feeMinor: number;
   taxMinor: number;
   incomeKind: (typeof INCOME_KINDS)[number] | null;
@@ -99,7 +100,7 @@ const transactionSchema = new Schema<TransactionDoc>(
     },
     holdingId: { type: Schema.Types.ObjectId, default: null },
     units: { type: Number, default: null },
-    priceMinor: intField({ default: null, min: 0 }),
+    priceMinorE4: intField({ default: null, min: 0 }),
     feeMinor: intField({ required: true, default: 0, min: 0 }),
     taxMinor: intField({ required: true, default: 0, min: 0 }),
     incomeKind: { type: String, enum: [...INCOME_KINDS, null], default: null },

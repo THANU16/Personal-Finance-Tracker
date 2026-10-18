@@ -6,6 +6,7 @@ import type { AccountType } from "@/domain/accounts";
 import { listAccounts } from "@/modules/accounts/service";
 import type { CategoryNode } from "@/modules/categories/schemas";
 import { getCategoryTree } from "@/modules/categories/service";
+import { listHoldingOptions, type HoldingOption } from "@/modules/holdings/queries";
 import { listTags } from "@/modules/transactions/queries";
 import {
   createTransaction,
@@ -61,6 +62,7 @@ export interface QuickAddOptions {
     balanceMinor: number;
   }[];
   categories: CategoryNode[];
+  holdings: HoldingOption[];
   tags: string[];
 }
 
@@ -68,10 +70,11 @@ export interface QuickAddOptions {
 export async function getQuickAddOptionsAction(): Promise<ActionResult<QuickAddOptions>> {
   return runAction(async () => {
     const ctx = await requireUser();
-    const [accounts, categories, tags] = await Promise.all([
+    const [accounts, categories, tags, holdings] = await Promise.all([
       listAccounts(ctx),
       getCategoryTree(ctx),
       listTags(ctx),
+      listHoldingOptions(ctx),
     ]);
     return {
       todayKey: utcToBusinessDate(new Date(), ctx.tz),
@@ -84,6 +87,7 @@ export async function getQuickAddOptionsAction(): Promise<ActionResult<QuickAddO
         balanceMinor: a.balanceMinor,
       })),
       categories,
+      holdings,
       tags,
     };
   });

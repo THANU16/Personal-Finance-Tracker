@@ -102,11 +102,80 @@ const transferSchema = z
     message: "Choose a different account",
   });
 
+const nonNegativeMinor = z
+  .number()
+  .int("Must be a whole amount")
+  .min(0, "Cannot be negative")
+  .max(Number.MAX_SAFE_INTEGER)
+  .default(0);
+const units = z
+  .number({ error: "Enter units" })
+  .positive("Enter units above zero")
+  .finite()
+  .refine((u) => Math.abs(u * 1e6 - Math.round(u * 1e6)) < 1e-6, "At most 6 decimals");
+/** Price per unit in minor units × 10⁴ (NAV to 4 extra decimals). */
+const priceMinorE4 = z.number().int("Invalid price").positive("Enter a price above zero");
+
+const investSchema = z
+  .object({
+    ...base,
+    type: z.literal("invest"),
+    fromAccountId: objectId,
+    holdingId: objectId,
+    feeMinor: nonNegativeMinor,
+    units: units.nullish(),
+    priceMinorE4: priceMinorE4.nullish(),
+  })
+  .strict();
+
+/** Redeem by amount (amountMinor) or, for unit-tracked holdings, by units (+ price). */
+const redeemSchema = z
+  .object({
+    ...base,
+    type: z.literal("redeem"),
+    amountMinor: amountMinor.nullish(),
+    toAccountId: objectId,
+    holdingId: objectId,
+    feeMinor: nonNegativeMinor,
+    taxMinor: nonNegativeMinor,
+    units: units.nullish(),
+    priceMinorE4: priceMinorE4.nullish(),
+  })
+  .strict()
+  .refine((v) => Boolean(v.amountMinor) || Boolean(v.units), {
+    path: ["amountMinor"],
+    message: "Enter an amount (or units)",
+  });
+
+const investmentIncomeSchema = z
+  .object({
+    ...base,
+    type: z.literal("investment_income"),
+    holdingId: objectId,
+    incomeKind: z.enum(["dividend", "interest", "distribution", "rent", "other"]),
+    taxMinor: nonNegativeMinor,
+    reinvest: z.boolean().default(false),
+    toAccountId: objectId.nullish(),
+    units: units.nullish(),
+  })
+  .strict()
+  .superRefine((v, ctx) => {
+    if (!v.reinvest && !v.toAccountId) {
+      ctx.addIssue({ code: "custom", path: ["toAccountId"], message: "Choose where it was paid" });
+    }
+    if (v.taxMinor > v.amountMinor) {
+      ctx.addIssue({ code: "custom", path: ["taxMinor"], message: "Tax cannot exceed the amount" });
+    }
+  });
+
 /** User-entered transactions (Quick add / edit). Adjustments come only from Reconcile. */
 export const transactionInputSchema = z.discriminatedUnion("type", [
   incomeSchema,
   expenseSchema,
   transferSchema,
+  investSchema,
+  redeemSchema,
+  investmentIncomeSchema,
 ]);
 export type TransactionInput = z.input<typeof transactionInputSchema>;
 export type TransactionData = z.output<typeof transactionInputSchema>;
@@ -126,9 +195,23 @@ export const transactionFiltersSchema = z.object({
     .string()
     .optional()
     .transform((v) => (v ? v.split(",").filter(Boolean) : []))
-    .pipe(z.array(z.enum(["income", "expense", "transfer", "adjustment"])))
+    .pipe(
+      z.array(
+        z.enum([
+          "income",
+          "expense",
+          "transfer",
+          "adjustment",
+          "invest",
+          "redeem",
+          "investment_income",
+          "opening_balance",
+        ]),
+      ),
+    )
     .catch([]),
   account: objectId.optional().catch(undefined),
+  holding: objectId.optional().catch(undefined),
   category: objectId.optional().catch(undefined),
   tag: z.string().trim().toLowerCase().max(30).optional().catch(undefined),
   min: z.coerce.number().int().positive().optional().catch(undefined),
@@ -162,6 +245,19 @@ export interface TransactionDTO {
   fxRate: number | null;
   category: TransactionRefDTO | null;
   splits: { category: TransactionRefDTO; amountMinor: number; note: string | null }[];
+  holding: TransactionRefDTO | null;
+  feeMinor: number;
+  taxMinor: number;
+  units: number | null;
+  /** minor units × 10⁴ */
+  priceMinorE4: number | null;
+  incomeKind: "dividend" | "interest" | "distribution" | "rent" | "other" | null;
+  reinvest: boolean | null;
+  redemption: {
+    costRemovedMinor: number;
+    realizedGainMinor: number;
+    unitsRemoved: number | null;
+  } | null;
   description: string | null;
   counterparty: string | null;
   notes: string | null;

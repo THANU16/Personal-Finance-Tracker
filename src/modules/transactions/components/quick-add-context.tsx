@@ -6,10 +6,17 @@ import { Button } from "@/components/ui/button";
 import type { TransactionDTO } from "@/modules/transactions/schemas";
 import { QuickAddSheet } from "@/modules/transactions/components/quick-add-sheet";
 
-export type QuickAddType = "expense" | "income" | "transfer";
+export type QuickAddType =
+  "expense" | "income" | "transfer" | "invest" | "redeem" | "investment_income";
 
 export type QuickAddRequest =
-  | { mode: "create"; type?: QuickAddType; accountId?: string; duplicateOf?: TransactionDTO }
+  | {
+      mode: "create";
+      type?: QuickAddType;
+      accountId?: string;
+      holdingId?: string;
+      duplicateOf?: TransactionDTO;
+    }
   | { mode: "edit"; txn: TransactionDTO };
 
 interface QuickAddContextValue {

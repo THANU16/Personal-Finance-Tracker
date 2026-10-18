@@ -16,6 +16,7 @@ import {
   TypeIcon,
   accountsLabel,
   categoryLabel,
+  holdingTxnTitle,
 } from "@/modules/transactions/components/transaction-amount";
 import { TransactionRowActions } from "@/modules/transactions/components/transaction-row-actions";
 
@@ -31,7 +32,7 @@ export interface LedgerRow {
 }
 
 function Title({ txn }: { txn: TransactionDTO }) {
-  const title = txn.description ?? txn.counterparty ?? categoryLabel(txn);
+  const title = txn.description ?? txn.counterparty ?? holdingTxnTitle(txn) ?? categoryLabel(txn);
   return (
     <div className="min-w-0">
       <div className={cn("truncate font-medium", txn.status === "void" && "line-through")}>
