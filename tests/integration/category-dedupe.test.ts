@@ -111,6 +111,34 @@ describe("mergeDuplicateCategories (bootstrap v2)", () => {
     expect(await count(ctx.userId)).toBe(total);
   });
 
+  it("repairs an account that reached v2 without the merge, system duplicates included", async () => {
+    const ctx = await makeUser();
+    const uid = new Types.ObjectId(ctx.userId);
+    await legacyDuplicateSeed(ctx.userId);
+    // A system duplicate can exist on databases where the unique index was built after it.
+    await CategoryModel.collection.dropIndex("uniq_system_category");
+    try {
+      const [bankFees] = await CategoryModel.find({ userId: uid, name: "Bank fees" }).lean();
+      await CategoryModel.collection.insertOne({
+        userId: uid,
+        name: "Bank fees",
+        kind: "expense",
+        parentId: null,
+        isSystem: true,
+        isEssential: false,
+        archivedAt: null,
+        createdAt: new Date(bankFees!.createdAt.getTime() + 1_000),
+        updatedAt: new Date(),
+      });
+      await SettingsModel.updateOne({ userId: uid }, { $set: { bootstrapVersion: 2 } });
+      await ensureUserSetup(ctx.userId);
+      expect(await count(ctx.userId)).toBe(total);
+      expect(await CategoryModel.countDocuments({ userId: uid, name: "Bank fees" })).toBe(1);
+    } finally {
+      await CategoryModel.syncIndexes(); // restore the unique index for the other tests
+    }
+  });
+
   it("leaves other users alone", async () => {
     const a = await makeUser();
     const b = await makeUser();

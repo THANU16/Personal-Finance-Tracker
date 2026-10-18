@@ -19,16 +19,16 @@ export async function mergeDuplicateCategories(
   const uid = toObjectId(userId, "User");
   let merged = 0;
   for (const level of ["top", "child"] as const) {
+    // System categories too: a copy made before their unique index existed is merged the same way.
     const docs = await CategoryModel.find({
       userId: uid,
-      isSystem: false,
       parentId: level === "top" ? null : { $ne: null },
     })
       .session(session)
       .lean<CategoryDoc[]>();
     const groups = new Map<string, CategoryDoc[]>();
     for (const d of docs) {
-      const key = `${d.kind}|${d.parentId ? String(d.parentId) : ""}|${d.name.trim().toLowerCase()}`;
+      const key = `${d.isSystem ? "sys" : "user"}|${d.kind}|${d.parentId ? String(d.parentId) : ""}|${d.name.trim().toLowerCase()}`;
       groups.set(key, [...(groups.get(key) ?? []), d]);
     }
     for (const group of groups.values()) {
@@ -36,7 +36,7 @@ export async function mergeDuplicateCategories(
       group.sort(
         (a, b) =>
           Number(Boolean(a.archivedAt)) - Number(Boolean(b.archivedAt)) ||
-          a.createdAt.getTime() - b.createdAt.getTime() ||
+          (a.createdAt?.getTime() ?? 0) - (b.createdAt?.getTime() ?? 0) ||
           String(a._id).localeCompare(String(b._id)),
       );
       const [keep, ...dups] = group as [CategoryDoc, ...CategoryDoc[]];

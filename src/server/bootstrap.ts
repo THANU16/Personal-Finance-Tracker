@@ -7,7 +7,7 @@ import { claimBootstrap, getOrCreateSettings } from "@/modules/settings/service"
 import { withTransaction } from "@/server/db/transaction";
 
 /** Bump when a phase adds new per-user seed data. */
-export const BOOTSTRAP_VERSION = 3;
+export const BOOTSTRAP_VERSION = 4;
 
 /**
  * First-login setup: settings with defaults, then (once, atomically) system + starter categories
@@ -24,10 +24,11 @@ export async function ensureUserSetup(userId: string): Promise<SettingsDTO> {
       await seedCategories(userId, session);
       await seedAssetClasses(userId, session);
     }
-    // v2: merge starter categories duplicated by the earlier non-idempotent seed.
-    if (from < 2) await mergeDuplicateCategories(userId, session);
     // v3 (Phase 4): validated chart palette for untouched system class colours.
     if (from < 3) await migrateAssetClassColors(userId, session);
+    // v2 → re-run as v4: merge categories duplicated by the earlier non-idempotent seed. Idempotent;
+    // re-run because accounts that reached v2 through an interim build skipped it.
+    if (from < 4) await mergeDuplicateCategories(userId, session);
   });
   return { ...settings, bootstrapVersion: BOOTSTRAP_VERSION };
 }
