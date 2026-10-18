@@ -259,6 +259,39 @@ describe("cost recovery (owner decision, docs/04 §3)", () => {
   });
 });
 
+describe("Assets: hide emergency-fund holdings", () => {
+  it("leaves them out of totals and weights, and says how much is hidden", async () => {
+    const ctx = await makeUser();
+    const { getPortfolio } = await import("@/modules/holdings/queries");
+    const fund = await makeHolding(ctx, {
+      name: "Equity fund",
+      investedMinor: 8_000_000,
+      currentValueMinor: 9_000_000,
+    });
+    await makeHolding(ctx, {
+      name: "Emergency FD",
+      assetClassId: await assetClassId(ctx, "Fixed Income"),
+      instrumentType: "fd",
+      investedMinor: 3_000_000,
+      currentValueMinor: 3_000_000,
+      countsTowardEmergencyFund: true,
+    });
+    const all = await getPortfolio(ctx);
+    expect(all.totals).toMatchObject({ valueMinor: 12_000_000, investedMinor: 11_000_000 });
+    expect(all.emergency).toEqual({ count: 1, valueMinor: 3_000_000, hidden: false });
+    const hidden = await getPortfolio(ctx, { excludeEmergency: true });
+    expect(hidden.totals).toMatchObject({
+      valueMinor: 9_000_000,
+      investedMinor: 8_000_000,
+      unrealizedGainMinor: 1_000_000,
+    });
+    expect(hidden.holdings.map((h) => h.name)).toEqual(["Equity fund"]);
+    expect(hidden.holdings[0]!.weightBp).toBe(10_000);
+    expect(hidden.emergency).toEqual({ count: 1, valueMinor: 3_000_000, hidden: true });
+    expect(fund.id).toBeTruthy();
+  });
+});
+
 describe("investment income", () => {
   it("paid out reaches the account net of tax and counts as income; reinvested raises invested and value", async () => {
     const { ctx, bank, fund } = await exampleSetup();

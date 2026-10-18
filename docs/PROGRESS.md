@@ -247,6 +247,9 @@ Status values: ⬜ not started · 🟡 in progress · ✅ done
 - [9] Quick add "From template": fills the form from an income/expense/transfer rule (does not advance the rule).
 - [9] Fix: two queries in parallel as the first operation of a DB transaction fail on MongoDB; copy-last-month reads them in
   sequence (others start their transaction with a single query first).
+- [assets] Assets page toggle "Emergency fund: Included / Hidden" (`?emergency=hide`, owner request): hidden leaves
+  emergency-fund holdings out of the totals, class and holding weights and XIRR, and says how many / how much is left out.
+  Shown only when such holdings exist; default Included.
 - [alloc] Emergency-fund holdings now count in Allocation weights/drift but are **locked** (owner decision; docs/04 §8 and PRD
   updated): full rebalance keeps them (trade 0) and counts them toward their own class target first; invest-new-money skips
   them (their class share goes to the class's other target holdings). Dashboard "off target" and the SIP drift tilt follow.

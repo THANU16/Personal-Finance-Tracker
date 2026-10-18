@@ -97,6 +97,8 @@ export interface Portfolio {
   holdings: PortfolioHolding[];
   closedCount: number;
   staleCount: number;
+  /** Active emergency-fund holdings (base value) and whether they are left out of this view. */
+  emergency: { count: number; valueMinor: number; hidden: boolean };
 }
 
 const share = (part: number, whole: number) =>
@@ -105,7 +107,7 @@ const share = (part: number, whole: number) =>
 /** /assets: every holding with returns, class groups and portfolio totals (docs/05 §5). */
 export async function getPortfolio(
   ctx: Ctx,
-  opts: { includeClosed?: boolean } = {},
+  opts: { includeClosed?: boolean; excludeEmergency?: boolean } = {},
 ): Promise<Portfolio> {
   await connectDb();
   const userId = toObjectId(ctx.userId, "User");
@@ -129,8 +131,19 @@ export async function getPortfolio(
   }
 
   const toBase = await loadToBase(ctx);
+  // Assets toggle (owner request): leave emergency-fund holdings out of totals, weights and XIRR.
+  const emergencyDocs = docs.filter((d) => d.countsTowardEmergencyFund && d.status === "active");
+  const emergency = {
+    count: emergencyDocs.length,
+    valueMinor: emergencyDocs.reduce(
+      (s, d) => s + (toBase(toHoldingDTO(d, c).currentValueMinor, d.currency, c.today) ?? 0),
+      0,
+    ),
+    hidden: Boolean(opts.excludeEmergency),
+  };
+  const shown = opts.excludeEmergency ? docs.filter((d) => !d.countsTowardEmergencyFund) : docs;
   const flowsByHolding = new Map<string, CashFlow[] | null>();
-  const all = docs.map((doc) => {
+  const all = shown.map((doc) => {
     const base = toHoldingDTO(doc, c);
     const terminal =
       doc.status === "active" && base.currentValueMinor > 0
@@ -231,6 +244,7 @@ export async function getPortfolio(
     holdings: withWeights,
     closedCount: all.filter((h) => h.status === "closed").length,
     staleCount: active.filter((h) => h.stale).length,
+    emergency,
   };
 }
 

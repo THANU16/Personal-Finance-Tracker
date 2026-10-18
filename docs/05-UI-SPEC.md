@@ -55,6 +55,8 @@ with drill-down, top categories (click filters Transactions with the same range)
 ## 5. Assets `/assets`
 - Header totals: value, invested, unrealised gain (%), realised gain, income, portfolio XIRR.
 - Toggle view: **By class** (accordion per class with class totals, weight, XIRR) / **All holdings** table.
+- "Emergency fund: Included / Hidden" switch (when emergency-fund holdings exist): Hidden leaves them out of totals, weights and
+  XIRR and states how much is hidden.
 - Holding row: name · instrument · invested · value · gain (abs, %) · weight · XIRR · last updated (stale badge) · quick actions (Buy, Redeem, Update value).
 - "Update values" button → `/assets/update-values`: table (holding, invested, last value, last updated,
   **new value** input, Δ preview, optional NAV input when trackUnits) → Save all (big-change rows require a tick).

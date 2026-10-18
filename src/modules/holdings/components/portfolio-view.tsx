@@ -75,7 +75,9 @@ export async function PortfolioView({ searchParams }: { searchParams: SearchPara
   const showClosed = sp.closed === "1";
   // ?class=<id>: one class only (dashboard allocation donut links here).
   const classFilter = typeof sp.class === "string" ? sp.class : null;
-  const p = await getPortfolio(ctx, { includeClosed: showClosed });
+  // ?emergency=hide: totals, weights and XIRR without emergency-fund holdings.
+  const hideEmergency = sp.emergency === "hide";
+  const p = await getPortfolio(ctx, { includeClosed: showClosed, excludeEmergency: hideEmergency });
   const todayKey = utcToBusinessDate(new Date(), ctx.tz);
   const t = p.totals;
   const param = (changes: Record<string, string | null>) => {
@@ -83,6 +85,7 @@ export async function PortfolioView({ searchParams }: { searchParams: SearchPara
       ...(view === "all" ? { view } : {}),
       ...(showClosed ? { closed: "1" } : {}),
       ...(classFilter ? { class: classFilter } : {}),
+      ...(hideEmergency ? { emergency: "hide" } : {}),
     });
     for (const [k, v] of Object.entries(changes)) {
       if (v === null) q.delete(k);
@@ -92,7 +95,7 @@ export async function PortfolioView({ searchParams }: { searchParams: SearchPara
     return s ? `/assets?${s}` : "/assets";
   };
 
-  if (p.holdings.length === 0 && p.closedCount === 0) {
+  if (p.holdings.length === 0 && p.closedCount === 0 && !hideEmergency) {
     return (
       <EmptyState
         icon={<ChartPie />}
@@ -183,6 +186,22 @@ export async function PortfolioView({ searchParams }: { searchParams: SearchPara
             All holdings
           </ViewLink>
         </nav>
+        {p.emergency.count > 0 ? (
+          <nav
+            aria-label="Emergency-fund holdings"
+            className="inline-flex items-center gap-2 text-sm"
+          >
+            <span className="text-muted-foreground">Emergency fund</span>
+            <span className="inline-flex rounded-lg bg-muted p-1">
+              <ViewLink href={param({ emergency: null })} active={!hideEmergency}>
+                Included
+              </ViewLink>
+              <ViewLink href={param({ emergency: "hide" })} active={hideEmergency}>
+                Hidden
+              </ViewLink>
+            </span>
+          </nav>
+        ) : null}
         <Link
           href={param({ closed: showClosed ? null : "1" })}
           className="text-sm text-muted-foreground underline underline-offset-4"
@@ -195,6 +214,16 @@ export async function PortfolioView({ searchParams }: { searchParams: SearchPara
         </Link>
       </div>
 
+      {hideEmergency && p.emergency.count > 0 ? (
+        <p className="mb-4 text-sm text-muted-foreground" role="status">
+          {p.emergency.count} emergency-fund holding{p.emergency.count === 1 ? "" : "s"} (
+          <Money valueMinor={p.emergency.valueMinor} currency={t.currency} />) left out of these
+          totals, weights and XIRR ·{" "}
+          <Link href={param({ emergency: null })} className="underline underline-offset-4">
+            Include them
+          </Link>
+        </p>
+      ) : null}
       {view === "all" ? (
         <HoldingsTable
           holdings={p.holdings}
