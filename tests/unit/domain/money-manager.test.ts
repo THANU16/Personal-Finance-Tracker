@@ -303,6 +303,7 @@ describe("mapping resolution and suggestions", () => {
     expect(suggestAccount("CAL Money Market")).toMatchObject({
       treatAs: "holding",
       assetClass: "Fixed Income",
+      instrument: "money_market",
     });
     expect(suggestAccount("Binance")).toMatchObject({ treatAs: "holding", assetClass: "Crypto" });
     expect(suggestAccount("CDS Account")).toMatchObject({

@@ -47,7 +47,7 @@ Types: `income`, `expense`, `transfer`, `invest`, `redeem`, `investment_income`,
 
 ### 4.3 Assets & holdings
 - Asset classes (user-defined, seeded): Equity, Fixed Income, Gold, Crypto, Real Estate, Cash & Equivalents, Other.
-- Instrument types: `stock`, `mutual_fund`, `unit_trust`, `etf`, `bond`, `treasury`, `fd`, `gold`,
+- Instrument types: `stock`, `mutual_fund`, `unit_trust`, `etf`, `bond`, `treasury`, `money_market`, `fd`, `gold`,
   `crypto`, `real_estate`, `epf_etf`, `other`.
 - Mandatory: name, class, instrument type, invested amount, current value (opening values when added).
 - Optional: units, price/NAV, currency, platform/broker, liquidity, tags, notes.

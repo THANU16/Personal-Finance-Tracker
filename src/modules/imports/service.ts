@@ -299,7 +299,7 @@ function defaultState(
               name: s.name,
               assetClassId: String(cls._id),
               instrumentType: hint.instrument,
-              liquidity: "medium",
+              liquidity: hint.instrument === "money_market" ? "high" : "medium",
             },
           }
         : {

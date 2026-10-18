@@ -950,7 +950,7 @@ export type SuggestedAccount =
   | {
       treatAs: "holding";
       assetClass: "Equity" | "Fixed Income" | "Crypto";
-      instrument: "unit_trust" | "stock" | "crypto" | "mutual_fund";
+      instrument: "unit_trust" | "money_market" | "stock" | "crypto" | "mutual_fund";
     };
 
 /** docs/07 §3 heuristics (defaults only — the user can change everything). */
@@ -960,7 +960,9 @@ export function suggestAccount(name: string): SuggestedAccount {
   if (/\bfrom\b/.test(n)) return { treatAs: "account", type: "payable" };
   if (/binance|crypto|bitcoin|btc/.test(n))
     return { treatAs: "holding", assetClass: "Crypto", instrument: "crypto" };
-  if (/fixed|money market|bond|treasury|gilt/.test(n))
+  if (/money market/.test(n))
+    return { treatAs: "holding", assetClass: "Fixed Income", instrument: "money_market" };
+  if (/fixed|bond|treasury|gilt/.test(n))
     return { treatAs: "holding", assetClass: "Fixed Income", instrument: "unit_trust" };
   if (/cds|equity|stock|share/.test(n))
     return { treatAs: "holding", assetClass: "Equity", instrument: "stock" };

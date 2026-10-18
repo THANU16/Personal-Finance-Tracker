@@ -7,6 +7,7 @@ export const INSTRUMENT_TYPES = [
   "etf",
   "bond",
   "treasury",
+  "money_market",
   "fd",
   "gold",
   "crypto",

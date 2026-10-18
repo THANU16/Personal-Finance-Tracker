@@ -71,7 +71,7 @@ Seed: Equity, Fixed Income, Gold, Crypto, Real Estate, Cash & Equivalents, Other
 
 ## holdings
 ```
-name, assetClassId, instrumentType: stock|mutual_fund|unit_trust|etf|bond|treasury|fd|gold|crypto|real_estate|epf_etf|other,
+name, assetClassId, instrumentType: stock|mutual_fund|unit_trust|etf|bond|treasury|money_market|fd|gold|crypto|real_estate|epf_etf|other,
 currency, platform?, symbol?, liquidity: high|medium|low, tags: [string], notes?,
 trackUnits: false,
 fd?: { principalMinor, rateBp, startDate, maturityDate,
