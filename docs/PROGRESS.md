@@ -250,9 +250,11 @@ Status values: ⬜ not started · 🟡 in progress · ✅ done
 - [assets] Assets page toggle "Emergency fund: Included / Hidden" (`?emergency=hide`, owner request): hidden leaves
   emergency-fund holdings out of the totals, class and holding weights and XIRR, and says how many / how much is left out.
   Shown only when such holdings exist; default Included.
-- [alloc] Emergency-fund holdings now count in Allocation weights/drift but are **locked** (owner decision; docs/04 §8 and PRD
-  updated): full rebalance keeps them (trade 0) and counts them toward their own class target first; invest-new-money skips
-  them (their class share goes to the class's other target holdings). Dashboard "off target" and the SIP drift tilt follow.
+- [alloc] Emergency-fund holdings in Allocation (owner decision, revised): **excluded by default** (original docs/04 §8 rule;
+  the total is shown as "Emergency fund not in the allocation"); toggle "Emergency fund: Hidden / Included"
+  (`?emergency=include`, on Planned vs Actual and Rebalance) counts them, **locked**: full rebalance keeps them (trade 0) and
+  counts them toward their own class target first; invest-new-money skips them. Dashboard "off target" and SIP tilt use the
+  default.
 - [cost] Redemptions use the **cost-recovery** method for every holding (owner decision, replaces proportional cost; docs/04
   §3 and the finance-domain skill updated). Partial: costRemoved = min(invested, amount − fee) → nothing realised until
   more than the invested money has come back; full: costRemoved = invested → realised = amount − fee − invested (gain or

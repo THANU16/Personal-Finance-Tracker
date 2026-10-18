@@ -23,28 +23,76 @@ const TABS = [
 ] as const;
 type Tab = (typeof TABS)[number][0];
 
-function TabNav({ tab }: { tab: Tab }) {
+/** Allocation URL keeping the emergency-fund choice (`emergency=include`; default hidden). */
+function hrefOf(tab: Tab, include: boolean): string {
+  const q = new URLSearchParams({
+    ...(tab === "plan" ? {} : { tab }),
+    ...(include ? { emergency: "include" } : {}),
+  });
+  const s = q.toString();
+  return s ? `/rebalancing?${s}` : "/rebalancing";
+}
+
+function TabNav({
+  tab,
+  include = false,
+  emergencyCount = 0,
+}: {
+  tab: Tab;
+  include?: boolean;
+  emergencyCount?: number;
+}) {
   return (
-    <nav
-      aria-label="Allocation sections"
-      className="mb-4 flex w-fit flex-wrap rounded-lg bg-muted p-0.5 text-sm"
-    >
-      {TABS.map(([key, label]) => (
-        <Link
-          key={key}
-          href={key === "plan" ? "/rebalancing" : `/rebalancing?tab=${key}`}
-          aria-current={tab === key ? "page" : undefined}
-          className={cn(
-            "rounded-md px-3 py-1",
-            tab === key
-              ? "bg-background font-medium shadow-sm"
-              : "text-muted-foreground hover:text-foreground",
-          )}
+    <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+      <nav
+        aria-label="Allocation sections"
+        className="flex w-fit flex-wrap rounded-lg bg-muted p-0.5 text-sm"
+      >
+        {TABS.map(([key, label]) => (
+          <Link
+            key={key}
+            href={hrefOf(key, include)}
+            aria-current={tab === key ? "page" : undefined}
+            className={cn(
+              "rounded-md px-3 py-1",
+              tab === key
+                ? "bg-background font-medium shadow-sm"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {label}
+          </Link>
+        ))}
+      </nav>
+      {emergencyCount > 0 && (tab === "actual" || tab === "rebalance") ? (
+        <nav
+          aria-label="Emergency-fund holdings"
+          className="inline-flex items-center gap-2 text-sm"
         >
-          {label}
-        </Link>
-      ))}
-    </nav>
+          <span className="text-muted-foreground">Emergency fund</span>
+          <span className="inline-flex rounded-lg bg-muted p-0.5">
+            {[
+              [false, "Hidden"],
+              [true, "Included"],
+            ].map(([value, label]) => (
+              <Link
+                key={String(value)}
+                href={hrefOf(tab, value as boolean)}
+                aria-current={include === value ? "page" : undefined}
+                className={cn(
+                  "rounded-md px-3 py-1",
+                  include === value
+                    ? "bg-background font-medium shadow-sm"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {label as string}
+              </Link>
+            ))}
+          </span>
+        </nav>
+      ) : null}
+    </div>
   );
 }
 
@@ -106,7 +154,9 @@ export async function AllocationContent({ searchParams }: { searchParams: Search
   const { ctx } = current;
   const sp = await searchParams;
   const tab: Tab = TABS.some(([k]) => k === sp.tab) ? (sp.tab as Tab) : "plan";
-  const view = await getAllocationView(ctx);
+  // Emergency-fund holdings: hidden by default (docs/04 §8); ?emergency=include counts them, locked.
+  const include = sp.emergency === "include";
+  const view = await getAllocationView(ctx, { includeEmergency: include });
   const className = Object.fromEntries(view.options.classes.map((c) => [c.id, c.name]));
   const classColor = Object.fromEntries(view.options.classes.map((c) => [c.id, c.color]));
   const holdingNames = Object.fromEntries(
@@ -118,7 +168,7 @@ export async function AllocationContent({ searchParams }: { searchParams: Search
   if (tab === "plan") {
     return (
       <>
-        <TabNav tab={tab} />
+        <TabNav tab={tab} include={include} emergencyCount={view.emergencyCount} />
         <TargetEditor target={view.target} options={view.options} />
       </>
     );
@@ -127,7 +177,7 @@ export async function AllocationContent({ searchParams }: { searchParams: Search
   if (noTarget) {
     return (
       <>
-        <TabNav tab={tab} />
+        <TabNav tab={tab} include={include} emergencyCount={view.emergencyCount} />
         <p className="text-sm text-muted-foreground">
           Set your target allocation on the{" "}
           <Link href="/rebalancing" className="underline underline-offset-4">
@@ -143,7 +193,7 @@ export async function AllocationContent({ searchParams }: { searchParams: Search
     const history = await getTargetHistory(ctx);
     return (
       <>
-        <TabNav tab={tab} />
+        <TabNav tab={tab} include={include} emergencyCount={view.emergencyCount} />
         <Card>
           <CardContent>
             <ul className="divide-y text-sm" aria-label="Target allocation history">
@@ -194,7 +244,7 @@ export async function AllocationContent({ searchParams }: { searchParams: Search
   if (tab === "rebalance") {
     return (
       <>
-        <TabNav tab={tab} />
+        <TabNav tab={tab} include={include} emergencyCount={view.emergencyCount} />
         <Card>
           <CardHeader>
             <CardTitle>Rebalance</CardTitle>
@@ -210,6 +260,7 @@ export async function AllocationContent({ searchParams }: { searchParams: Search
               trades={view.trades}
               names={{ classes: className, holdings: holdingNames }}
               nextSips={view.nextSips}
+              includeEmergency={include}
             />
           </CardContent>
         </Card>
@@ -268,7 +319,7 @@ export async function AllocationContent({ searchParams }: { searchParams: Search
 
   return (
     <>
-      <TabNav tab={tab} />
+      <TabNav tab={tab} include={include} emergencyCount={view.emergencyCount} />
       <Card>
         <CardHeader>
           <CardTitle className="flex flex-wrap items-center gap-2">
@@ -278,15 +329,25 @@ export async function AllocationContent({ searchParams }: { searchParams: Search
             ) : null}
           </CardTitle>
           <CardDescription>
-            Tolerance band ± {formatPercentBp(view.target.thresholdBp)} (shaded). Emergency-fund
-            holdings count in the weights but are never bought or sold by rebalancing
-            {view.drift.lockedEmergencyMinor > 0 ? (
+            Tolerance band ± {formatPercentBp(view.target.thresholdBp)} (shaded).{" "}
+            {include ? (
               <>
-                {" "}
-                (<Money valueMinor={view.drift.lockedEmergencyMinor} currency={ccy} /> locked)
+                Emergency-fund holdings are included in the weights and locked (never bought or
+                sold)
+                {view.drift.lockedEmergencyMinor > 0 ? (
+                  <>
+                    {" "}
+                    · <Money valueMinor={view.drift.lockedEmergencyMinor} currency={ccy} /> locked
+                  </>
+                ) : null}
+                .
+              </>
+            ) : view.drift.excludedEmergencyMinor > 0 ? (
+              <>
+                Emergency fund not in the allocation:{" "}
+                <Money valueMinor={view.drift.excludedEmergencyMinor} currency={ccy} />.
               </>
             ) : null}
-            .
           </CardDescription>
         </CardHeader>
         <CardContent className="overflow-x-auto">

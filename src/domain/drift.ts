@@ -47,23 +47,40 @@ export interface DriftResult {
   outside: { assetClassId: string; valueMinor: number }[];
   /** Value of emergency-fund holdings inside the universe (counted, locked from trades). */
   lockedEmergencyMinor: number;
+  /** Value of emergency-fund holdings left out (default view). */
+  excludedEmergencyMinor: number;
   flaggedCount: number;
 }
 
 const share = (part: number, whole: number) => (whole > 0 ? mulDivRound(part, BP_SCALE, whole) : 0);
 
-/**
- * The rebalancing universe (owner decision): active holdings whose class is in the target,
- * emergency-fund holdings included so weights match reality; those are `locked` (never traded).
- */
-export function universeOf(tree: AllocationTree, holdings: readonly DriftHolding[]) {
+export interface DriftOptions {
+  /**
+   * Owner toggle (default off): emergency-fund holdings are left out of the universe (docs/04 §8).
+   * On: they count in the weights but are `locked` (never bought or sold).
+   */
+  includeEmergency?: boolean;
+}
+
+/** The rebalancing universe: active holdings whose class is in the target (emergency per option). */
+export function universeOf(
+  tree: AllocationTree,
+  holdings: readonly DriftHolding[],
+  opts: DriftOptions = {},
+) {
   const inTarget = new Set(tree.map((c) => c.assetClassId));
   const active = holdings.filter((h) => h.active && h.valueMinor > 0);
-  const universe = active.filter((h) => inTarget.has(h.assetClassId));
+  const counted = opts.includeEmergency
+    ? active
+    : active.filter((h) => !h.countsTowardEmergencyFund);
+  const universe = counted.filter((h) => inTarget.has(h.assetClassId));
   return {
     universe,
-    outsideHoldings: active.filter((h) => !inTarget.has(h.assetClassId)),
+    outsideHoldings: counted.filter((h) => !inTarget.has(h.assetClassId)),
     locked: new Set(universe.filter((h) => h.countsTowardEmergencyFund).map((h) => h.id)),
+    excludedEmergency: opts.includeEmergency
+      ? []
+      : active.filter((h) => h.countsTowardEmergencyFund),
   };
 }
 
@@ -81,8 +98,9 @@ export function computeDrift(
   tree: AllocationTree,
   holdings: readonly DriftHolding[],
   thresholdBp: number,
+  opts: DriftOptions = {},
 ): DriftResult {
-  const { universe, outsideHoldings, locked } = universeOf(tree, holdings);
+  const { universe, outsideHoldings, locked, excludedEmergency } = universeOf(tree, holdings, opts);
   const V = universe.reduce((s, h) => s + h.valueMinor, 0);
   const classes: ClassDrift[] = tree.map((c) => {
     const members = universe.filter((h) => h.assetClassId === c.assetClassId);
@@ -130,6 +148,7 @@ export function computeDrift(
     lockedEmergencyMinor: universe
       .filter((h) => locked.has(h.id))
       .reduce((s, h) => s + h.valueMinor, 0),
+    excludedEmergencyMinor: excludedEmergency.reduce((s, h) => s + h.valueMinor, 0),
     flaggedCount: classes.filter((c) => c.status !== "ok").length,
   };
 }
@@ -167,8 +186,9 @@ interface Slot {
 export function fullRebalance(
   tree: AllocationTree,
   holdings: readonly DriftHolding[],
+  opts: DriftOptions = {},
 ): TradeLine[] {
-  const { universe, locked } = universeOf(tree, holdings);
+  const { universe, locked } = universeOf(tree, holdings, opts);
   const V = universe.reduce((s, h) => s + h.valueMinor, 0);
   const slots: Slot[] = [];
   for (const c of tree) {
@@ -293,9 +313,10 @@ export function cashflowPlan(
   S: number,
   tree: AllocationTree,
   holdings: readonly DriftHolding[],
+  opts: DriftOptions = {},
 ): { assetClassId: string; holdingId: string | null; amountMinor: number }[] {
   if (S <= 0 || tree.length === 0) return [];
-  const { universe, locked } = universeOf(tree, holdings);
+  const { universe, locked } = universeOf(tree, holdings, opts);
   const classValues: Record<string, number> = {};
   for (const h of universe)
     classValues[h.assetClassId] = (classValues[h.assetClassId] ?? 0) + h.valueMinor;

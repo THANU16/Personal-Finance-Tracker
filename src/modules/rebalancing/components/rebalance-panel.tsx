@@ -51,11 +51,13 @@ export function RebalancePanel({
   trades,
   names,
   nextSips,
+  includeEmergency = false,
 }: {
   currency: string;
   trades: TradeLine[];
   names: Names;
   nextSips: NextSip[];
+  includeEmergency?: boolean;
 }) {
   const router = useRouter();
   const { open } = useQuickAdd();
@@ -69,7 +71,7 @@ export function RebalancePanel({
 
   async function suggest() {
     setPending(true);
-    const result = await cashflowPlanAction(amount ?? 0);
+    const result = await cashflowPlanAction(amount ?? 0, includeEmergency);
     setPending(false);
     if (!result.ok) {
       toast.error(result.error.message);
@@ -179,7 +181,10 @@ export function RebalancePanel({
         <div className="grid gap-3">
           <p className="text-sm text-muted-foreground">
             Buys and sells that bring every holding back to its target. Buys and sells balance out
-            to zero. Emergency-fund holdings are kept as they are and count toward their class.
+            to zero.
+            {includeEmergency
+              ? " Emergency-fund holdings are kept as they are and count toward their class."
+              : ""}
           </p>
           {trades.every((t) => t.tradeMinor === 0) ? (
             <p className="text-sm text-muted-foreground">You are on target — nothing to trade.</p>

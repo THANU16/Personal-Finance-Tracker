@@ -120,16 +120,24 @@ async function nextSips(ctx: Ctx): Promise<NextSip[]> {
   });
 }
 
-export async function getAllocationView(ctx: Ctx): Promise<AllocationView> {
+export async function getAllocationView(
+  ctx: Ctx,
+  opts: { includeEmergency?: boolean } = {},
+): Promise<AllocationView & { includeEmergency: boolean; emergencyCount: number }> {
   const l = await load(ctx);
   const tree = l.target.allocation;
+  const o = { includeEmergency: Boolean(opts.includeEmergency) };
   return {
     currency: ctx.baseCurrency,
     target: l.target,
     options: l.options,
     holdings: [...l.refs.values()],
-    drift: computeDrift(tree, l.holdings, l.target.thresholdBp),
-    trades: fullRebalance(tree, l.holdings),
+    drift: computeDrift(tree, l.holdings, l.target.thresholdBp, o),
+    trades: fullRebalance(tree, l.holdings, o),
+    includeEmergency: o.includeEmergency,
+    emergencyCount: l.holdings.filter(
+      (h) => h.active && h.countsTowardEmergencyFund && h.valueMinor > 0,
+    ).length,
     fxMissing: l.fxMissing,
     nextSips: await nextSips(ctx),
   };
@@ -152,12 +160,15 @@ const amountSchema = z
 export async function getCashflowPlan(
   ctx: Ctx,
   amount: unknown,
+  opts: { includeEmergency?: boolean } = {},
 ): Promise<{ assetClassId: string; holdingId: string | null; amountMinor: number }[]> {
   const S = parseInput(amountSchema, amount);
   const l = await load(ctx);
   if (l.target.allocation.length === 0)
     throw new AppError("VALIDATION", "Set your target allocation first");
-  return cashflowPlan(S, l.target.allocation, l.holdings);
+  return cashflowPlan(S, l.target.allocation, l.holdings, {
+    includeEmergency: Boolean(opts.includeEmergency),
+  });
 }
 
 /** "Use for next SIP": the plan's next due period opens in the drift-tilted split. */

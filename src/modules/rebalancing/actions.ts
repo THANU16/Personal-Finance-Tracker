@@ -8,10 +8,15 @@ import { runAction } from "@/server/run-action";
 
 export async function cashflowPlanAction(
   amountMinor: unknown,
+  includeEmergency = false,
 ): Promise<
   ActionResult<{ assetClassId: string; holdingId: string | null; amountMinor: number }[]>
 > {
-  return runAction(async () => getCashflowPlan(await requireUser(), amountMinor));
+  return runAction(async () =>
+    getCashflowPlan(await requireUser(), amountMinor, {
+      includeEmergency: includeEmergency === true,
+    }),
+  );
 }
 
 export async function tiltNextSipAction(planId: unknown): Promise<ActionResult<NextSip>> {

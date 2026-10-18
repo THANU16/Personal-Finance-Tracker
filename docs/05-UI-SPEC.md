@@ -80,6 +80,9 @@ Header (value, gain, XIRR, income) · value vs invested line chart · tabs: Tran
 Income · Details (edit, track-units toggle, close). FD variant: maturity countdown, accrued interest,
 Renew / Withdraw actions.
 
+Allocation `/rebalancing` (Planned vs Actual, Rebalance): "Emergency fund: Hidden / Included" switch when emergency-fund
+holdings exist; Hidden (default) states the amount left out, Included marks them "emergency fund (locked)".
+
 ## 6. SIP Planner `/sip`
 Tabs: **Planner** · **Upcoming** · **History**.
 - Planner: plan cards (name, amount, frequency, next due, status, consistency %, invested vs value).
