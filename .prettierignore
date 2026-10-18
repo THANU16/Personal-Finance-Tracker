@@ -1,0 +1,14 @@
+node_modules
+.next
+out
+build
+coverage
+test-results
+playwright-report
+blob-report
+package-lock.json
+next-env.d.ts
+
+# Hand-written specs and agent instructions — keep their formatting as authored
+*.md
+.claude

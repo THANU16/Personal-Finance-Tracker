@@ -1,0 +1,4 @@
+# Keep LF in the repo and working tree (matches Prettier) on Windows too
+* text=auto eol=lf
+*.ico binary
+*.png binary

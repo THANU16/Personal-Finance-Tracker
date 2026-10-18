@@ -1,0 +1,132 @@
+# 05 — UI Specification
+
+## 1. Global
+- **Shell:** left sidebar (collapsible; bottom nav on mobile), topbar with search, "hide amounts" eye
+  toggle, notifications bell (unread count), theme toggle, user menu.
+- **Sidebar groups:**
+  Overview: Dashboard · Forecast · Reports
+  Money: Accounts · Transactions · Recurring · Budgets
+  Invest: Assets · SIP Planner · Rebalancing · Opportunity Fund
+  Plan: Goals · Debts · Essentials
+  System: Notifications · Settings
+- **Quick add** (button + keyboard `N`): sheet with type tabs Expense · Income · Transfer · Invest ·
+  Redeem · Income from investment · Debt payment. Remembers last account. Enter submits.
+- **Formatting:** `LKR 1,250,000.00` (or compact `1.25M` on cards with full value in tooltip);
+  negatives red with minus sign; gains green/losses red with ▲/▼ chip; percents 1 decimal.
+- **Every list:** empty state with a primary action; skeleton loading; pagination or virtualised table.
+- **Every form:** inline Zod errors, disabled submit while pending, success toast, focus first error.
+- **Destructive actions** (void, undo execution, archive): confirm dialog describing the impact.
+- **Badges:** `Stale · 34d`, `Due`, `Overdue`, `Partial`, `Skipped`, `Missed`, `FX missing`.
+- Light/dark themes; 360px minimum width; tables become stacked cards on mobile.
+- Charts (Recharts): consistent class colours from `assetClasses.color`; tooltips show full amounts.
+
+## 2. Dashboard `/dashboard`
+Row 1 stat cards: Net worth (Δ this month, Δ %), Assets, Liabilities, This month savings rate.
+Row 2: Net worth trend (area, 12m / 3y / all toggle) · Allocation donut by class (click → Assets filtered).
+Row 3: Cashflow this month (income, expense, savings bars + 6-month mini trend) · Top 5 expense categories.
+Row 4: **Upcoming (14 days)** list — SIPs (Execute button), recurring (Confirm), EMIs, card dues, FD
+maturities, renewals · **Attention** card — stale valuations count (→ Update values), budgets over 80%,
+opportunity-fund banner if triggered, forecast warning.
+Row 5: Goals progress bars · Essentials mini (emergency months, health score) · Opportunity fund (size vs target, current drawdown).
+
+## 3. Accounts `/accounts`, `/accounts/[id]`
+- Grouped by type with subtotals: Cash & bank, Cards, Loans, Investment cash, Opportunity fund, Receivables/Payables.
+- Card row: outstanding, limit, utilisation bar, next due date.
+- Actions: Add account (type-driven form), Reconcile, Archive.
+- Detail: balance history line, transactions table filtered to the account, running balance column.
+
+## 4. Transactions `/transactions`
+- Filters bar (date presets, type, account, category, holding, tag, amount, search) synced to URL.
+- Table: date · description · type icon · category/holding · account(s) · amount (signed per context) · tags · attachment icon · menu (edit, duplicate, void).
+- Grouped lines (SIP execution, deployment) show a group chip linking to the owner.
+- Monthly summary strip: income, expense, net.
+- Import `/transactions/import`: upload CSV → choose account → map columns → preview with duplicates
+  flagged and categories auto-suggested → import → result summary (undo batch).
+
+## 5. Assets `/assets`
+- Header totals: value, invested, unrealised gain (%), realised gain, income, portfolio XIRR.
+- Toggle view: **By class** (accordion per class with class totals, weight, XIRR) / **All holdings** table.
+- Holding row: name · instrument · invested · value · gain (abs, %) · weight · XIRR · last updated (stale badge) · quick actions (Buy, Redeem, Update value).
+- "Update values" button → `/assets/update-values`: table (holding, invested, last value, last updated,
+  **new value** input, Δ preview, optional NAV input when trackUnits) → Save all (big-change rows require a tick).
+- Add holding wizard: class → instrument → name/details → opening invested & current value (or FD fields) → optional track units.
+
+### Holding detail `/assets/[id]`
+Header (value, gain, XIRR, income) · value vs invested line chart · tabs: Transactions · Valuations ·
+Income · Details (edit, track-units toggle, close). FD variant: maturity countdown, accrued interest,
+Renew / Withdraw actions.
+
+## 6. SIP Planner `/sip`
+Tabs: **Planner** · **Upcoming** · **History**.
+- Planner: plan cards (name, amount, frequency, next due, status, consistency %, invested vs value).
+  "New plan".
+- Plan editor `/sip/plans/new`, `/sip/plans/[id]`: basics (name, amount, frequency, day, source account,
+  start/end), step-up, missed policy, drift tilt toggle, **Allocation tree editor**:
+  - Class rows with % input + slider and live amount; expandable asset rows inside with % of class,
+    % of total and amount; "Add asset" (holding picker filtered by class, or create holding inline);
+    totals bar turns red unless 100%; Auto-balance button.
+  - Saving allocation changes on an existing plan shows "This creates version N, effective from <date>".
+- Upcoming: due/overdue executions grouped by plan, Execute · Skip.
+- Execute `/sip/execute/[executionId]`: header (plan, period, planned total incl. carry-in, source
+  account balance after) · toggle Normal split / Drift-tilted split · lines grouped by class: planned,
+  **actual** input, fee, optional units/price (units auto = actual ÷ price) · totals and status preview
+  (done / partial) · Confirm.
+- History: filters (plan, status, date) · timeline list with planned vs actual and status chips ·
+  per-plan charts: cumulative invested vs estimated value, monthly bars planned vs actual ·
+  consistency score · Undo on recent executions.
+
+## 7. Rebalancing `/rebalancing`
+- Target editor (same tree editor) + threshold.
+- Table: class · current value · current % · target % · drift (bp shown as %) with bar · status chip
+  (OK / Over / Under) · expand to assets.
+- Plan panel: tabs "Invest new money" (amount input → suggested split) and "Full rebalance" (buy/sell
+  per asset). "Apply" opens pre-filled Buy/Redeem forms; "Use for next SIP" tilts next execution.
+
+## 8. Opportunity Fund `/opportunity-fund`
+- Banner "Market drop detected — rule −20% reached. Suggested deployment LKR X" with Record deployment.
+- Cards: fund balance vs target, benchmark latest level, reference high, current drawdown gauge.
+- Market levels: add level form + line chart with reference high and rule lines.
+- Rules editor (drawdown %, cumulative deploy %) + allocation tree.
+- Record deployment dialog (pre-filled amount and split; editable lines) · deployment history table.
+
+## 9. Debts `/debts`, `/debts/[id]`
+List: loan, outstanding, EMI, rate, next due, payoff date, progress bar; totals; DTI chip.
+Detail: amortisation schedule table (paid rows ticked), principal vs interest chart, Record payment
+(pre-filled EMI with split preview), Prepayment (mode choice with before/after payoff comparison).
+Receivables/payables section with Settle action (transfer).
+
+## 10. Recurring `/recurring`
+Table: name, kind, amount, account, frequency, next due, status; Confirm (dialog with editable amount),
+Skip, Pause, Edit. Calendar view of the month optional tab.
+
+## 11. Budgets `/budgets`
+Month picker · "Copy last month" · rows: category, budget, spent, remaining, progress bar (amber ≥80%,
+red ≥100%) · Unbudgeted spending row · total.
+
+## 12. Goals `/goals`
+Cards: name, target, date, progress ring, current, required monthly, status chip; detail drawer with
+linked items and shares.
+
+## 13. Essentials `/essentials`
+Health score gauge with 4 sub-scores · Emergency fund (target, current, coverage months, which accounts
+count) · Insurance policies table + coverage vs target · Debt-to-income · Savings rate trend.
+
+## 14. Forecast `/forecast`
+Horizon toggle 30/60/90 · total balance line with danger zone · per-account table of lowest point and
+date · upcoming events list.
+
+## 15. Reports `/reports`
+Tabs: Monthly summary · Income vs expense (12m) · Categories · Investment performance · Realised gains
+(year) · Investment income & tax (year) · Net worth history. Each with Export CSV.
+
+## 16. Notifications `/notifications`
+List grouped Today / This week / Earlier; mark read, snooze 1d/3d/7d; link to action.
+
+## 17. Settings `/settings`
+Tabs: Profile · Preferences (currency, timezone, thresholds, emergency months, insurance targets,
+notifications) · Categories (tree, essential flag, rules for import) · Asset classes · FX rates ·
+Data (export JSON, restore JSON, export transactions CSV, rebuild snapshots, recompute caches).
+
+## 18. Onboarding (first login)
+Steps: preferences → add accounts with opening balances → add holdings → (optional) create first SIP →
+done. Can skip; "Load demo data" option in development.
