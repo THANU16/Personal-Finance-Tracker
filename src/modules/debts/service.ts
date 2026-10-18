@@ -45,6 +45,7 @@ import { withTransaction } from "@/server/db/transaction";
 import { AppError } from "@/server/errors";
 import { recomputeDebt } from "@/server/ledger/debt";
 import { postTransaction } from "@/server/ledger/post";
+import { voidTransaction } from "@/server/ledger/void";
 import { recomputeAccount } from "@/server/ledger/recompute";
 
 // docs/04 §10 — loans: the loan is an account of type `loan` (negative balance); payments are
@@ -194,32 +195,167 @@ export async function createDebt(ctx: Ctx, input: unknown): Promise<{ id: string
   });
 }
 
+/** The transfer that paid a new loan into an account (posted by createDebt), if any. */
+async function disbursementOf(d: DebtDoc, session: ClientSession | null) {
+  return TransactionModel.findOne({
+    userId: d.userId,
+    type: "transfer",
+    status: "posted",
+    fromAccountId: d.accountId,
+    "source.kind": "system",
+  })
+    .session(session)
+    .lean<TransactionDoc>();
+}
+
+/**
+ * Edit a loan (owner decision: every field, any time). In one DB transaction: the loan account's
+ * opening balance/date and the disbursement transfer follow the new terms, recorded payments keep
+ * their interest/principal split, and the plan is rebuilt from the resulting outstanding (EMI over
+ * the months left, unless an EMI is given).
+ */
 export async function updateDebt(ctx: Ctx, id: string, input: unknown): Promise<{ id: string }> {
   const data = parseInput(updateDebtSchema, input);
   return withTransaction(async (session) => {
     const d = await loadDebt(ctx, id, session);
+    const userId = d.userId;
     if (data.paymentAccountId)
       await loadAccountOf(ctx, data.paymentAccountId, "paymentAccountId", session);
-    await DebtModel.updateOne(
-      { _id: d._id, userId: d.userId },
+    const disbursement = await disbursementOf(d, session);
+    if (disbursement && data.paidBeforeTracking > 0) {
+      throw new AppError(
+        "VALIDATION",
+        "This loan was paid into an account as a new loan, so no instalments were paid before it",
+        {
+          paidBeforeTracking: ["Must be 0 for a new loan"],
+        },
+      );
+    }
+    const k = data.paidBeforeTracking;
+    const openingKey = k > 0 ? dueDate(data.startDate, data.paymentDay, k) : data.startDate;
+    if (openingKey > todayOf(ctx)) {
+      throw new AppError(
+        "VALIDATION",
+        "The loan (or its last paid instalment) cannot be in the future",
+        {
+          startDate: ["Pick an earlier date"],
+        },
+      );
+    }
+    const payments = await TransactionModel.find({
+      userId,
+      debtId: d._id,
+      type: "debt_payment",
+      status: "posted",
+    })
+      .session(session)
+      .lean<TransactionDoc[]>();
+    const firstPayment = payments.reduce<string | null>((m, t) => {
+      const day = utcToBusinessDate(t.date, ctx.tz);
+      return !m || day < m ? day : m;
+    }, null);
+    if (firstPayment && firstPayment < openingKey) {
+      throw new AppError(
+        "VALIDATION",
+        `A payment on ${firstPayment} is before the loan's new start (${openingKey})`,
+        {
+          startDate: ["Before a recorded payment"],
+        },
+      );
+    }
+
+    const opening = disbursement
+      ? 0
+      : -outstandingAfter(data.principalMinor, data.annualRateBp, data.tenureMonths, k);
+    await AccountModel.updateOne(
+      { _id: d.accountId, userId },
       {
         $set: {
           name: data.name,
-          lender: data.lender,
-          paymentDay: data.paymentDay,
-          paymentAccountId: data.paymentAccountId
-            ? new Types.ObjectId(data.paymentAccountId)
-            : null,
+          institution: data.lender,
+          openingBalanceMinor: opening,
+          openingDate: businessDateToUtc(openingKey, ctx.tz),
         },
       },
       { session },
     );
-    await AccountModel.updateOne(
-      { _id: d.accountId, userId: d.userId },
-      { $set: { name: data.name } },
+    // A new loan's disbursement follows the amount and start date (void + repost, never edited in place).
+    if (
+      disbursement &&
+      (disbursement.amountMinor !== data.principalMinor ||
+        utcToBusinessDate(disbursement.date, ctx.tz) !== data.startDate)
+    ) {
+      await voidTransaction(ctx, String(disbursement._id), "Loan edited", session);
+      await postTransaction(
+        ctx,
+        {
+          type: "transfer",
+          date: businessDateToUtc(data.startDate, ctx.tz),
+          amountMinor: data.principalMinor,
+          fromAccountId: String(d.accountId),
+          toAccountId: String(disbursement.toAccountId),
+          description: `${data.name} disbursed`,
+          source: { kind: "system" },
+        },
+        session,
+      );
+    }
+
+    const termsChanged =
+      data.principalMinor !== d.principalMinor ||
+      data.annualRateBp !== d.annualRateBp ||
+      data.tenureMonths !== d.tenureMonths ||
+      data.startDate !== d.startDate ||
+      data.paymentDay !== d.paymentDay ||
+      data.paidBeforeTracking !== d.paidBeforeTracking;
+    await DebtModel.updateOne(
+      { _id: d._id, userId },
+      {
+        $set: {
+          name: data.name,
+          kind: data.kind,
+          lender: data.lender,
+          principalMinor: data.principalMinor,
+          annualRateBp: data.annualRateBp,
+          tenureMonths: data.tenureMonths,
+          startDate: data.startDate,
+          paymentDay: data.paymentDay,
+          paidBeforeTracking: k,
+          paymentAccountId: data.paymentAccountId
+            ? new Types.ObjectId(data.paymentAccountId)
+            : null,
+          ...(data.emiMinor ? { emiMinor: data.emiMinor } : {}),
+          // Old prepayments can no longer restore an EMI/tenure the edit replaced.
+          ...(termsChanged || data.emiMinor
+            ? { prepayments: d.prepayments.map((p) => ({ ...p, reverted: true })) }
+            : {}),
+        },
+      },
       { session },
     );
-    await recomputeDebt(ctx, d._id, session);
+    await recomputeAccount(userId, d.accountId, session);
+    let after = await recomputeDebt(ctx, d._id, session);
+    // Rebuild the plan from today's outstanding when the terms changed and no EMI was given.
+    if (after && termsChanged && !data.emiMinor && after.outstandingMinor > 0) {
+      const monthsLeft = Math.max(1, data.tenureMonths - after.paymentsCount);
+      await DebtModel.updateOne(
+        { _id: d._id, userId },
+        { $set: { emiMinor: calcEmi(after.outstandingMinor, data.annualRateBp, monthsLeft) } },
+        { session },
+      );
+      after = await recomputeDebt(ctx, d._id, session);
+    }
+    await writeAudit(
+      {
+        userId: ctx.userId,
+        action: "update",
+        entity: "debt",
+        entityId: d._id,
+        before: { ...d, prepayments: undefined },
+        after: data,
+      },
+      session,
+    );
     return { id };
   });
 }
@@ -445,6 +581,7 @@ export async function getDebt(ctx: Ctx, id: string): Promise<DebtDetailDTO> {
     AccountModel.find({ userId, archivedAt: null }).sort({ name: 1 }).lean<AccountDoc[]>(),
   ]);
   const names = new Map(accounts.map((a) => [String(a._id), a.name]));
+  const disbursed = await disbursementOf(d, null);
   const prepaymentIds = new Set(
     d.prepayments.filter((p) => !p.reverted).map((p) => String(p.transactionId)),
   );
@@ -501,6 +638,7 @@ export async function getDebt(ctx: Ctx, id: string): Promise<DebtDetailDTO> {
     paidBeforeTracking: d.paidBeforeTracking,
     paymentsCount: d.paymentsCount,
     paymentAccountId: d.paymentAccountId ? String(d.paymentAccountId) : null,
+    disbursedInto: disbursed?.toAccountId ? String(disbursed.toAccountId) : null,
     nextInterestMinor: roundHalfAwayFromZero(d.outstandingMinor * monthlyRate(d.annualRateBp)),
     schedule,
     payments,

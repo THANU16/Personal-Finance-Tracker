@@ -223,6 +223,11 @@ Status values: ⬜ not started · 🟡 in progress · ✅ done
   currency; chip: ≤ 30% healthy, ≤ 50% watch, above high. EMIs appear in Upcoming (outflow only from an earmarkable payment
   account, like SIPs). Receivables/payables settle via transfer (receivable → account, account → payable), capped at the open
   balance, dip guard + confirm.
+- [8] Edit loan (owner decision: every field, any time): in one DB transaction the loan account opening balance/date follow
+  the new terms (a new loan keeps opening 0 and its disbursement transfer is voided + reposted for a new amount/date), recorded
+  payments keep their interest/principal split, and the EMI is recalculated over the months left from the new outstanding
+  unless an EMI is entered. Refused: instalments-before-tracking on a disbursed loan, a start after a recorded payment. Older
+  prepayments stop restoring the EMI/tenure an edit replaced.
 - [8] Transactions list: "Loan payment" type (signed −, "Bank → Loan" accounts, filter option).
 - [9] `domain/recurring.ts`: `firstDue` (on/after start), `nextAfter` (monthly/every-N-months/yearly re-anchor to
   `dayOfMonth` clamped to month end: 31 Jan → 28 Feb → 31 Mar; weekly every N weeks on a weekday), `occurrences`,
@@ -319,7 +324,7 @@ Status values: ⬜ not started · 🟡 in progress · ✅ done
 ## Known issues / tech debt
 - [9] Budget `rollover` is stored but not applied (owner-approved). Budget 80/100% and goal off-track notifications arrive with
   the Phase 10 job (status badges and Attention now). Recurring reminders show as "Due soon" on /recurring until then.
-- [8] No interest-rate changes for floating loans yet (owner-approved scope). Interest is a flat monthly r on the outstanding
+- [8] Floating rates: change the rate with Edit loan (EMI recalculated over the months left); there is no rate history. Interest is a flat monthly r on the outstanding
   whatever the payment date (docs/04 §10), so early/late payments do not change it. Debt payments are voided, not edited.
 - [7] No in-app notification for a triggered rule until Phase 10 (banner + Attention only). One benchmark per fund; changing its
   name starts from that benchmark's own levels.

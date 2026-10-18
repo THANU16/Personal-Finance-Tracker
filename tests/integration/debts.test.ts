@@ -1,7 +1,7 @@
 import { Types } from "mongoose";
 import { describe, expect, it } from "vitest";
 import { cashflowOf } from "@/domain/ledger";
-import { dueDate, outstandingAfter } from "@/domain/loan";
+import { dueDate, emiMinor, outstandingAfter } from "@/domain/loan";
 import { CategoryModel } from "@/modules/categories/model";
 import { DebtModel, type DebtDoc } from "@/modules/debts/model";
 import {
@@ -13,6 +13,7 @@ import {
   recordPayment,
   recordPrepayment,
   settleCounterparty,
+  updateDebt,
 } from "@/modules/debts/service";
 import { TransactionModel, type TransactionDoc } from "@/modules/transactions/model";
 import { voidTransaction } from "@/modules/transactions/service";
@@ -244,6 +245,101 @@ describe("loans", () => {
     expect(o.totals).toMatchObject({ outstandingMinor: P, monthlyEmiMinor: EMI });
     expect(o.dtiBp).toBeNull(); // no income yet
     expect(o.debts[0]!.id).toBe(id);
+  });
+});
+
+describe("editing a loan (everything, any time)", () => {
+  const edit = (overrides: Record<string, unknown> = {}) => ({
+    name: "Car loan",
+    kind: "bank_loan",
+    lender: "NSB",
+    principalMinor: P,
+    annualRateBp: 1200,
+    tenureMonths: 12,
+    startDate: "2026-01-10",
+    paymentDay: 10,
+    paidBeforeTracking: 0,
+    emiMinor: null,
+    paymentAccountId: null,
+    ...overrides,
+  });
+
+  it("a rate change keeps past payments and rebuilds the EMI over the months left", async () => {
+    const { ctx, bank, id, loanId } = await setup();
+    await pay(ctx, id, bank.id);
+    await updateDebt(ctx, id, edit({ annualRateBp: 1000, name: "Car loan (NSB)" }));
+    const d = await debtDoc(ctx, id);
+    expect(d).toMatchObject({
+      annualRateBp: 1000,
+      outstandingMinor: 92_115_121,
+      paymentsCount: 1,
+      nextDueDate: "2026-03-10",
+    });
+    expect(d.emiMinor).toBe(emiMinor(92_115_121, 1000, 11));
+    const paid = await TransactionModel.findOne({
+      userId: uid(ctx),
+      type: "debt_payment",
+    }).lean<TransactionDoc>();
+    expect(paid).toMatchObject({ interestMinor: 1_000_000, principalMinor: 7_884_879 });
+    expect(await balanceOf(ctx, loanId)).toBe(-92_115_121);
+    expect((await getDebt(ctx, id)).name).toBe("Car loan (NSB)");
+    expect((await recomputeAllForUser(ctx)).changed).toBe(0);
+  });
+
+  it("a new amount re-posts the disbursement; an EMI can be set by hand", async () => {
+    const { ctx, bank, id, loanId } = await setup();
+    await updateDebt(ctx, id, edit({ principalMinor: 80_000_000, emiMinor: 7_200_000 }));
+    expect(await balanceOf(ctx, loanId)).toBe(-80_000_000);
+    expect(await balanceOf(ctx, bank.id)).toBe(50_000_000 + 80_000_000);
+    expect(await debtDoc(ctx, id)).toMatchObject({
+      principalMinor: 80_000_000,
+      outstandingMinor: 80_000_000,
+      emiMinor: 7_200_000,
+    });
+    const transfers = await TransactionModel.find({ userId: uid(ctx), type: "transfer" }).lean<
+      TransactionDoc[]
+    >();
+    expect(transfers.map((t) => [t.status, t.amountMinor]).sort()).toEqual([
+      ["posted", 80_000_000],
+      ["void", P],
+    ]);
+    const err = await updateDebt(ctx, id, edit({ paidBeforeTracking: 2 })).catch((e: unknown) => e);
+    expect((err as AppError).message).toMatch(/new loan/);
+  });
+
+  it("an existing loan follows a changed instalment count; a start after a payment is refused", async () => {
+    const ctx = await makeUser();
+    const bank = await makeAccount(ctx, { name: "Bank", openingBalanceMinor: 50_000_000 });
+    const { id } = await createDebt(ctx, {
+      name: "Home loan",
+      kind: "bank_loan",
+      principalMinor: P,
+      annualRateBp: 1200,
+      tenureMonths: 12,
+      startDate: "2025-12-10",
+      paymentDay: 10,
+      paidBeforeTracking: 3,
+    });
+    await updateDebt(
+      ctx,
+      id,
+      edit({ name: "Home loan", startDate: "2025-12-10", paidBeforeTracking: 2 }),
+    );
+    let d = await debtDoc(ctx, id);
+    expect(d).toMatchObject({
+      outstandingMinor: outstandingAfter(P, 1200, 12, 2),
+      paymentsCount: 2,
+      nextDueDate: "2026-03-10",
+    });
+    await pay(ctx, id, bank.id, EMI, "2026-03-10");
+    const err = await updateDebt(
+      ctx,
+      id,
+      edit({ name: "Home loan", startDate: "2026-04-01" }),
+    ).catch((e: unknown) => e);
+    expect((err as AppError).message).toMatch(/before the loan.s new start/);
+    d = await debtDoc(ctx, id);
+    expect(d.paymentsCount).toBe(3);
   });
 });
 

@@ -45,6 +45,7 @@ import {
   recordPaymentAction,
   recordPrepaymentAction,
 } from "@/modules/debts/actions";
+import { EditLoanDialog } from "@/modules/debts/components/edit-loan-dialog";
 import type { DebtDetailDTO, PrepaymentPreviewDTO } from "@/modules/debts/schemas";
 import {
   DipConfirmDialog,
@@ -421,7 +422,7 @@ function SplitTooltip({ active, payload, currency }: TooltipContentProps & { cur
 }
 
 export function DebtDetailClient({ d, today }: { d: DebtDetailDTO; today: string }) {
-  const [dialog, setDialog] = useState<"pay" | "prepay" | null>(null);
+  const [dialog, setDialog] = useState<"pay" | "prepay" | "edit" | null>(null);
   const posted = d.payments.filter((p) => p.status === "posted");
   let n = d.paidBeforeTracking;
   const rows: Row[] = [
@@ -467,6 +468,9 @@ export function DebtDetailClient({ d, today }: { d: DebtDetailDTO; today: string
         </Button>
         <Button variant="outline" disabled={!active} onClick={() => setDialog("prepay")}>
           Prepayment
+        </Button>
+        <Button variant="ghost" onClick={() => setDialog("edit")}>
+          Edit loan
         </Button>
       </div>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -635,6 +639,7 @@ export function DebtDetailClient({ d, today }: { d: DebtDetailDTO; today: string
       {dialog === "pay" ? (
         <PaymentDialog d={d} today={today} onClose={() => setDialog(null)} />
       ) : null}
+      {dialog === "edit" ? <EditLoanDialog d={d} onClose={() => setDialog(null)} /> : null}
       {dialog === "prepay" ? (
         <PrepaymentDialog d={d} today={today} onClose={() => setDialog(null)} />
       ) : null}

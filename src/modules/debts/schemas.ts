@@ -65,14 +65,37 @@ export const createDebtSchema = z
   });
 export type CreateDebtInput = z.input<typeof createDebtSchema>;
 
+/**
+ * Edit a loan (owner decision: everything, any time). Past payments keep their split; the plan is
+ * rebuilt from the new outstanding. `emiMinor` null = recalculate over the months left.
+ */
 export const updateDebtSchema = z
   .object({
     name: z.string().trim().min(1, "Enter a name").max(60),
+    kind: z.enum(DEBT_KINDS),
     lender: text(80),
+    principalMinor: amountMinor,
+    annualRateBp: z
+      .number()
+      .int("Use whole basis points")
+      .min(0, "Cannot be negative")
+      .max(10_000, "At most 100%"),
+    tenureMonths: z
+      .number()
+      .int("Whole months")
+      .min(1, "At least 1 month")
+      .max(600, "At most 50 years"),
+    startDate: dateKey,
     paymentDay: z.number().int().min(1, "Day 1–31").max(31, "Day 1–31"),
+    paidBeforeTracking: z.number().int().min(0),
+    emiMinor: amountMinor.nullable(),
     paymentAccountId: objectId.nullable(),
   })
-  .strict();
+  .strict()
+  .refine((v) => v.paidBeforeTracking < v.tenureMonths, {
+    path: ["paidBeforeTracking"],
+    message: "Fewer than the tenure",
+  });
 
 export const paymentSchema = z
   .object({
@@ -159,6 +182,8 @@ export interface DebtDetailDTO extends DebtSummaryDTO {
   paidBeforeTracking: number;
   paymentsCount: number;
   paymentAccountId: string | null;
+  /** The account a new loan was paid into (its disbursement transfer), if recorded. */
+  disbursedInto: string | null;
   /** Interest of the next instalment on the current outstanding. */
   nextInterestMinor: number;
   schedule: ScheduleRowDTO[];

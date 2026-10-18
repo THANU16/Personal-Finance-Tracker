@@ -72,9 +72,19 @@ test("add loan → EMI preview → pay → schedule ticks → prepay (finish soo
   await expect(page.getByText("Prepayment recorded")).toBeVisible();
   await expect(page.locator('tr[data-state="projected"]')).toHaveCount(8);
 
+  // Edit everything any time: a lower rate rebuilds the EMI over the months left.
+  await page.getByRole("button", { name: "Edit loan" }).click();
+  const editDialog = page.getByRole("dialog", { name: "Edit loan" });
+  await editDialog.getByLabel("Name").fill("Car loan (NSB)");
+  await editDialog.getByLabel("Annual interest rate").fill("10");
+  await editDialog.getByRole("button", { name: "Save loan" }).click();
+  await expect(page.getByText("Loan saved")).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Car loan (NSB)" })).toBeVisible();
+  await expect(page.getByText("10.0% a year")).toBeVisible();
+
   // The list shows the loan; interest (not principal) appears as an expense in transactions.
   await page.goto("/debts");
-  await expect(page.getByRole("link", { name: "Car loan" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Car loan (NSB)" })).toBeVisible();
   await page.goto("/transactions");
   await expect(page.getByText("Loan payment").first()).toBeVisible();
 });
