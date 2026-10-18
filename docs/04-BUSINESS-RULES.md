@@ -169,7 +169,10 @@ Crypto 10% → A 20,000; B 10,000; MF 20,000; UT 30,000; Gold 10,000; BTC 10,000
 
 ## 8. Rebalancing
 - Universe: active holdings whose class is in the target; other classes reported as "outside target".
-  Universe excludes holdings flagged `countsTowardEmergencyFund`.
+  Holdings flagged `countsTowardEmergencyFund` are **in** the universe (weights and drift match reality) but **locked**
+  (owner decision): rebalancing never buys or sells them. In the full rebalance a locked holding keeps its value (trade 0) and
+  counts toward its own class target first; each class's remaining target goes to its tradable holdings, scaled so Σ trades = 0.
+  "Invest new money" never routes money into a locked holding.
 - `V = Σ values in universe`; `weight_i = value_i / V`; `drift_i = weight_i − target_i` (bp).
 - Class flagged when `|drift| ≥ thresholdBp`; asset drift computed within its class against the
   class's asset targets (if defined).

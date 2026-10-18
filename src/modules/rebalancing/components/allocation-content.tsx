@@ -236,6 +236,7 @@ export async function AllocationContent({ searchParams }: { searchParams: Search
                   <span>
                     {holdingNames[a.holdingId]?.name ?? "Holding"}
                     {!a.inTarget && c.hasAssetTargets ? " (not in target)" : ""}
+                    {a.locked ? " · emergency fund (locked)" : ""}
                   </span>
                   <span className="tabular-nums">
                     <Money valueMinor={a.valueMinor} currency={ccy} /> ·{" "}
@@ -278,11 +279,11 @@ export async function AllocationContent({ searchParams }: { searchParams: Search
           </CardTitle>
           <CardDescription>
             Tolerance band ± {formatPercentBp(view.target.thresholdBp)} (shaded). Emergency-fund
-            holdings are not part of rebalancing
-            {view.drift.excludedEmergencyMinor > 0 ? (
+            holdings count in the weights but are never bought or sold by rebalancing
+            {view.drift.lockedEmergencyMinor > 0 ? (
               <>
                 {" "}
-                (<Money valueMinor={view.drift.excludedEmergencyMinor} currency={ccy} /> left out)
+                (<Money valueMinor={view.drift.lockedEmergencyMinor} currency={ccy} /> locked)
               </>
             ) : null}
             .

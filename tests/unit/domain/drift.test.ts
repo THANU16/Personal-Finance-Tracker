@@ -75,22 +75,33 @@ describe("computeDrift (docs/04 §8)", () => {
         targetInClassBp: null,
         driftBp: null,
         inTarget: false,
+        locked: false,
       },
     ]);
   });
 
-  it("emergency-flagged holdings and classes outside the target do not move drift", () => {
+  it("emergency-fund holdings count in the weights (locked); outside classes and closed ones do not", () => {
     const more = [
       ...HOLDINGS,
-      h("EF", "fixed", 500_000, { countsTowardEmergencyFund: true }),
+      h("EF", "fixed", 20_000, { countsTowardEmergencyFund: true }),
       h("BTC", "crypto", 40_000),
       h("CLOSED", "equity", 99_999, { active: false }),
     ];
     const d2 = computeDrift(TREE, more, 500);
-    expect(d2.classes.map((c) => c.driftBp)).toEqual(d.classes.map((c) => c.driftBp));
-    expect(d2.universeValueMinor).toBe(100_000);
+    expect(d2.universeValueMinor).toBe(120_000);
+    // fixed = UT 20,000 + EF 20,000 = 40,000 of 120,000
+    expect(d2.classes.map((c) => [c.assetClassId, c.weightBp])).toEqual([
+      ["equity", 5_833],
+      ["fixed", 3_333],
+      ["gold", 833],
+    ]);
+    expect(d2.classes[1]!.assets.find((a) => a.holdingId === "EF")).toMatchObject({
+      locked: true,
+      inTarget: false,
+      weightInClassBp: 5_000,
+    });
+    expect(d2.lockedEmergencyMinor).toBe(20_000);
     expect(d2.outside).toEqual([{ assetClassId: "crypto", valueMinor: 40_000 }]);
-    expect(d2.excludedEmergencyMinor).toBe(500_000);
   });
 
   it("a holding missing from its class list counts with a 0% target", () => {
@@ -150,7 +161,66 @@ describe("fullRebalance", () => {
   });
 });
 
+describe("fullRebalance with a locked emergency-fund holding", () => {
+  it("keeps it (trade 0); it counts toward its own class target; trades still sum to 0", () => {
+    // V = 120,000: ideal equity 72,000, fixed 36,000 (EF 20,000 locked → UT 16,000), gold 12,000
+    const trades = fullRebalance(TREE, [
+      ...HOLDINGS,
+      h("EF", "fixed", 20_000, { countsTowardEmergencyFund: true }),
+    ]);
+    expect(trades.map((t) => [t.holdingId, t.locked, t.targetMinor, t.tradeMinor])).toEqual([
+      ["A", false, 36_000, -14_000],
+      ["B", false, 36_000, 16_000],
+      ["UT", false, 16_000, -4_000],
+      ["EF", true, 20_000, 0],
+      [null, false, 12_000, 2_000],
+    ]);
+    expect(trades.reduce((s, t) => s + t.tradeMinor, 0)).toBe(0);
+  });
+
+  it("a locked holding above its class target pushes the other classes, never itself", () => {
+    const trades = fullRebalance(TREE, [
+      ...HOLDINGS,
+      h("EF", "fixed", 80_000, { countsTowardEmergencyFund: true }),
+    ]);
+    expect(trades.find((t) => t.holdingId === "EF")).toMatchObject({ locked: true, tradeMinor: 0 });
+    expect(trades.find((t) => t.holdingId === "UT")!.targetMinor).toBe(0);
+    expect(trades.reduce((s, t) => s + t.tradeMinor, 0)).toBe(0);
+    for (const v of [1, 7, 33_333, 9_999_999]) {
+      const t2 = fullRebalance(TREE, [
+        h("A", "equity", v),
+        h("EF", "gold", 5, { countsTowardEmergencyFund: true }),
+        h("UT", "fixed", 3),
+      ]);
+      expect(t2.reduce((s, t) => s + t.tradeMinor, 0)).toBe(0);
+      expect(t2.find((t) => t.holdingId === "EF")!.tradeMinor).toBe(0);
+    }
+  });
+});
+
 describe("cashflowPlan (invest new money)", () => {
+  it("never buys a locked emergency-fund holding", () => {
+    const tree: AllocationTree = [
+      { assetClassId: "equity", percentBp: 6_000, assets: [{ holdingId: "A", percentBp: 10_000 }] },
+      {
+        assetClassId: "fixed",
+        percentBp: 4_000,
+        assets: [
+          { holdingId: "EF", percentBp: 5_000 },
+          { holdingId: "UT", percentBp: 5_000 },
+        ],
+      },
+    ];
+    const plan = cashflowPlan(50_000, tree, [
+      h("A", "equity", 60_000),
+      h("EF", "fixed", 10_000, { countsTowardEmergencyFund: true }),
+      h("UT", "fixed", 0),
+    ]);
+    expect(plan.some((l) => l.holdingId === "EF")).toBe(false);
+    expect(plan.reduce((s, l) => s + l.amountMinor, 0)).toBe(50_000);
+    expect(plan.find((l) => l.holdingId === "UT")!.amountMinor).toBeGreaterThan(0);
+  });
+
   it("only buys, sums to the amount, and favours the underweight class", () => {
     const plan = cashflowPlan(10_000, TREE, HOLDINGS);
     expect(plan.every((l) => l.amountMinor > 0)).toBe(true);

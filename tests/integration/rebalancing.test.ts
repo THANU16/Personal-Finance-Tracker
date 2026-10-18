@@ -72,17 +72,18 @@ describe("allocation view (docs/04 §8)", () => {
     expect((await getAttention(ctx)).offTargetCount).toBe(2);
   });
 
-  it("emergency-flagged holdings and classes outside the target do not move drift", async () => {
+  it("emergency-fund holdings count in the weights but are locked; outside classes do not move drift", async () => {
     const { ctx, fi, h } = await scenario();
-    const before = await getAllocationView(ctx);
-    await h("EF deposit", fi, 900_000_00, { countsTowardEmergencyFund: true });
+    await h("EF deposit", fi, 20_000_00, { countsTowardEmergencyFund: true });
     await h("Bitcoin", await assetClassId(ctx, "Crypto"), 40_000_00);
     const after = await getAllocationView(ctx);
-    expect(after.drift.classes.map((c) => c.driftBp)).toEqual(
-      before.drift.classes.map((c) => c.driftBp),
-    );
-    expect(after.drift.universeValueMinor).toBe(100_000_00);
-    expect(after.drift.excludedEmergencyMinor).toBe(900_000_00);
+    expect(after.drift.universeValueMinor).toBe(120_000_00);
+    expect(after.drift.lockedEmergencyMinor).toBe(20_000_00);
+    const ef = after.drift.classes.flatMap((c) => c.assets).find((a) => a.locked);
+    expect(ef?.valueMinor).toBe(20_000_00);
+    const efTrade = after.trades.find((t) => t.locked);
+    expect(efTrade?.tradeMinor).toBe(0);
+    expect(after.trades.reduce((s, t) => s + t.tradeMinor, 0)).toBe(0);
     expect(after.drift.outside).toEqual([
       { assetClassId: await assetClassId(ctx, "Crypto"), valueMinor: 40_000_00 },
     ]);

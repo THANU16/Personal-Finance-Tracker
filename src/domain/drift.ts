@@ -25,6 +25,8 @@ export interface AssetDrift {
   driftBp: number | null;
   /** Listed in the class's holding targets. */
   inTarget: boolean;
+  /** Emergency-fund holding: counted in the weights, never traded by rebalancing. */
+  locked: boolean;
 }
 
 export interface ClassDrift {
@@ -43,23 +45,25 @@ export interface DriftResult {
   classes: ClassDrift[];
   /** Holdings in classes that are not in the target ("outside target"). */
   outside: { assetClassId: string; valueMinor: number }[];
-  /** Emergency-flagged holdings left out of the universe. */
-  excludedEmergencyMinor: number;
+  /** Value of emergency-fund holdings inside the universe (counted, locked from trades). */
+  lockedEmergencyMinor: number;
   flaggedCount: number;
 }
 
 const share = (part: number, whole: number) => (whole > 0 ? mulDivRound(part, BP_SCALE, whole) : 0);
 
-/** The rebalancing universe: active, not emergency-flagged, class in the target. */
+/**
+ * The rebalancing universe (owner decision): active holdings whose class is in the target,
+ * emergency-fund holdings included so weights match reality; those are `locked` (never traded).
+ */
 export function universeOf(tree: AllocationTree, holdings: readonly DriftHolding[]) {
   const inTarget = new Set(tree.map((c) => c.assetClassId));
   const active = holdings.filter((h) => h.active && h.valueMinor > 0);
+  const universe = active.filter((h) => inTarget.has(h.assetClassId));
   return {
-    universe: active.filter((h) => !h.countsTowardEmergencyFund && inTarget.has(h.assetClassId)),
-    outsideHoldings: active.filter(
-      (h) => !h.countsTowardEmergencyFund && !inTarget.has(h.assetClassId),
-    ),
-    emergency: active.filter((h) => h.countsTowardEmergencyFund),
+    universe,
+    outsideHoldings: active.filter((h) => !inTarget.has(h.assetClassId)),
+    locked: new Set(universe.filter((h) => h.countsTowardEmergencyFund).map((h) => h.id)),
   };
 }
 
@@ -78,7 +82,7 @@ export function computeDrift(
   holdings: readonly DriftHolding[],
   thresholdBp: number,
 ): DriftResult {
-  const { universe, outsideHoldings, emergency } = universeOf(tree, holdings);
+  const { universe, outsideHoldings, locked } = universeOf(tree, holdings);
   const V = universe.reduce((s, h) => s + h.valueMinor, 0);
   const classes: ClassDrift[] = tree.map((c) => {
     const members = universe.filter((h) => h.assetClassId === c.assetClassId);
@@ -99,6 +103,7 @@ export function computeDrift(
         targetInClassBp: target,
         driftBp: target === null ? null : weightInClassBp - target,
         inTarget: listed.has(id),
+        locked: locked.has(id),
       };
     });
     return {
@@ -122,7 +127,9 @@ export function computeDrift(
       assetClassId,
       valueMinor,
     })),
-    excludedEmergencyMinor: emergency.reduce((s, h) => s + h.valueMinor, 0),
+    lockedEmergencyMinor: universe
+      .filter((h) => locked.has(h.id))
+      .reduce((s, h) => s + h.valueMinor, 0),
     flaggedCount: classes.filter((c) => c.status !== "ok").length,
   };
 }
@@ -136,35 +143,58 @@ export interface TradeLine {
   /** Positive = buy, negative = sell. */
   tradeMinor: number;
   isFd: boolean;
+  /** Emergency-fund holding: kept as it is (trade 0). */
+  locked: boolean;
+}
+
+interface Slot {
+  assetClassId: string;
+  holdingId: string | null;
+  weight: number;
+  /** Value the trade applies to (unlocked part). */
+  valueMinor: number;
+  /** Locked value inside the slot: a locked holding, or locked members of a class-level slot. */
+  lockedMinor: number;
+  locked: boolean;
+  isFd: boolean;
 }
 
 /**
- * Full rebalance: trade_i = target_i × V − value_i. Target amounts are split by largest
- * remainder so Σ targets = V exactly and therefore Σ trades = 0.
+ * Full rebalance: ideal target_i = weight_i × V (largest remainder). Locked emergency-fund holdings
+ * keep their value (trade 0) and count toward their own class's target first; each class's
+ * remaining target goes to its tradable holdings, scaled so Σ targets = V and Σ trades = 0 exactly.
  */
 export function fullRebalance(
   tree: AllocationTree,
   holdings: readonly DriftHolding[],
 ): TradeLine[] {
-  const { universe } = universeOf(tree, holdings);
+  const { universe, locked } = universeOf(tree, holdings);
   const V = universe.reduce((s, h) => s + h.valueMinor, 0);
-  const slots: {
-    assetClassId: string;
-    holdingId: string | null;
-    weight: number;
-    valueMinor: number;
-    isFd: boolean;
-  }[] = [];
+  const slots: Slot[] = [];
   for (const c of tree) {
     const members = universe.filter((h) => h.assetClassId === c.assetClassId);
     if (c.assets.length === 0) {
+      const lockedMembers = members.filter((m) => locked.has(m.id));
       slots.push({
         assetClassId: c.assetClassId,
         holdingId: null,
         weight: c.percentBp * BP_SCALE,
-        valueMinor: members.reduce((s, h) => s + h.valueMinor, 0),
+        valueMinor: members.filter((m) => !locked.has(m.id)).reduce((s, h) => s + h.valueMinor, 0),
+        lockedMinor: 0, // locked members are their own (locked) lines below
+        locked: false,
         isFd: false,
       });
+      for (const m of lockedMembers) {
+        slots.push({
+          assetClassId: c.assetClassId,
+          holdingId: m.id,
+          weight: 0,
+          valueMinor: m.valueMinor,
+          lockedMinor: 0,
+          locked: true,
+          isFd: Boolean(m.isFd),
+        });
+      }
       continue;
     }
     for (const a of c.assets) {
@@ -174,6 +204,8 @@ export function fullRebalance(
         holdingId: a.holdingId,
         weight: c.percentBp * a.percentBp,
         valueMinor: h?.valueMinor ?? 0,
+        lockedMinor: 0,
+        locked: locked.has(a.holdingId),
         isFd: Boolean(h?.isFd),
       });
     }
@@ -184,26 +216,76 @@ export function fullRebalance(
         holdingId: m.id,
         weight: 0,
         valueMinor: m.valueMinor,
+        lockedMinor: 0,
+        locked: locked.has(m.id),
         isFd: Boolean(m.isFd),
       });
     }
   }
   const totalWeight = slots.reduce((s, x) => s + x.weight, 0);
-  const targets =
-    V > 0 && totalWeight > 0
-      ? allocateLargestRemainder(
-          V,
-          slots.map((s) => s.weight),
-        )
-      : slots.map(() => 0);
-  return slots.map((s, i) => ({
-    assetClassId: s.assetClassId,
-    holdingId: s.holdingId,
-    valueMinor: s.valueMinor,
+  if (!(V > 0 && totalWeight > 0)) {
+    return slots.map((x) => ({
+      ...line(x),
+      targetMinor: x.locked ? x.valueMinor : 0,
+      tradeMinor: x.locked ? 0 : -x.valueMinor,
+    }));
+  }
+  const ideal = allocateLargestRemainder(
+    V,
+    slots.map((x) => x.weight),
+  );
+  // Per class: locked emergency money counts toward the class target first; the rest of the class
+  // target goes to its tradable slots. Classes are then scaled so the tradable total is exactly V − L.
+  const classIds = [...new Set(slots.map((x) => x.assetClassId))];
+  const free = V - slots.reduce((s, x) => s + (x.locked ? x.valueMinor : x.lockedMinor), 0);
+  const want = classIds.map((id) => {
+    const inClass = slots.map((x, i) => ({ x, i })).filter((e) => e.x.assetClassId === id);
+    const tradable = inClass.filter((e) => !e.x.locked);
+    if (!tradable.length) return 0;
+    const classIdeal = inClass.reduce((s, e) => s + ideal[e.i]!, 0);
+    const lockedInClass = inClass.reduce(
+      (s, e) => s + (e.x.locked ? e.x.valueMinor : e.x.lockedMinor),
+      0,
+    );
+    return Math.max(0, classIdeal - lockedInClass);
+  });
+  const classFree =
+    free <= 0
+      ? classIds.map(() => 0)
+      : want.some((w) => w > 0)
+        ? allocateLargestRemainder(free, want)
+        : allocateLargestRemainder(
+            free,
+            classIds.map((id) => (slots.some((x) => x.assetClassId === id && !x.locked) ? 1 : 0)),
+          );
+  const targets = slots.map((x) => (x.locked ? x.valueMinor : 0));
+  classIds.forEach((id, ci) => {
+    const tradable = slots
+      .map((x, i) => ({ x, i }))
+      .filter((e) => e.x.assetClassId === id && !e.x.locked);
+    if (!tradable.length) return;
+    const keys = tradable.map((e) => ideal[e.i]!);
+    const split = allocateLargestRemainder(
+      classFree[ci]!,
+      keys.some((k) => k > 0) ? keys : tradable.map(() => 1),
+    );
+    tradable.forEach((e, j) => (targets[e.i] = split[j]!));
+  });
+  return slots.map((x, i) => ({
+    ...line(x),
     targetMinor: targets[i]!,
-    tradeMinor: targets[i]! - s.valueMinor,
-    isFd: s.isFd,
+    tradeMinor: targets[i]! - x.valueMinor,
   }));
+}
+
+function line(x: Slot): Omit<TradeLine, "targetMinor" | "tradeMinor"> {
+  return {
+    assetClassId: x.assetClassId,
+    holdingId: x.holdingId,
+    valueMinor: x.valueMinor,
+    isFd: x.isFd,
+    locked: x.locked,
+  };
 }
 
 /** "Invest new money": cashflow rebalance of S (only buys; docs/04 §8). */
@@ -213,9 +295,22 @@ export function cashflowPlan(
   holdings: readonly DriftHolding[],
 ): { assetClassId: string; holdingId: string | null; amountMinor: number }[] {
   if (S <= 0 || tree.length === 0) return [];
-  const { universe } = universeOf(tree, holdings);
+  const { universe, locked } = universeOf(tree, holdings);
   const classValues: Record<string, number> = {};
   for (const h of universe)
     classValues[h.assetClassId] = (classValues[h.assetClassId] ?? 0) + h.valueMinor;
-  return cashflowSplit(S, tree, classValues).filter((l) => l.amountMinor > 0);
+  // New money never goes into a locked emergency-fund holding: its class share is split over the
+  // class's other target holdings (or picked when applying if it has none).
+  const buyable: AllocationTree = tree.map((c) => {
+    const assets = c.assets.filter((a) => !locked.has(a.holdingId));
+    if (assets.length === c.assets.length) return c;
+    const bp = assets.length
+      ? allocateLargestRemainder(
+          BP_SCALE,
+          assets.map((a) => a.percentBp || 1),
+        )
+      : [];
+    return { ...c, assets: assets.map((a, i) => ({ ...a, percentBp: bp[i]! })) };
+  });
+  return cashflowSplit(S, buyable, classValues).filter((l) => l.amountMinor > 0);
 }

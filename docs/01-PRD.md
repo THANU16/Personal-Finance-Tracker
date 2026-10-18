@@ -78,7 +78,7 @@ Types: `income`, `expense`, `transfer`, `invest`, `redeem`, `investment_income`,
 
 ### 4.5 Allocation (target & rebalancing)
 - The target allocation is the single planned allocation used by SIP plans,
-  rebalancing and opportunity deployments by default. Saving it records history. Emergency-flagged holdings are excluded.
+  rebalancing and opportunity deployments by default. Saving it records history. Emergency-flagged holdings count in the allocation but are never traded by rebalancing.
 - Target allocation (two-level, independent of SIP) + drift threshold (default 5%).
 - Current vs target by class, then by asset within class; drift in % points and amount.
 - Two plans: **cashflow rebalance** (where to put the next N amount, no selling) and **full

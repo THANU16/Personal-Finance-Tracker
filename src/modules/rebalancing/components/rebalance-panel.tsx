@@ -179,7 +179,7 @@ export function RebalancePanel({
         <div className="grid gap-3">
           <p className="text-sm text-muted-foreground">
             Buys and sells that bring every holding back to its target. Buys and sells balance out
-            to zero.
+            to zero. Emergency-fund holdings are kept as they are and count toward their class.
           </p>
           {trades.every((t) => t.tradeMinor === 0) ? (
             <p className="text-sm text-muted-foreground">You are on target — nothing to trade.</p>
