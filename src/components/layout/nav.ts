@@ -53,7 +53,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { title: "Assets", href: "/assets", icon: ChartPie },
       { title: "SIP Planner", href: "/sip", icon: CalendarClock },
-      { title: "Rebalancing", href: "/rebalancing", icon: Scale },
+      { title: "Allocation", href: "/rebalancing", icon: Scale },
       { title: "Opportunity Fund", href: "/opportunity-fund", icon: Zap },
     ],
   },

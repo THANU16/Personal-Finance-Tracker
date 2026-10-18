@@ -11,7 +11,7 @@ const ROUTES: [string, string][] = [
   ["/budgets", "Budgets"],
   ["/assets", "Assets"],
   ["/sip", "SIP planner"],
-  ["/rebalancing", "Rebalancing"],
+  ["/rebalancing", "Allocation"],
   ["/opportunity-fund", "Opportunity Fund"],
   ["/goals", "Goals"],
   ["/debts", "Debts"],

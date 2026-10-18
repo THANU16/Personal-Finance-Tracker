@@ -9,7 +9,7 @@
 | MOD-1 Phase 1 additions | ✅ done | 2026-10-18 | `feat(mod-1)` |
 | MOD-2 Phase 2 additions | ✅ done | 2026-10-18 | `feat(mod-2)` |
 | 4 Dashboard, snapshots, FX | ✅ done | 2026-10-18 | `feat(phase-4)` |
-| 5 SIP planner | ⬜ | | |
+| 5 SIP planner | ✅ done | 2026-10-18 | `feat(phase-5)` |
 | 6 Rebalancing | ⬜ | | |
 | 7 Opportunity Fund | ⬜ | | |
 | 8 Debts & receivables | ⬜ | | |
@@ -151,6 +151,28 @@ Status values: ⬜ not started · 🟡 in progress · ✅ done
   claim treats a missing version as 0; the merge is batched per group and runs as bootstrap v4 for everyone.
   `npm run repair:categories -- <email>` repairs one account on demand (owner's account: 3,507 → 27, all references intact).
 - [seed] `npm run seed -- <email> [--append]` adds ~6 months of demo data to one existing user (Phase 12 will extend it).
+- [5] Allocation: `domain/allocation.ts` (`validateTree`, `splitByTree` — largest remainder at both levels, ties → earlier;
+  `autoBalance`) and `domain/rebalance.ts` `cashflowSplit` (§8, used for the SIP drift tilt now). The target allocation lives in
+  `modules/allocation` (one per user + `targetAllocationHistory` row on every save) and is edited on /rebalancing → Plan (owner
+  decision: the rest of that page is Phase 6). Sidebar/heading renamed "Allocation" (docs/05 §1). The target may leave a class
+  without holdings; SIP custom trees must name holdings in the plan's currency.
+- [5] SIP engine (`domain/sip.ts`, `modules/sip`): monthly day 31 = last day; weekly 0 = Sunday, ISO week keys; step-up from
+  plan start in whole major units; carry-in from the previous period when missed/partial (carry_forward). Executions are created
+  idempotently (unique planId+periodKey) up to today + 7 days by `generateDueExecutions`, which also re-plans every not-yet-
+  executed `due` execution (version, step-up, carry-in, tree) and marks overdue ones missed. Until the Phase 10 cron, it runs
+  whenever SIP data is read (SIP pages, dashboard Upcoming) — owner decision.
+- [5] Versions: amount or allocation changes create version N+1 effective from the next unexecuted due date; name/notes/rules
+  edits don't; schedule changes drop unexecuted periods and regenerate. Target-based plans store the tree actually used in
+  `allocationUsed` at generation and it is frozen at execution, so target edits change future periods only.
+- [5] Execute (one DB transaction): the dip guard runs once on the TOTAL (Σ actual + fee) via `guardGroupOutflow`; postings then
+  carry the internal `dipGuardDone` flag so earmarks are reduced once. One `invest` per line with actual > 0 (source
+  sip_execution, shared groupId, optional units/price). Actual 0 is rejected (skip instead). A class without a holding in the tree
+  asks for one at execution (owner decision). Below-zero source balance warns, never blocks. Undo voids the group through its
+  owner and resets the period to due (or missed past grace); skips can be undone too.
+- [5] Plan performance = estimated share (plan invested in a holding ÷ holding invested × holding value), XIRR from the plan's
+  invest flows + estimated terminal value; consistency = on-time done ÷ periods due so far.
+- [5] Upcoming/safe to spend: `getUpcoming` includes generated due/missed periods and projected ones up to the requested date;
+  `outflowMinor` only when the source account is earmarkable (§21).
 
 ## Deviations from docs
 <!-- Claude: anything built differently from the docs, and why. Update the doc too if the user agrees. -->
@@ -174,6 +196,9 @@ Status values: ⬜ not started · 🟡 in progress · ✅ done
 - [1] Then try register/login in the browser against Atlas (`npm run dev`). All auth flows pass e2e on the in-memory DB. Once your account exists, consider `DISABLE_SIGNUP=true`.
 
 ## Known issues / tech debt
+- [5] Projected SIP periods in Upcoming ignore carry-in (only generated periods know it).
+- [5] "Cumulative invested vs estimated value" shows the invested line with today's estimated value as a reference line (no
+  per-date estimated history yet; holdings have valuation history but a plan's share over time is not stored).
 - [4] Acceptance "dashboard numbers equal reports from the seed scenario": Reports (Phase 11) and the seed script (Phase 12) do not
   exist yet, so a fixed scenario in `tests/integration/dashboard.test.ts` checks every dashboard number against an independent
   calculation (ledger `cashflowOf`, `computeNetWorthAsOf`, account balances). Re-check against real reports in Phase 11.

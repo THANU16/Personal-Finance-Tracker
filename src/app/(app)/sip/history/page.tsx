@@ -1,5 +1,6 @@
-import { PlaceholderPage } from "@/components/layout/placeholder-page";
+import { redirect } from "next/navigation";
 
-export default function SIPhistoryPage() {
-  return <PlaceholderPage title="SIP history" phase={5} />;
+// History is a tab of /sip (docs/05 §6).
+export default function SipHistoryPage() {
+  redirect("/sip?tab=history");
 }

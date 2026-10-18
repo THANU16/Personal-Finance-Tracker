@@ -565,6 +565,12 @@ export async function getUpcoming(ctx: Ctx, until: string): Promise<UpcomingItem
       href: `/accounts/${String(a._id)}`,
     });
   }
+  // SIPs (Phase 5): generated and projected periods; outflow only from earmarkable accounts.
+  const { sipUpcoming } = await import("@/modules/sip/queries");
+  for (const s of await sipUpcoming(ctx, until)) {
+    if (s.dueDate < today && !s.href.startsWith("/sip/execute/")) continue;
+    items.push({ ...s, kind: "sip" });
+  }
   return items.sort((x, y) => x.dueDate.localeCompare(y.dueDate) || x.title.localeCompare(y.title));
 }
 

@@ -62,6 +62,11 @@ export interface LedgerDraft {
   confirmEmergency?: boolean;
   /** Edit (void + repost): the voided original, so only an increase on the same account is guarded. */
   replaces?: { fromAccountId: string; outflowMinor: number } | null;
+  /**
+   * Internal: the caller already ran the dip guard for a group of postings (SIP execution checks
+   * the total once). Never set from user input — the transaction schemas don't carry it.
+   */
+  dipGuardDone?: boolean;
 }
 
 /** Sources that move earmarked money on purpose and are never guarded (docs/04 §20). */
@@ -205,6 +210,40 @@ function sameCurrency(account: AccountDoc, holding: HoldingDoc, field: string) {
       `"${account.name}" is in ${account.currency} but "${holding.name}" is in ${holding.currency}; use a ${holding.currency} account (cross-currency arrives with FX rates)`,
     );
   }
+}
+
+/**
+ * Dip guard for a multi-posting operation (SIP execution): checks the TOTAL outflow from one
+ * account once; on confirmation reduces earmarks once. The postings then set `dipGuardDone`.
+ */
+export async function guardGroupOutflow(
+  ctx: Ctx,
+  accountId: string,
+  outflowMinor: number,
+  opts: { source: SourceKind; confirmOpportunity?: boolean; confirmEmergency?: boolean },
+  session: ClientSession,
+): Promise<void> {
+  const account = await AccountModel.findOne({
+    _id: toObjectId(accountId, "Account"),
+    userId: toObjectId(ctx.userId, "User"),
+  })
+    .session(session)
+    .lean<AccountDoc>();
+  if (!account) throw new AppError("NOT_FOUND", "Account not found");
+  await guardOutflow(
+    ctx,
+    account,
+    outflowMinor,
+    {
+      type: "invest",
+      date: new Date(),
+      amountMinor: outflowMinor,
+      source: { kind: opts.source },
+      confirmOpportunity: opts.confirmOpportunity,
+      confirmEmergency: opts.confirmEmergency,
+    },
+    session,
+  );
 }
 
 /**
@@ -374,7 +413,7 @@ export async function postTransaction(
     categoryId = await getSystemCategoryId(ctx, SYSTEM_CATEGORY.bankFees, "expense", session);
   }
 
-  if (from && t !== "adjustment") {
+  if (from && t !== "adjustment" && !draft.dipGuardDone) {
     await guardOutflow(
       ctx,
       from,
