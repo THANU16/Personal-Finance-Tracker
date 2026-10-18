@@ -6,7 +6,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ACCOUNT_TYPES } from "@/domain/accounts";
-import { INSTRUMENT_TYPES } from "@/modules/holdings/constants";
+import { INSTRUMENT_LABEL, LIQUIDITY_LABEL } from "@/modules/holdings/components/holding-meta";
+import { INSTRUMENT_TYPES, LIQUIDITY } from "@/modules/holdings/constants";
 import type { AccountChoice, WizardData, WizardState } from "@/modules/imports/schemas";
 import { accountResolved } from "@/modules/imports/components/wizard-helpers";
 import { Pick } from "@/modules/imports/components/wizard-pick";
@@ -22,16 +23,12 @@ const TYPE_LABEL: Record<(typeof ACCOUNT_TYPES)[number], string> = {
   receivable: "Receivable (owed to you)",
   payable: "Payable (you owe)",
 };
-const INSTRUMENT_LABEL: Partial<Record<(typeof INSTRUMENT_TYPES)[number], string>> = {
-  stock: "Stock",
-  mutual_fund: "Mutual fund",
-  unit_trust: "Unit trust",
-  crypto: "Crypto",
-};
+// Same choices and labels as the Add holding wizard (fixed deposits excluded: their value is calculated).
 const instrumentOptions = INSTRUMENT_TYPES.filter((t) => t !== "fd").map((t) => ({
   value: t,
-  label: INSTRUMENT_LABEL[t] ?? t.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase()),
+  label: INSTRUMENT_LABEL[t],
 }));
+const liquidityOptions = LIQUIDITY.map((l) => ({ value: l, label: LIQUIDITY_LABEL[l] }));
 const TREAT_AS = [
   { value: "account", label: "Account" },
   { value: "holding", label: "Holding" },
@@ -278,6 +275,20 @@ export function AccountsStep({
                                     (typeof INSTRUMENT_TYPES)[number],
                                     "fd"
                                   >,
+                                },
+                              })
+                            }
+                          />
+                          <Pick
+                            label={`Liquidity for ${a.name}`}
+                            value={c.create.liquidity}
+                            options={liquidityOptions}
+                            onChange={(v) =>
+                              set(a.key, {
+                                ...c,
+                                create: {
+                                  ...c.create!,
+                                  liquidity: v as (typeof LIQUIDITY)[number],
                                 },
                               })
                             }

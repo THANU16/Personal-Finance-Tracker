@@ -126,7 +126,7 @@ async function loadExisting(ctx: Ctx, session: ClientSession | null = null): Pro
       .session(session)
       .lean<CategoryDoc[]>(),
     AssetClassModel.find({ userId, archivedAt: null })
-      .sort({ name: 1 })
+      .sort({ sortOrder: 1, name: 1 })
       .session(session)
       .lean<AssetClassDoc[]>(),
   ]);
