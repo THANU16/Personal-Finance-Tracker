@@ -388,18 +388,37 @@ export async function AttentionCard({ searchParams }: { searchParams: SearchPara
     const a = await getAttention(ctx);
     return (
       <Widget title="Attention">
-        {a.staleCount === 0 ? (
+        {a.staleCount === 0 && a.offTargetCount === 0 ? (
           <p className="text-sm text-muted-foreground">All caught up.</p>
         ) : (
-          <Link
-            href="/assets/update-values"
-            className="flex items-center justify-between gap-3 text-sm hover:underline"
-          >
-            <span>
-              {a.staleCount} holding{a.staleCount === 1 ? "" : "s"} need a new value
-            </span>
-            <span className="text-muted-foreground">Update values →</span>
-          </Link>
+          <ul className="grid gap-2 text-sm">
+            {a.staleCount > 0 ? (
+              <li>
+                <Link
+                  href="/assets/update-values"
+                  className="flex items-center justify-between gap-3 hover:underline"
+                >
+                  <span>
+                    {a.staleCount} holding{a.staleCount === 1 ? "" : "s"} need a new value
+                  </span>
+                  <span className="text-muted-foreground">Update values →</span>
+                </Link>
+              </li>
+            ) : null}
+            {a.offTargetCount > 0 ? (
+              <li>
+                <Link
+                  href="/rebalancing?tab=actual"
+                  className="flex items-center justify-between gap-3 hover:underline"
+                >
+                  <span>
+                    {a.offTargetCount} asset class{a.offTargetCount === 1 ? "" : "es"} off target
+                  </span>
+                  <span className="text-muted-foreground">Allocation →</span>
+                </Link>
+              </li>
+            ) : null}
+          </ul>
         )}
         <p className="mt-2 text-xs text-muted-foreground">
           Budgets, opportunity-fund triggers and forecast warnings appear here in later phases.

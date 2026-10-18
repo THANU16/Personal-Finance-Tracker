@@ -10,7 +10,7 @@
 | MOD-2 Phase 2 additions | ✅ done | 2026-10-18 | `feat(mod-2)` |
 | 4 Dashboard, snapshots, FX | ✅ done | 2026-10-18 | `feat(phase-4)` |
 | 5 SIP planner | ✅ done | 2026-10-18 | `feat(phase-5)` |
-| 6 Rebalancing | ⬜ | | |
+| 6 Allocation (rebalancing) | ✅ done | 2026-10-18 | `feat(phase-6)` |
 | 7 Opportunity Fund | ⬜ | | |
 | 8 Debts & receivables | ⬜ | | |
 | 9 Recurring, budgets, goals | ⬜ | | |
@@ -173,6 +173,19 @@ Status values: ⬜ not started · 🟡 in progress · ✅ done
   invest flows + estimated terminal value; consistency = on-time done ÷ periods due so far.
 - [5] Upcoming/safe to spend: `getUpcoming` includes generated due/missed periods and projected ones up to the requested date;
   `outflowMinor` only when the source account is earmarkable (§21).
+- [6] `domain/drift.ts`: universe = active holdings with value whose class is in the target, excluding emergency-flagged
+  ones (classes outside the target and the emergency amount are reported separately). Drift in bp; flagged at |drift| ≥
+  threshold (exactly at the threshold counts). Asset drift is within the class; holdings in a class with holding targets but
+  not listed count with a 0% target (owner decision) — the full rebalance suggests selling them.
+- [6] Full rebalance: target amounts by largest remainder over class% × asset% weights, so Σ trades = 0 exactly; a class without
+  holding targets gives one class-level line (pick the holding in Quick add). FD lines are shown but not applicable ("withdraw
+  or renew the FD instead", owner decision). "Invest new money" = cashflow rebalance (only buys).
+- [6] Values = today's base-currency values from the dashboard's single pass (FDs via §9; no FX rate → left out + badge).
+- [6] Apply opens Quick add pre-filled (type invest/redeem, holding, amount — Quick add gained `amountMinor` prefill).
+  "Use for next SIP" sets `useTilt` on the plan's next due period; its Execute screen opens on the drift-tilted split.
+- [6] /rebalancing tabs Plan · Planned vs Actual · Rebalance · History (?tab=). History diffs each saved target against the
+  previous one (class % changes, holdings added/removed, threshold). Drift gauge shades the tolerance band (± threshold) and
+  always shows the drift and an OK/Over/Under chip with an icon. Dashboard Attention shows "N asset classes off target".
 
 ## Deviations from docs
 <!-- Claude: anything built differently from the docs, and why. Update the doc too if the user agrees. -->

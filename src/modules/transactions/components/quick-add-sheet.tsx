@@ -156,7 +156,7 @@ function initialValues(request: QuickAddRequest, options: QuickAddOptions): Form
   return {
     type,
     date: options.todayKey,
-    amountMinor: null,
+    amountMinor: request.amountMinor ?? null,
     fromAccountId: from,
     toAccountId:
       type === "income"

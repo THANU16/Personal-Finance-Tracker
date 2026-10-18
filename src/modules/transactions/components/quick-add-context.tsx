@@ -15,6 +15,8 @@ export type QuickAddRequest =
       type?: QuickAddType;
       accountId?: string;
       holdingId?: string;
+      /** Pre-filled amount (e.g. Allocation → Apply). */
+      amountMinor?: number;
       duplicateOf?: TransactionDTO;
     }
   | { mode: "edit"; txn: TransactionDTO };

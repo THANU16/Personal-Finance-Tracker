@@ -625,6 +625,8 @@ export async function getSafeToSpend(ctx: Ctx): Promise<SafeToSpend> {
 
 export interface Attention {
   staleCount: number;
+  /** Target classes beyond the drift threshold (Phase 6). */
+  offTargetCount: number;
 }
 
 export async function getAttention(ctx: Ctx): Promise<Attention> {
@@ -640,7 +642,8 @@ export async function getAttention(ctx: Ctx): Promise<Attention> {
       staleDays: settings.staleDays,
     }),
   ).length;
-  return { staleCount };
+  const { countOffTarget } = await import("@/modules/rebalancing/service");
+  return { staleCount, offTargetCount: await countOffTarget(ctx) };
 }
 
 /** First date with data, for the "All" preset. */

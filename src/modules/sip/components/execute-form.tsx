@@ -41,7 +41,7 @@ export function ExecuteForm({ view, todayKey }: { view: ExecuteView; todayKey: s
   const e = view.execution;
   const ccy = view.plan.currency;
   const [mode, setMode] = useState<"normal" | "tilt">(
-    view.plan.useDriftTilt && view.tiltedPlanned ? "tilt" : "normal",
+    (view.plan.useDriftTilt || e.useTilt) && view.tiltedPlanned ? "tilt" : "normal",
   );
   const plannedFor = (m: "normal" | "tilt") =>
     e.lines.map((l, i) =>

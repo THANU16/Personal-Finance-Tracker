@@ -145,6 +145,7 @@ export interface ExecutionDTO {
   executedOn: string | null;
   skipReason: string | null;
   onTime: boolean | null;
+  useTilt: boolean;
   lines: ExecutionLineDTO[];
   allocationUsed: AllocationTree;
 }

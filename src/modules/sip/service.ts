@@ -91,6 +91,7 @@ export function toExecutionDTO(ctx: Ctx, e: SipExecutionDoc): ExecutionDTO {
     executedOn: e.executedAt ? keyOf(ctx, e.executedAt) : null,
     skipReason: e.skipReason ?? null,
     onTime: e.onTime ?? null,
+    useTilt: e.useTilt ?? false,
     lines: e.lines.map((l) => ({
       assetClassId: String(l.assetClassId),
       holdingId: l.holdingId ? String(l.holdingId) : null,

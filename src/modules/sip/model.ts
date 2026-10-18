@@ -140,6 +140,8 @@ export interface SipExecutionDoc {
   groupId: Types.ObjectId | null;
   onTime: boolean | null;
   allocationUsed: AllocationTreeDoc[];
+  /** "Use for next SIP" (Allocation page): open this period in the drift-tilted split. */
+  useTilt: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -175,6 +177,7 @@ const executionSchema = new Schema<SipExecutionDoc>(
     groupId: { type: Schema.Types.ObjectId, default: null },
     onTime: { type: Boolean, default: null },
     allocationUsed: { type: [allocationTreeSchema], default: [] },
+    useTilt: { type: Boolean, required: true, default: false },
   },
   { timestamps: true },
 );
