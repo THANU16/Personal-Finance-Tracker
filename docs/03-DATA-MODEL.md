@@ -172,25 +172,31 @@ thresholdBp, updatedAt
 allocation, thresholdBp, savedAt, note?
 ```
 
-## opportunityFund (one per user)
+## opportunityFunds (one per user)
 ```
-accountId, benchmarkName: "ASPI", targetSizeMinor?,
-rules: [{ drawdownBp, deployPercentBp }],           # ascending drawdown
+benchmarkName: "ASPI", targetSizeMinor?,
+rules: [{ drawdownBp, deployPercentBp }],           # ascending drawdown, cumulative deploy %
 allocationSource: target|custom (default target),
 allocation?: [{ assetClassId, percentBp, assets: [{ holdingId, percentBp }] }],   # only when custom
-cycle: { startedAt, referenceHigh, referenceHighDate, fundBalanceAtStartMinor, triggeredRuleIdx: [number] }
+defaultSourceAccountId?,                            # any account holding opportunity money can be the source
+cycle: { startedAt (business date of the level that opened it), fundBalanceAtStartMinor }
+idx: {userId} unique
 ```
+Reference high, latest level, drawdown and triggered rules are replayed from `marketLevels` (never stored), so backdated
+or deleted levels cannot leave them stale. Only the cycle start and the fund balance at that moment are stored.
 
 ## marketLevels
 ```
-benchmarkName, date, level (number), note?
-idx: {userId, benchmarkName, date} unique
+benchmarkName, date (business date YYYY-MM-DD), level (number), note?
+idx: {userId, benchmarkName, date} unique          # adding a level for an existing date replaces it
 ```
 
 ## opportunityDeployments
 ```
-date, amountMinor, ruleIdx?, drawdownBpAtDeploy, marketLevel,
-lines: [{ assetClassId, holdingId, amountMinor, feeMinor, transactionId }], groupId, notes?
+date (business date), amountMinor (Σ line amounts, excl. fees), currency, sourceAccountId, ruleIdx?, drawdownBpAtDeploy,
+marketLevel?, cycleStartedAt, allocationUsed, lines: [{ assetClassId, holdingId, amountMinor, feeMinor, transactionId }],
+earmarkReducedMinor (restored on undo), groupId, notes?, status: posted|undone, undoneAt?
+idx: {userId, date:-1}
 ```
 
 ## debts

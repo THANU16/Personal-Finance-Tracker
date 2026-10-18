@@ -12,7 +12,7 @@
 | 5 SIP planner | ✅ done | 2026-10-18 | `feat(phase-5)` |
 | 6 Allocation (rebalancing) | ✅ done | 2026-10-18 | `feat(phase-6)` |
 | MM Money Manager import (docs/07) | ✅ done (real 2025 file to be checked by owner) | 2026-10-18 | `feat: money manager import` |
-| 7 Opportunity Fund | ⬜ | | |
+| 7 Opportunity Fund | ✅ done | 2026-10-18 | `feat(phase-7)` |
 | 8 Debts & receivables | ⬜ | | |
 | 9 Recurring, budgets, goals | ⬜ | | |
 | 10 Essentials, notifications, cron, forecast | ⬜ | | |
@@ -187,6 +187,25 @@ Status values: ⬜ not started · 🟡 in progress · ✅ done
 - [6] /rebalancing tabs Plan · Planned vs Actual · Rebalance · History (?tab=). History diffs each saved target against the
   previous one (class % changes, holdings added/removed, threshold). Drift gauge shades the tolerance band (± threshold) and
   always shows the drift and an OK/Over/Under chip with an icon. Dashboard Attention shows "N asset classes off target".
+- [7] `domain/opportunity.ts`: `drawdownBp`, `validateRules` (drawdowns strictly ascending, deploy % non-decreasing, 1–10000 bp),
+  `replayCycle` (levels in date order; first level or a level above the high opens a cycle and clears triggers; a rule stays
+  triggered until the next new high), `suggestedDeployment` (highest triggered rule × fund balance at cycle start − deployed this
+  cycle, floored at 0, capped at the fund balance). Default rules −10%→25%, −20%→50%, −30%→100% (docs/04 example).
+- [7] The cycle is replayed from `marketLevels` on every read and write; only `cycle.startedAt` + `fundBalanceAtStartMinor` are
+  stored. When the replayed start differs (first level, new high, or a deleted high), the current fund balance (opportunity
+  bucket in base currency, §20) becomes the start balance. "Deployed this cycle" = Σ posted deployments tagged with that cycle.
+- [7] Record deployment (one DB transaction): source = any account holding opportunity money (Opportunity Fund account balance, or
+  an effective opportunity earmark); amounts + fees must fit in it. One `invest` per line (source opportunity_deployment, groupId,
+  owner-managed, no dip guard), then the earmark is reduced by the cash that left (amounts + fees; owner-approved) — dedicated
+  accounts need no change. Lines are split by the target allocation (or the fund's custom tree) with largest remainder and are
+  editable; a class without holdings asks for one. Future dates are refused.
+- [7] Undo voids the group through its owner and restores the earmark it took (owner-approved; otherwise the money would turn into
+  free cash). The fund's docs/03 `accountId` became an optional default source account (owner-approved).
+- [7] Notifications: `detectOpportunityTriggers` returns the triggered rules with dedupe keys `opp:<cycleStart>:<ruleIdx>` for the
+  Phase 10 daily job; until then the page banner and the dashboard Attention card show a reached rule with money to deploy.
+- [7] UI: banner, cards (fund vs target, latest level, reference high, drawdown gauge with rule ticks), market levels form + chart
+  (benchmark in slot 1; high and rule levels as labelled dashed lines), rules & allocation editor, deployment dialog, history with
+  Undo. Dashboard "Opportunity fund" card is live (size vs target, drawdown).
 - [mm] Excel reader: `read-excel-file` (maintained, 0 advisories) rather than ExcelJS (2 moderate advisories via `uuid`, ~480
   packages) or the unmaintained `xlsx`. Cells are read with `parseNumber: s => s` so amounts stay decimal strings (BigInt
   parse, never floats); Excel date-times are rounded to the second (12:30:00 can read back as 12:29:59.999).
@@ -242,6 +261,8 @@ Status values: ⬜ not started · 🟡 in progress · ✅ done
   analytics-charts skill updated). Seeded asset-class colours replaced by the validated palette (owner-approved).
 - [4] Acceptance "equal reports from the seed scenario" → fixed-scenario integration tests until Phases 11/12 (owner-approved).
 - [4] docs/05 §2 "Net worth trend (12m / 3y / all toggle)" is served by the page-wide TimeRangeBar instead of a per-card toggle.
+- [7] docs/03 opportunityFund: reference high / triggered rules are replayed, not stored; `accountId` → optional
+  `defaultSourceAccountId`; deployments gained source account, cycle, allocation used, earmark reduced and status (docs/03 updated).
 - [mm] docs/07 §2 suggests ExcelJS; `read-excel-file` is used (see Decisions).
 - [mm] docs/07 §3 step 5: no manual pairing of unpaired transfer halves and no in-app "Fix" for problem rows — they are listed and
   skipped (fix in Money Manager and upload again). Difference handling follows the account mapping, so no bulk "treat all as
@@ -259,6 +280,8 @@ Status values: ⬜ not started · 🟡 in progress · ✅ done
   never committed.
 
 ## Known issues / tech debt
+- [7] No in-app notification for a triggered rule until Phase 10 (banner + Attention only). One benchmark per fund; changing its
+  name starts from that benchmark's own levels.
 - [mm] Imported transactions keep the business date only (time of day is dropped); same-day order is kept through `createdAt`.
 - [mm] A holding's value after import can differ from Money Manager's balance when Money Manager redeemed more than it held (the
   full-redemption rule); the preview lists holding values. Transfers with an ignored account are skipped, so the other

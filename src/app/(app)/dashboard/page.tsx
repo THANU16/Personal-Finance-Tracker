@@ -10,6 +10,7 @@ import {
   CashflowCard,
   DashboardRangeBar,
   LaterCard,
+  OpportunityCard,
   NetWorthCard,
   StandingCards,
   TopCategoriesCard,
@@ -77,11 +78,9 @@ export default function DashboardPage({ searchParams }: PageProps<"/dashboard">)
             phase={10}
             text="Emergency months and health score arrive with Essentials"
           />
-          <LaterCard
-            title="Opportunity fund"
-            phase={7}
-            text="Fund size vs target and drawdown arrive with the Opportunity Fund"
-          />
+          <Suspense fallback={box("h-48")}>
+            <OpportunityCard searchParams={searchParams} />
+          </Suspense>
         </div>
       </div>
     </>

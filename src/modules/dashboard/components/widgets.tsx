@@ -388,10 +388,27 @@ export async function AttentionCard({ searchParams }: { searchParams: SearchPara
     const a = await getAttention(ctx);
     return (
       <Widget title="Attention">
-        {a.staleCount === 0 && a.offTargetCount === 0 ? (
+        {a.staleCount === 0 && a.offTargetCount === 0 && !a.opportunity ? (
           <p className="text-sm text-muted-foreground">All caught up.</p>
         ) : (
           <ul className="grid gap-2 text-sm">
+            {a.opportunity ? (
+              <li>
+                <Link
+                  href="/opportunity-fund"
+                  className="flex items-center justify-between gap-3 hover:underline"
+                >
+                  <span>
+                    Market down {formatPercentBp(a.opportunity.drawdownBp)}: deploy{" "}
+                    <Money
+                      valueMinor={a.opportunity.amountMinor}
+                      currency={a.opportunity.currency}
+                    />
+                  </span>
+                  <span className="text-muted-foreground">Opportunity fund →</span>
+                </Link>
+              </li>
+            ) : null}
             {a.staleCount > 0 ? (
               <li>
                 <Link
@@ -421,8 +438,52 @@ export async function AttentionCard({ searchParams }: { searchParams: SearchPara
           </ul>
         )}
         <p className="mt-2 text-xs text-muted-foreground">
-          Budgets, opportunity-fund triggers and forecast warnings appear here in later phases.
+          Budgets and forecast warnings appear here in later phases.
         </p>
+      </Widget>
+    );
+  });
+}
+
+export async function OpportunityCard({ searchParams }: { searchParams: SearchParams }) {
+  return guarded("Opportunity fund", async () => {
+    const { ctx } = await load(searchParams);
+    const { getOpportunityOverview } = await import("@/modules/opportunity-fund/service");
+    const o = await getOpportunityOverview(ctx);
+    const target = o.settings.targetSizeMinor;
+    const pct =
+      target && target > 0
+        ? Math.min(10_000, Math.round((o.fundBalanceMinor * 10_000) / target))
+        : null;
+    return (
+      <Widget title="Opportunity fund">
+        <div className="space-y-2 text-sm">
+          <p className="text-xl font-semibold">
+            <Money valueMinor={o.fundBalanceMinor} currency={o.baseCurrency} />
+          </p>
+          {pct !== null ? (
+            <div>
+              <div className="h-2 rounded-full bg-muted" aria-hidden>
+                <div
+                  className="h-2 rounded-full bg-[var(--viz-series-2)]"
+                  style={{ width: `${pct / 100}%` }}
+                />
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {formatPercentBp(pct)} of <Money valueMinor={target!} currency={o.baseCurrency} />{" "}
+                target
+              </p>
+            </div>
+          ) : null}
+          <p className="text-muted-foreground">
+            {o.cycle.latest
+              ? `${o.settings.benchmarkName} ${o.cycle.drawdownBp ? `−${formatPercentBp(o.cycle.drawdownBp)}` : "at its high"} from the high`
+              : `Add ${o.settings.benchmarkName} levels to track drawdown`}
+          </p>
+          <Link href="/opportunity-fund" className="text-sm text-primary hover:underline">
+            {o.suggestion.amountMinor > 0 ? "Deploy now →" : "Open →"}
+          </Link>
+        </div>
       </Widget>
     );
   });

@@ -627,6 +627,8 @@ export interface Attention {
   staleCount: number;
   /** Target classes beyond the drift threshold (Phase 6). */
   offTargetCount: number;
+  /** Opportunity Fund rule reached with money still to deploy (docs/04 §15). */
+  opportunity: { drawdownBp: number; amountMinor: number; currency: string } | null;
 }
 
 export async function getAttention(ctx: Ctx): Promise<Attention> {
@@ -643,7 +645,22 @@ export async function getAttention(ctx: Ctx): Promise<Attention> {
     }),
   ).length;
   const { countOffTarget } = await import("@/modules/rebalancing/service");
-  return { staleCount, offTargetCount: await countOffTarget(ctx) };
+  const { getOpportunityOverview } = await import("@/modules/opportunity-fund/service");
+  const opp = await getOpportunityOverview(ctx);
+  const rule =
+    opp.suggestion.ruleIdx !== null ? opp.settings.rules[opp.suggestion.ruleIdx] : undefined;
+  return {
+    staleCount,
+    offTargetCount: await countOffTarget(ctx),
+    opportunity:
+      opp.suggestion.amountMinor > 0 && rule
+        ? {
+            drawdownBp: rule.drawdownBp,
+            amountMinor: opp.suggestion.amountMinor,
+            currency: opp.baseCurrency,
+          }
+        : null,
+  };
 }
 
 /** First date with data, for the "All" preset. */
