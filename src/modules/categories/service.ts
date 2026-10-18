@@ -53,21 +53,33 @@ export async function seedCategories(userId: string, session: ClientSession): Pr
     })),
     { session },
   );
+  // Upserts keyed by (kind, parent, name): running setup twice can never duplicate the starter set.
   for (const c of STARTER_CATEGORIES) {
-    const [parent] = await CategoryModel.create(
-      [{ userId: uid, name: c.name, kind: c.kind, isEssential: c.isEssential ?? false }],
-      { session },
-    );
-    if (c.children?.length) {
-      await CategoryModel.create(
-        c.children.map((child) => ({
+    const parent = await CategoryModel.findOneAndUpdate(
+      { userId: uid, kind: c.kind, name: c.name, parentId: null, isSystem: false },
+      {
+        $setOnInsert: {
           userId: uid,
-          name: child.name,
           kind: c.kind,
-          parentId: parent!._id,
-          isEssential: child.isEssential ?? false,
-        })),
-        { session, ordered: true },
+          name: c.name,
+          isEssential: c.isEssential ?? false,
+        },
+      },
+      { upsert: true, returnDocument: "after", session, lean: true },
+    );
+    for (const child of c.children ?? []) {
+      await CategoryModel.updateOne(
+        { userId: uid, kind: c.kind, name: child.name, parentId: parent!._id, isSystem: false },
+        {
+          $setOnInsert: {
+            userId: uid,
+            kind: c.kind,
+            name: child.name,
+            parentId: parent!._id,
+            isEssential: child.isEssential ?? false,
+          },
+        },
+        { upsert: true, session },
       );
     }
   }
