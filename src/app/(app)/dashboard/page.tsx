@@ -9,6 +9,7 @@ import {
   CashCard,
   CashflowCard,
   DashboardRangeBar,
+  GoalsCard,
   LaterCard,
   OpportunityCard,
   NetWorthCard,
@@ -72,7 +73,9 @@ export default function DashboardPage({ searchParams }: PageProps<"/dashboard">)
           </Suspense>
         </div>
         <div className="grid gap-4 md:grid-cols-3">
-          <LaterCard title="Goals" phase={9} text="Goal progress bars arrive with goals" />
+          <Suspense fallback={box("h-48")}>
+            <GoalsCard searchParams={searchParams} />
+          </Suspense>
           <LaterCard
             title="Essentials"
             phase={10}

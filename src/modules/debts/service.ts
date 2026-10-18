@@ -31,7 +31,11 @@ import {
   type ScheduleRowDTO,
 } from "@/modules/debts/schemas";
 import { loadToBase } from "@/modules/fx/service";
-import { TransactionModel, type TransactionDoc } from "@/modules/transactions/model";
+import {
+  TransactionModel,
+  type SourceKind,
+  type TransactionDoc,
+} from "@/modules/transactions/model";
 import { parseInput } from "@/server/action-result";
 import { writeAudit } from "@/server/audit/model";
 import type { Ctx } from "@/server/ctx";
@@ -222,58 +226,80 @@ export async function updateDebt(ctx: Ctx, id: string, input: unknown): Promise<
 
 // ------------------------------------------------------------------------------- payments
 
-/**
- * Record payment (docs/04 §10): interest = round(outstanding × r), principal = the rest; a payment
- * above the EMI prepays principal, one below the interest is all interest (warned).
- */
-export async function recordPayment(
-  ctx: Ctx,
-  id: string,
-  input: unknown,
-): Promise<{
+export interface DebtPaymentInput {
+  date: string;
+  amountMinor: number;
+  fromAccountId: string;
+  notes?: string | null;
+  description?: string | null;
+  confirmOpportunity?: boolean;
+  confirmEmergency?: boolean;
+  source?: { kind: SourceKind; refId?: Types.ObjectId | null };
+}
+
+export interface DebtPaymentResult {
   transactionId: string;
   principalMinor: number;
   interestMinor: number;
   warnings: string[];
-}> {
-  const data = parseInput(paymentSchema, input);
-  return withTransaction(async (session) => {
-    const d = await loadDebt(ctx, id, session);
-    if (d.outstandingMinor <= 0) throw new AppError("CONFLICT", "This loan is fully repaid");
-    const split = splitPayment(d.outstandingMinor, d.annualRateBp, data.amountMinor);
-    if (split.overpaidMinor > 0) {
-      throw new AppError("VALIDATION", "This pays more than the loan plus this month's interest", {
-        amountMinor: ["Too much"],
-      });
-    }
-    const txn = await postTransaction(
-      ctx,
-      {
-        type: "debt_payment",
-        date: businessDateToUtc(data.date, ctx.tz),
-        amountMinor: data.amountMinor,
-        fromAccountId: data.fromAccountId,
-        toAccountId: String(d.accountId),
-        debtId: d._id,
-        principalMinor: split.principalMinor,
-        interestMinor: split.interestMinor,
-        description: `${d.name} payment`,
-        notes: data.notes,
-        confirmOpportunity: data.confirmOpportunity,
-        confirmEmergency: data.confirmEmergency,
-      },
-      session,
-    );
-    const warnings = split.short
-      ? ["The payment is less than this month's interest: nothing went to principal"]
-      : [];
-    return {
-      transactionId: String(txn._id),
+}
+
+/**
+ * Posts one loan payment inside the caller's DB transaction (docs/04 §10): interest on the
+ * outstanding first, the rest to principal; above the EMI prepays principal, below the interest is
+ * all interest (warned). Used by Record payment and recurring rules.
+ */
+export async function postDebtPayment(
+  ctx: Ctx,
+  debtId: string,
+  data: DebtPaymentInput,
+  session: ClientSession,
+): Promise<DebtPaymentResult> {
+  const d = await loadDebt(ctx, debtId, session);
+  if (d.outstandingMinor <= 0) throw new AppError("CONFLICT", "This loan is fully repaid");
+  const split = splitPayment(d.outstandingMinor, d.annualRateBp, data.amountMinor);
+  if (split.overpaidMinor > 0) {
+    throw new AppError("VALIDATION", "This pays more than the loan plus this month's interest", {
+      amountMinor: ["Too much"],
+    });
+  }
+  const txn = await postTransaction(
+    ctx,
+    {
+      type: "debt_payment",
+      date: businessDateToUtc(data.date, ctx.tz),
+      amountMinor: data.amountMinor,
+      fromAccountId: data.fromAccountId,
+      toAccountId: String(d.accountId),
+      debtId: d._id,
       principalMinor: split.principalMinor,
       interestMinor: split.interestMinor,
-      warnings,
-    };
-  });
+      description: data.description || `${d.name} payment`,
+      notes: data.notes ?? null,
+      confirmOpportunity: data.confirmOpportunity,
+      confirmEmergency: data.confirmEmergency,
+      source: data.source,
+    },
+    session,
+  );
+  return {
+    transactionId: String(txn._id),
+    principalMinor: split.principalMinor,
+    interestMinor: split.interestMinor,
+    warnings: split.short
+      ? ["The payment is less than this month's interest: nothing went to principal"]
+      : [],
+  };
+}
+
+/** Record payment from the loan page. */
+export async function recordPayment(
+  ctx: Ctx,
+  id: string,
+  input: unknown,
+): Promise<DebtPaymentResult> {
+  const data = parseInput(paymentSchema, input);
+  return withTransaction((session) => postDebtPayment(ctx, id, data, session));
 }
 
 function planFrom(d: DebtDoc, outstanding: number, emi: number, monthsLeft: number) {

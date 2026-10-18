@@ -218,22 +218,26 @@ as `toAccountId` (it receives the principal), `debtId`, `principalMinor`, `inter
 name, kind: income|expense|transfer|debt_payment,
 template: { amountMinor, currency, fromAccountId?, toAccountId?, categoryId?, debtId?, description?, tags },
 frequency: monthly|weekly|yearly|every_n_months, interval: 1, dayOfMonth?, weekday?, monthOfYear?,
-startDate, endDate?, nextDueDate, reminderDaysBefore: 2, isVariableAmount: false,
+startDate, endDate?, nextDueDate (null once ended), reminderDaysBefore: 2, isVariableAmount: false,
 status: active|paused|ended, lastConfirmedAt?
+idx: {userId, status, nextDueDate}
 ```
+Dates are business date keys. `weekday`: 0 = Sunday. Confirm posts with `source: { kind: "recurring", refId: ruleId }`.
 
 ## budgets
 ```
-month: "YYYY-MM", categoryId, amountMinor, rollover: false
+month: "YYYY-MM", categoryId (expense), amountMinor (base currency), rollover: false (stored, not applied yet)
 idx: {userId, month, categoryId} unique
 ```
 
 ## goals
 ```
 name, targetMinor, targetDate, priority: 1-5, icon?, notes?,
-links: [{ kind: holding|account, refId, shareBp: 10000 }],
+links: [{ kind: holding|account, refId, shareBp: 10000 }],   # one item's shares across active goals ≤ 10000
 status: active|achieved|archived, expectedReturnBp: 0
+idx: {userId, status}
 ```
+`targetDate` is a business date key. "achieved" / on-track status is computed on read; the stored status is active or archived.
 
 ## insurancePolicies
 ```

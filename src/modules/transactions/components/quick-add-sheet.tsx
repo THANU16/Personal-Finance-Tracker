@@ -541,6 +541,41 @@ function QuickAddForm({
       className="flex min-h-0 flex-1 flex-col"
     >
       <div className="grid gap-4 overflow-y-auto px-4 pb-4">
+        {!editing && options.templates.length ? (
+          <FormField id="qa-template" label="From template (optional)">
+            <Select
+              value=""
+              onValueChange={(v) => {
+                const t = options.templates.find((x) => x.id === String(v));
+                if (!t) return;
+                // Fills the form only; the recurring rule itself is confirmed on /recurring.
+                setValue("type", t.kind);
+                setValue("amountMinor", t.amountMinor);
+                if (t.fromAccountId) setValue("fromAccountId", t.fromAccountId);
+                if (t.toAccountId) setValue("toAccountId", t.toAccountId);
+                if (t.categoryId) setValue("categoryId", t.categoryId);
+                setValue("splitMode", false);
+                setValue("description", t.description ?? t.name);
+                setValue("tags", t.tags.join(", "));
+              }}
+              items={options.templates.map((t) => ({ value: t.id, label: t.name }))}
+            >
+              <SelectTrigger id="qa-template" className="w-full">
+                <SelectValue placeholder="Choose a recurring template" />
+              </SelectTrigger>
+              <SelectContent>
+                {options.templates.map((t) => (
+                  <SelectItem key={t.id} value={t.id}>
+                    <span className="flex w-full justify-between gap-4">
+                      <span>{t.name}</span>
+                      <span className="text-muted-foreground capitalize">{t.kind}</span>
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </FormField>
+        ) : null}
         <Controller
           control={control}
           name="type"

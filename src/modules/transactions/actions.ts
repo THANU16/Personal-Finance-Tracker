@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import type { TemplateDTO } from "@/modules/recurring/schemas";
 import { utcToBusinessDate } from "@/domain/dates";
 import type { AccountType } from "@/domain/accounts";
 import { listAccounts } from "@/modules/accounts/service";
@@ -64,17 +65,21 @@ export interface QuickAddOptions {
   categories: CategoryNode[];
   holdings: HoldingOption[];
   tags: string[];
+  /** Recurring rules usable as templates (Phase 9). */
+  templates: TemplateDTO[];
 }
 
 /** Everything the Quick add sheet needs, fetched when it opens (the shell itself is static). */
 export async function getQuickAddOptionsAction(): Promise<ActionResult<QuickAddOptions>> {
   return runAction(async () => {
     const ctx = await requireUser();
-    const [accounts, categories, tags, holdings] = await Promise.all([
+    const { listTemplates } = await import("@/modules/recurring/service");
+    const [accounts, categories, tags, holdings, templates] = await Promise.all([
       listAccounts(ctx),
       getCategoryTree(ctx),
       listTags(ctx),
       listHoldingOptions(ctx),
+      listTemplates(ctx),
     ]);
     return {
       todayKey: utcToBusinessDate(new Date(), ctx.tz),
@@ -89,6 +94,7 @@ export async function getQuickAddOptionsAction(): Promise<ActionResult<QuickAddO
       categories,
       holdings,
       tags,
+      templates,
     };
   });
 }

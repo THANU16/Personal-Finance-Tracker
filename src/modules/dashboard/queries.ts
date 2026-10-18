@@ -571,9 +571,19 @@ export async function getUpcoming(ctx: Ctx, until: string): Promise<UpcomingItem
     if (s.dueDate < today && !s.href.startsWith("/sip/execute/")) continue;
     items.push({ ...s, kind: "sip" });
   }
-  // EMIs (Phase 8): outflow only when the payment account is earmarkable.
+  // Recurring rules (Phase 9) and EMIs (Phase 8): outflow only from an earmarkable account. A loan
+  // covered by a recurring debt-payment rule shows through the rule, not twice.
+  const { recurringUpcoming, debtIdsWithRules } = await import("@/modules/recurring/service");
   const { debtUpcoming } = await import("@/modules/debts/service");
-  for (const e of await debtUpcoming(ctx, until)) items.push({ ...e, kind: "emi" });
+  const [recurring, emis, covered] = await Promise.all([
+    recurringUpcoming(ctx, until),
+    debtUpcoming(ctx, until),
+    debtIdsWithRules(ctx),
+  ]);
+  for (const r of recurring) items.push({ ...r, kind: "recurring" });
+  for (const e of emis) {
+    if (!covered.has(e.href.replace("/debts/", ""))) items.push({ ...e, kind: "emi" });
+  }
   return items.sort((x, y) => x.dueDate.localeCompare(y.dueDate) || x.title.localeCompare(y.title));
 }
 
@@ -632,6 +642,8 @@ export interface Attention {
   offTargetCount: number;
   /** Opportunity Fund rule reached with money still to deploy (docs/04 §15). */
   opportunity: { drawdownBp: number; amountMinor: number; currency: string } | null;
+  /** Budgets this month at ≥ 80% (warn) and ≥ 100% (over). */
+  budgets: { warn: number; over: number };
 }
 
 export async function getAttention(ctx: Ctx): Promise<Attention> {
@@ -652,8 +664,10 @@ export async function getAttention(ctx: Ctx): Promise<Attention> {
   const opp = await getOpportunityOverview(ctx);
   const rule =
     opp.suggestion.ruleIdx !== null ? opp.settings.rules[opp.suggestion.ruleIdx] : undefined;
+  const { budgetsNeedingAttention } = await import("@/modules/budgets/service");
   return {
     staleCount,
+    budgets: await budgetsNeedingAttention(ctx),
     offTargetCount: await countOffTarget(ctx),
     opportunity:
       opp.suggestion.amountMinor > 0 && rule

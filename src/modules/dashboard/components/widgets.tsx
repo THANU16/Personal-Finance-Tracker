@@ -388,7 +388,10 @@ export async function AttentionCard({ searchParams }: { searchParams: SearchPara
     const a = await getAttention(ctx);
     return (
       <Widget title="Attention">
-        {a.staleCount === 0 && a.offTargetCount === 0 && !a.opportunity ? (
+        {a.staleCount === 0 &&
+        a.offTargetCount === 0 &&
+        !a.opportunity &&
+        a.budgets.warn + a.budgets.over === 0 ? (
           <p className="text-sm text-muted-foreground">All caught up.</p>
         ) : (
           <ul className="grid gap-2 text-sm">
@@ -406,6 +409,21 @@ export async function AttentionCard({ searchParams }: { searchParams: SearchPara
                     />
                   </span>
                   <span className="text-muted-foreground">Opportunity fund →</span>
+                </Link>
+              </li>
+            ) : null}
+            {a.budgets.warn + a.budgets.over > 0 ? (
+              <li>
+                <Link
+                  href="/budgets"
+                  className="flex items-center justify-between gap-3 hover:underline"
+                >
+                  <span>
+                    {a.budgets.over ? `${a.budgets.over} over budget` : ""}
+                    {a.budgets.over && a.budgets.warn ? " · " : ""}
+                    {a.budgets.warn ? `${a.budgets.warn} at 80% or more` : ""}
+                  </span>
+                  <span className="text-muted-foreground">Budgets →</span>
                 </Link>
               </li>
             ) : null}
@@ -438,7 +456,7 @@ export async function AttentionCard({ searchParams }: { searchParams: SearchPara
           </ul>
         )}
         <p className="mt-2 text-xs text-muted-foreground">
-          Budgets and forecast warnings appear here in later phases.
+          Forecast warnings appear here with Phase 10.
         </p>
       </Widget>
     );
@@ -484,6 +502,48 @@ export async function OpportunityCard({ searchParams }: { searchParams: SearchPa
             {o.suggestion.amountMinor > 0 ? "Deploy now →" : "Open →"}
           </Link>
         </div>
+      </Widget>
+    );
+  });
+}
+
+export async function GoalsCard({ searchParams }: { searchParams: SearchParams }) {
+  return guarded("Goals", async () => {
+    const { ctx } = await load(searchParams);
+    const { listGoals } = await import("@/modules/goals/service");
+    const goals = (await listGoals(ctx)).goals.filter((g) => !g.archived).slice(0, 3);
+    return (
+      <Widget title="Goals">
+        {goals.length ? (
+          <ul className="space-y-3 text-sm">
+            {goals.map((g) => (
+              <li key={g.id}>
+                <div className="flex justify-between gap-2">
+                  <span className="truncate">{g.name}</span>
+                  <span className="text-muted-foreground">
+                    {formatPercentBp(g.progressBp)}
+                    {g.status === "off_track"
+                      ? " · off track"
+                      : g.status === "achieved"
+                        ? " · achieved"
+                        : ""}
+                  </span>
+                </div>
+                <div className="mt-1 h-2 rounded-full bg-muted" aria-hidden>
+                  <div
+                    className="h-2 rounded-full bg-[var(--viz-series-1)]"
+                    style={{ width: `${g.progressBp / 100}%` }}
+                  />
+                </div>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-sm text-muted-foreground">No goals yet.</p>
+        )}
+        <Link href="/goals" className="mt-3 inline-block text-sm text-primary hover:underline">
+          {goals.length ? "All goals →" : "Add a goal →"}
+        </Link>
       </Widget>
     );
   });

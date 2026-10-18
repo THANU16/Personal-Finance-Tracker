@@ -14,7 +14,7 @@
 | MM Money Manager import (docs/07) | ✅ done (real 2025 file to be checked by owner) | 2026-10-18 | `feat: money manager import` |
 | 7 Opportunity Fund | ✅ done | 2026-10-18 | `feat(phase-7)` |
 | 8 Debts & receivables | ✅ done | 2026-10-18 | `feat(phase-8)` |
-| 9 Recurring, budgets, goals | ⬜ | | |
+| 9 Recurring, budgets, goals | ✅ done | 2026-10-18 | `feat(phase-9)` |
 | 10 Essentials, notifications, cron, forecast | ⬜ | | |
 | 11 Reports, import/export, attachments | ⬜ | | |
 | 12 Hardening & release | ⬜ | | |
@@ -224,6 +224,23 @@ Status values: ⬜ not started · 🟡 in progress · ✅ done
   account, like SIPs). Receivables/payables settle via transfer (receivable → account, account → payable), capped at the open
   balance, dip guard + confirm.
 - [8] Transactions list: "Loan payment" type (signed −, "Bank → Loan" accounts, filter option).
+- [9] `domain/recurring.ts`: `firstDue` (on/after start), `nextAfter` (monthly/every-N-months/yearly re-anchor to
+  `dayOfMonth` clamped to month end: 31 Jan → 28 Feb → 31 Mar; weekly every N weeks on a weekday), `occurrences`,
+  `reminderDate`. Confirm sends the due date it confirms; posting + advancing run in one DB transaction and the update is
+  guarded on that due date, so a repeat confirm is refused (posts once). Skip advances only; pause/resume; an end date ends
+  the rule. Loan-payment rules reuse `postDebtPayment` (split by the loan) and replace that loan's EMI in Upcoming.
+- [9] Budgets: actual = expense lines (splits per line) + transfer fees + loan interest of the month (user tz, base
+  currency), for the category and its children; unbudgeted = lines whose category and parent have no budget. Totals count each
+  line once and only top-level budgets (owner-approved). Status from exact amounts (ok < 80% ≤ warn < 100% ≤ over), so 999,999
+  of 1,000,000 is "80% used", not over. Copy last month adds only missing categories. Bars amber/red per docs/05 with a text
+  label. Dashboard Attention shows budgets at 80%+ / over.
+- [9] Goals: current = Σ linked value × share (base, today; FDs by §9); required monthly per docs/04 §13; status achieved /
+  on track (required ≤ 110% of the average monthly contribution) / off track / date passed. Contribution (owner-approved) =
+  3 complete months average of account net balance change and holding invested − redeemed, × share. One item's shares across
+  active goals ≤ 100%. Goals can be archived and deleted (plans, not ledger records). Dashboard Goals card shows the top 3.
+- [9] Quick add "From template": fills the form from an income/expense/transfer rule (does not advance the rule).
+- [9] Fix: two queries in parallel as the first operation of a DB transaction fail on MongoDB; copy-last-month reads them in
+  sequence (others start their transaction with a single query first).
 - [mm] Excel reader: `read-excel-file` (maintained, 0 advisories) rather than ExcelJS (2 moderate advisories via `uuid`, ~480
   packages) or the unmaintained `xlsx`. Cells are read with `parseNumber: s => s` so amounts stay decimal strings (BigInt
   parse, never floats); Excel date-times are rounded to the second (12:30:00 can read back as 12:29:59.999).
@@ -300,6 +317,8 @@ Status values: ⬜ not started · 🟡 in progress · ✅ done
   never committed.
 
 ## Known issues / tech debt
+- [9] Budget `rollover` is stored but not applied (owner-approved). Budget 80/100% and goal off-track notifications arrive with
+  the Phase 10 job (status badges and Attention now). Recurring reminders show as "Due soon" on /recurring until then.
 - [8] No interest-rate changes for floating loans yet (owner-approved scope). Interest is a flat monthly r on the outstanding
   whatever the payment date (docs/04 §10), so early/late payments do not change it. Debt payments are voided, not edited.
 - [7] No in-app notification for a triggered rule until Phase 10 (banner + Attention only). One benchmark per fund; changing its
