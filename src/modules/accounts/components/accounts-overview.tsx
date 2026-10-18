@@ -191,15 +191,17 @@ export async function AccountsOverview({
         <Card key={group.key}>
           <CardHeader className="flex flex-row items-baseline justify-between gap-4">
             <CardTitle>{group.label}</CardTitle>
-            <div className="flex flex-col items-end text-sm">
-              {group.subtotals.map((s) => (
-                <Money
-                  key={s.currency}
-                  valueMinor={s.totalMinor}
-                  currency={s.currency}
-                  className="font-semibold"
-                />
-              ))}
+            <div className="flex flex-col items-end gap-1 text-sm">
+              <Money
+                valueMinor={group.subtotal.totalMinor}
+                currency={group.subtotal.currency}
+                className="font-semibold"
+              />
+              {group.fxMissing > 0 ? (
+                <Badge variant="outline" title="Add the rate in Settings → FX rates">
+                  FX rate missing · {group.fxMissing} not included
+                </Badge>
+              ) : null}
             </div>
           </CardHeader>
           <CardContent>

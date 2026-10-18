@@ -51,7 +51,7 @@ export function toHoldingDTO(
     name: h.name,
     assetClass: cls
       ? { id: String(cls._id), name: cls.name, color: cls.color }
-      : { id: String(h.assetClassId), name: "Unknown", color: "#64748b" },
+      : { id: String(h.assetClassId), name: "Unknown", color: "#6250d6" },
     instrumentType: h.instrumentType,
     currency: h.currency,
     platform: h.platform ?? null,

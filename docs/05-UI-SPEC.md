@@ -33,7 +33,7 @@ opportunity-fund banner if triggered, forecast warning.
 Row 5: Goals progress bars · Essentials mini (emergency months, health score) · Opportunity fund (size vs target, current drawdown).
 **Cash bar** ("Where my cash is": Emergency / Opportunity / Free) and **Safe to spend** with a breakdown popover, next to the
 emergency progress bar.
-Charts: net worth, assets vs liabilities (stacked bars), income vs expense with savings-rate line on a right axis, allocation donut
+Charts: net worth, assets vs liabilities (stacked bars), income vs expense with a separate savings-rate line chart beneath it (owner decision, Phase 4: no dual axis), allocation donut
 with drill-down, top categories (click filters Transactions with the same range).
 
 ## 3. Accounts `/accounts`, `/accounts/[id]`

@@ -9,6 +9,7 @@ import { Money } from "@/components/shared/money";
 import { StatCard } from "@/components/shared/stat-card";
 import { utcToBusinessDate } from "@/domain/dates";
 import { formatPercentBp } from "@/lib/format";
+import { vizColor } from "@/lib/viz-palette";
 import { cn } from "@/lib/utils";
 import { listAccounts } from "@/modules/accounts/service";
 import {
@@ -72,6 +73,8 @@ export async function PortfolioView({ searchParams }: { searchParams: SearchPara
   const sp = await searchParams;
   const view = sp.view === "all" ? "all" : "class";
   const showClosed = sp.closed === "1";
+  // ?class=<id>: one class only (dashboard allocation donut links here).
+  const classFilter = typeof sp.class === "string" ? sp.class : null;
   const p = await getPortfolio(ctx, { includeClosed: showClosed });
   const todayKey = utcToBusinessDate(new Date(), ctx.tz);
   const t = p.totals;
@@ -79,6 +82,7 @@ export async function PortfolioView({ searchParams }: { searchParams: SearchPara
     const q = new URLSearchParams({
       ...(view === "all" ? { view } : {}),
       ...(showClosed ? { closed: "1" } : {}),
+      ...(classFilter ? { class: classFilter } : {}),
     });
     for (const [k, v] of Object.entries(changes)) {
       if (v === null) q.delete(k);
@@ -138,13 +142,13 @@ export async function PortfolioView({ searchParams }: { searchParams: SearchPara
           hint={t.xirrBp === null ? "Shown after 90 days of history" : "Annualised, incl. income"}
         />
       </div>
-      {t.otherCurrencyCount > 0 || p.staleCount > 0 ? (
+      {t.fxMissingCount > 0 || p.staleCount > 0 ? (
         <div className="mb-4 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
-          {t.otherCurrencyCount > 0 ? (
+          {t.fxMissingCount > 0 ? (
             <span className="flex items-center gap-2">
-              <Badge variant="outline">FX missing</Badge>
-              {t.otherCurrencyCount} holding{t.otherCurrencyCount === 1 ? "" : "s"} in other
-              currencies not in totals
+              <Badge variant="outline">FX rate missing</Badge>
+              {t.fxMissingCount} holding{t.fxMissingCount === 1 ? "" : "s"} not in totals — add
+              rates in Settings
             </span>
           ) : null}
           {p.staleCount > 0 ? (
@@ -200,45 +204,55 @@ export async function PortfolioView({ searchParams }: { searchParams: SearchPara
         />
       ) : (
         <div className="grid gap-4">
-          {p.classes.map((cls) => (
-            <Card key={cls.id}>
-              <CardHeader>
-                <details open className="group">
-                  <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3">
-                    <span className="flex items-center gap-2 font-semibold">
-                      <span
-                        className="size-3 rounded-full"
-                        style={{ background: cls.color }}
-                        aria-hidden
-                      />
-                      {cls.name}
-                      <span className="text-sm font-normal text-muted-foreground">
-                        {cls.weightBp !== null ? formatPercentBp(cls.weightBp) : "—"} of portfolio
+          {classFilter ? (
+            <p className="text-sm text-muted-foreground">
+              Showing one asset class ·{" "}
+              <Link href={param({ class: null })} className="underline underline-offset-4">
+                Show all classes
+              </Link>
+            </p>
+          ) : null}
+          {p.classes
+            .filter((cls) => !classFilter || cls.id === classFilter)
+            .map((cls) => (
+              <Card key={cls.id}>
+                <CardHeader>
+                  <details open className="group">
+                    <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3">
+                      <span className="flex items-center gap-2 font-semibold">
+                        <span
+                          className="size-3 rounded-full"
+                          style={{ background: vizColor(cls.color) }}
+                          aria-hidden
+                        />
+                        {cls.name}
+                        <span className="text-sm font-normal text-muted-foreground">
+                          {cls.weightBp !== null ? formatPercentBp(cls.weightBp) : "—"} of portfolio
+                        </span>
                       </span>
-                    </span>
-                    <span className="flex items-center gap-4 text-sm">
-                      <Money
-                        valueMinor={cls.valueMinor}
-                        currency={t.currency}
-                        className="font-semibold"
-                      />
-                      <GainCell minor={cls.unrealizedGainMinor} bp={null} currency={t.currency} />
-                      <span className="text-muted-foreground">
-                        XIRR {cls.xirrBp !== null ? formatPercentBp(cls.xirrBp) : "—"}
+                      <span className="flex items-center gap-4 text-sm">
+                        <Money
+                          valueMinor={cls.valueMinor}
+                          currency={t.currency}
+                          className="font-semibold"
+                        />
+                        <GainCell minor={cls.unrealizedGainMinor} bp={null} currency={t.currency} />
+                        <span className="text-muted-foreground">
+                          XIRR {cls.xirrBp !== null ? formatPercentBp(cls.xirrBp) : "—"}
+                        </span>
                       </span>
-                    </span>
-                  </summary>
-                  <CardContent className="mt-4 px-0">
-                    <HoldingsTable
-                      holdings={cls.holdings}
-                      todayKey={todayKey}
-                      bigChangeThresholdBp={settings.bigChangeThresholdBp}
-                    />
-                  </CardContent>
-                </details>
-              </CardHeader>
-            </Card>
-          ))}
+                    </summary>
+                    <CardContent className="mt-4 px-0">
+                      <HoldingsTable
+                        holdings={cls.holdings}
+                        todayKey={todayKey}
+                        bigChangeThresholdBp={settings.bigChangeThresholdBp}
+                      />
+                    </CardContent>
+                  </details>
+                </CardHeader>
+              </Card>
+            ))}
         </div>
       )}
     </>

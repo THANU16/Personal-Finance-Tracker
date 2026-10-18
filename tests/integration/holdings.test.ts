@@ -531,7 +531,7 @@ describe("portfolio query (docs/05 §5)", () => {
       valueMinor: 400_000,
       investedMinor: 400_000,
       realizedGainMinor: 100_000,
-      otherCurrencyCount: 1,
+      fxMissingCount: 1,
     });
     expect(p.holdings.find((h) => h.id === a.id)?.weightBp).toBe(7_500);
     expect(p.holdings.find((h) => h.id === gold.id)?.weightBp).toBe(2_500);
@@ -540,5 +540,14 @@ describe("portfolio query (docs/05 §5)", () => {
       ["Gold", 2_500],
     ]);
     expect(p.closedCount).toBe(1);
+
+    // With a USD rate the ETF ($10.00 × 300 = LKR 3,000.00 = 300,000 minor) joins totals and weights.
+    const { saveFxRate } = await import("@/modules/fx/service");
+    await saveFxRate(ctx, { date: "2025-01-01", base: "USD", quote: "LKR", rate: 300 });
+    const q = await getPortfolio(ctx);
+    expect(q.totals).toMatchObject({ valueMinor: 700_000, fxMissingCount: 0 });
+    const etf = q.holdings.find((h) => h.name === "USD ETF")!;
+    expect(etf.valueBaseMinor).toBe(300_000);
+    expect(etf.weightBp).toBe(4_286); // 300,000 / 700,000
   });
 });

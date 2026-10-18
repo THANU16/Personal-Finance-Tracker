@@ -10,8 +10,10 @@ import { PreferencesForm } from "@/modules/settings/components/preferences-form"
 import { ProfileForm } from "@/modules/settings/components/profile-form";
 import { SecurityTab } from "@/modules/settings/components/security/security-tab";
 import type { SecurityDTO } from "@/modules/settings/security";
+import { FxRatesManager } from "@/modules/fx/components/fx-rates-manager";
+import type { FxRateDTO } from "@/modules/fx/schemas";
 
-// docs/05 §17 — FX rates (Phase 4) and Data (Phase 11) tabs arrive with their phases.
+// docs/05 §17 — the Data tab arrives with Phase 11.
 export function SettingsTabs({
   user,
   settings,
@@ -19,6 +21,8 @@ export function SettingsTabs({
   categories,
   assetClasses,
   security,
+  fxRates,
+  todayKey,
 }: {
   user: { name: string; email: string };
   settings: SettingsDTO;
@@ -26,6 +30,8 @@ export function SettingsTabs({
   categories: CategoryNode[];
   assetClasses: AssetClassDTO[];
   security: SecurityDTO;
+  fxRates: FxRateDTO[];
+  todayKey: string;
 }) {
   return (
     <Tabs defaultValue="preferences">
@@ -34,6 +40,7 @@ export function SettingsTabs({
         <TabsTrigger value="preferences">Preferences</TabsTrigger>
         <TabsTrigger value="categories">Categories</TabsTrigger>
         <TabsTrigger value="asset-classes">Asset classes</TabsTrigger>
+        <TabsTrigger value="fx">FX rates</TabsTrigger>
         <TabsTrigger value="security">Security</TabsTrigger>
       </TabsList>
       <TabsContent value="profile" className="pt-4">
@@ -47,6 +54,9 @@ export function SettingsTabs({
       </TabsContent>
       <TabsContent value="asset-classes" className="pt-4">
         <AssetClassesManager classes={assetClasses} />
+      </TabsContent>
+      <TabsContent value="fx" className="pt-4">
+        <FxRatesManager rates={fxRates} baseCurrency={settings.baseCurrency} todayKey={todayKey} />
       </TabsContent>
       <TabsContent value="security" className="pt-4">
         <SecurityTab security={security} locale={settings.locale} timeZone={settings.timezone} />

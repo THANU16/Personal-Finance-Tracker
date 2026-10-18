@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 import { listAssetClasses } from "@/modules/asset-classes/service";
 import { getCategoryTree } from "@/modules/categories/service";
+import { listFxRates } from "@/modules/fx/service";
+import { utcToBusinessDate } from "@/domain/dates";
 import { getSecurityOverview } from "@/modules/settings/security";
 import { getCurrentUser } from "@/server/auth/require-user";
 import { SettingsTabs } from "@/modules/settings/components/settings-tabs";
@@ -9,10 +11,11 @@ import { SettingsTabs } from "@/modules/settings/components/settings-tabs";
 export async function SettingsContent() {
   const current = await getCurrentUser();
   if (!current) redirect("/login");
-  const [categories, assetClasses, security] = await Promise.all([
+  const [categories, assetClasses, security, fxRates] = await Promise.all([
     getCategoryTree(current.ctx, { includeArchived: true }),
     listAssetClasses(current.ctx),
     getSecurityOverview(),
+    listFxRates(current.ctx),
   ]);
   return (
     <SettingsTabs
@@ -22,6 +25,8 @@ export async function SettingsContent() {
       categories={categories}
       assetClasses={assetClasses}
       security={security}
+      fxRates={fxRates}
+      todayKey={utcToBusinessDate(new Date(), current.ctx.tz)}
     />
   );
 }

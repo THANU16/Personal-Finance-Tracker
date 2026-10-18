@@ -49,6 +49,26 @@ export async function seedAssetClasses(userId: string, session: ClientSession): 
   );
 }
 
+/**
+ * Phase 4 (bootstrap v2): system classes still on their Phase 2 default colour move to the
+ * validated palette. Colours the user changed are kept.
+ */
+export async function migrateAssetClassColors(
+  userId: string,
+  session: ClientSession,
+): Promise<void> {
+  const uid = toObjectId(userId, "User");
+  await AssetClassModel.bulkWrite(
+    SYSTEM_ASSET_CLASSES.map((c) => ({
+      updateOne: {
+        filter: { userId: uid, name: c.name, isSystem: true, color: c.legacyColor },
+        update: { $set: { color: c.color } },
+      },
+    })),
+    { session },
+  );
+}
+
 export async function listAssetClasses(
   ctx: Ctx,
   opts: { includeArchived?: boolean } = {},

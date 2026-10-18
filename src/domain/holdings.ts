@@ -103,7 +103,23 @@ const emptyState = (): HoldingState => ({
  * value = units × lastPrice.
  */
 export function replayHolding(events: readonly HoldingEvent[], opts: ReplayOptions): ReplayResult {
+  const replayer = createHoldingReplayer(opts);
+  const sorted = sortEvents(events).filter((e) => !opts.until || e.date <= opts.until);
+  for (const e of sorted) replayer.apply(e);
+  if (opts.valueAt && sorted.length) {
+    // FD value keeps accruing after the last event; callers pass `until` = today for "now".
+    replayer.accrueTo(opts.until ?? sorted.at(-1)!.date);
+  }
+  return replayer.result();
+}
+
+/**
+ * Incremental replay (one event at a time, already in date/seq order). Used by replayHolding and
+ * by the single-pass net-worth series (docs/04 §22), so both apply identical rules.
+ */
+export function createHoldingReplayer(opts: Pick<ReplayOptions, "trackUnits" | "valueAt">) {
   const s = emptyState();
+  let applied = 0;
   const redemptions = new Map<string, RedemptionResult>();
   const timeline: ReplayResult["timeline"] = [];
   const addUnits = (u: number | null | undefined) => {
@@ -116,8 +132,8 @@ export function replayHolding(events: readonly HoldingEvent[], opts: ReplayOptio
     }
   };
 
-  const sorted = sortEvents(events).filter((e) => !opts.until || e.date <= opts.until);
-  for (const e of sorted) {
+  function apply(e: HoldingEvent): void {
+    applied += 1;
     if (opts.valueAt && !s.fullyRedeemed) s.currentValueMinor = opts.valueAt(e.date);
 
     if (e.kind === "valuation") {
@@ -204,12 +220,23 @@ export function replayHolding(events: readonly HoldingEvent[], opts: ReplayOptio
     else timeline.push(point);
   }
 
-  if (opts.valueAt && !s.fullyRedeemed && sorted.length) {
-    // FD value keeps accruing after the last event; callers pass `until` = today for "now".
-    s.currentValueMinor = opts.valueAt(opts.until ?? sorted.at(-1)!.date);
+  /** FDs: value on `date` from the deposit terms (§9) once something was applied and not redeemed. */
+  function accrueTo(date: string): void {
+    if (opts.valueAt && applied > 0 && !s.fullyRedeemed) s.currentValueMinor = opts.valueAt(date);
   }
-  s.avgCostMinor = s.units && s.units > 0 ? Math.round(s.investedMinor / s.units) : null;
-  return { state: s, redemptions, timeline };
+
+  /** Value on `date` without changing the state (FDs accrue; others are as of the last event). */
+  function valueOn(date: string): number {
+    if (opts.valueAt && applied > 0 && !s.fullyRedeemed) return opts.valueAt(date);
+    return s.currentValueMinor;
+  }
+
+  function result(): ReplayResult {
+    s.avgCostMinor = s.units && s.units > 0 ? Math.round(s.investedMinor / s.units) : null;
+    return { state: s, redemptions, timeline };
+  }
+
+  return { apply, accrueTo, valueOn, result, state: s };
 }
 
 /** Unrealised gain = value − invested. */

@@ -21,6 +21,7 @@ import { MoneyInput } from "@/components/shared/money-input";
 import { PriceInput } from "@/components/shared/price-input";
 import { isBigChange } from "@/domain/holdings";
 import { unitsValueMinor } from "@/domain/redemption";
+import { vizColor } from "@/lib/viz-palette";
 import { formatPercentBp, formatUnits } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { bulkUpdateValuesAction } from "@/modules/holdings/actions";
@@ -148,7 +149,7 @@ export function UpdateValuesForm({
                     <div className="flex items-center gap-2 font-medium">
                       <span
                         className="size-2 rounded-full"
-                        style={{ background: r.assetClass.color }}
+                        style={{ background: vizColor(r.assetClass.color) }}
                         aria-hidden
                       />
                       {r.name}

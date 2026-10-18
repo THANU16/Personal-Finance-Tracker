@@ -8,7 +8,7 @@
 | 3 Holdings & returns | ✅ done | 2026-10-18 | `feat(phase-3)` |
 | MOD-1 Phase 1 additions | ✅ done | 2026-10-18 | `feat(mod-1)` |
 | MOD-2 Phase 2 additions | ✅ done | 2026-10-18 | `feat(mod-2)` |
-| 4 Dashboard, snapshots, FX | ⬜ | | |
+| 4 Dashboard, snapshots, FX | ✅ done | 2026-10-18 | `feat(phase-4)` |
 | 5 SIP planner | ⬜ | | |
 | 6 Rebalancing | ⬜ | | |
 | 7 Opportunity Fund | ⬜ | | |
@@ -60,7 +60,7 @@ Status values: ⬜ not started · 🟡 in progress · ✅ done
 - [2] `AUTH_RATE_LIMIT=on|off` (default on, production only). Only the e2e server sets `off` — its `next start` is production mode and tests register more than 5 users a minute.
 - [3] **Same-day ordering = entry order (owner decision).** docs/04 §3 said a valuation dated D includes every flow dated ≤ D; that swallowed same-day activity (add a holding today then buy today → buy invisible; value today then redeem today → wrong gain). Events now sort by date, then by entry (createdAt). docs/04 §3 updated with the rule and an example.
 - [3] **NAV precision (owner decision):** prices are `priceMinorE4` / `lastPriceMinorE4` = minor units × 10⁴ (NAV 12.3456 LKR = 123456); units are numbers rounded to 6 decimals. docs/03 updated (`priceMinor` → `priceMinorE4`).
-- [3] Holding currency must equal the funding/receiving account currency until FX (Phase 4); the error says so.
+- [3] Holding currency must equal the funding/receiving account currency; the error says so. (Phase 4 kept this rule — only cross-currency transfers mix currencies.)
 - [3] `recomputeHolding` replays transactions + valuations (`domain/holdings.replayHolding`) and rewrites redemption figures when they change, so backdated buys/edits correct later redemptions; cash effects never depend on them. Redemption cost uses an exact BigInt `mulDivRound`.
 - [3] Fees on redemptions also count in `feesPaidMinor` (docs/04 table lists only buy fees; realised gain already nets them).
 - [3] Redeem by amount on a unit-tracked holding removes units proportionally. On buys with units on, the missing one of units/price is derived from the amount.
@@ -111,6 +111,40 @@ Status values: ⬜ not started · 🟡 in progress · ✅ done
   and an aria summary, never colour alone). Accounts list shows the bar for earmarked accounts and "All emergency/opportunity
   money" for dedicated ones, plus an Over-earmarked badge; "Earmark / move" in the row menu and on account detail (Earmarks
   card with edit/remove); Quick add (create and edit) shows a confirm dialog; emergency needs a ticked checkbox.
+- [4] FX: `domain/fx.ts` (latest rate on/before the date, direct else inverse, null when missing — never 1:1; conversion respects
+  each currency's minor digits, half away from zero). `fxRates` unique per user/pair/day (saving again replaces); Settings → FX
+  rates tab. Now converted to base: account group subtotals (today's rate), the /transactions summary (each day's rate),
+  portfolio totals/weights (today) and portfolio/class XIRR (each flow at its date; a holding with any missing rate is left out),
+  earmark buckets (`getBucketsInBase`). Anything without a rate is excluded and badged "FX rate missing".
+- [4] Net worth: `domain/series.ts` `computeNetWorthSeries` is one pass over transactions + valuations sorted by (date, entry
+  order); holdings use the same incremental replayer as `recomputeHolding` (`createHoldingReplayer`, extracted from
+  `replayHolding` without behaviour change); FDs use §9 at each date. Accounts count from their opening date. Assets = positive
+  balances + holding values; liabilities = |negative balances| (an overdrawn bank counts as a liability); cash = positive balances
+  of bank/cash/wallet/broker_cash/opportunity_fund.
+- [4] Snapshots: `rebuildHistory` upserts every completed month-end in one pass and removes stale auto snapshots (idempotent);
+  `ensureMonthEndSnapshot` is the job function for the Phase 10 cron; manual snapshot = today. Month granularity over ranges ≥ 366
+  days or "All" reads the cache and computes only missing month-ends live.
+- [4] Time ranges: presets Today/7D/30D/3M/6M/YTD/1Y/All/Custom (default 6M), `?r=&from=&to=&g=&cmp=` in the URL (`r` added
+  so rolling presets stay rolling on reload). Buckets are business-date keys clipped to the range; weeks start Monday; the
+  previous period has the same number of days and is aligned by bucket index (missing buckets → null).
+- [4] Flows: one aggregation per range — `$dateTrunc` to the day in the user timezone, grouped by day/type/currency, converted at
+  that day's rate, then bucketed in the domain. Income = income + investment income paid out; expense = expense + transfer fees +
+  loan interest; invest amounts exclude fees (investment rate). Top categories roll children up to their parent, count split lines
+  and file transfer fees under their category (Bank fees).
+- [4] Standing: runway = (cash + high-liquidity holdings) ÷ average expense of the last 3 complete months, in tenths of a month;
+  debt load and health score are null until Phases 8/10 and show "—". Safe to spend = free cash (base) − unposted outflows due by
+  month end; today only card dues contribute (full outstanding, owner decision) — `getUpcoming` items carry
+  `outflowMinor`/`accountId` so SIPs (5), EMIs (8) and recurring (9) plug in.
+- [4] Charts (owner decisions): savings rate is its own small chart under income vs expense (no dual axis); asset classes use the
+  validated categorical palette in fixed slot order (blue, orange, aqua, yellow, magenta, green, violet) via `--viz-cat-N`
+  light/dark tokens. Bootstrap v3 moves untouched system class colours to it; the class colour picker offers palette swatches.
+  Every chart has a legend, an aria summary and a table view; the previous period is a neutral dashed line; > 30 bars scroll
+  horizontally. /assets accepts `?class=` (donut click-through); top categories open /transactions with the same range.
+- [4] Dashboard widgets each sit in their own Suspense boundary with skeleton, empty and error states (an error card keeps the rest
+  of the page working); the ledger is read once per request (React `cache`).
+- [fix] Duplicate starter categories (owner report): the first-login seed is now idempotent (upserts by kind/parent/name) and
+  bootstrap v2 merges existing duplicates into the oldest copy, moving transactions, split lines (combined when they collide)
+  and sub-categories first. Commit `fix(categories)`.
 
 ## Deviations from docs
 <!-- Claude: anything built differently from the docs, and why. Update the doc too if the user agrees. -->
@@ -123,6 +157,10 @@ Status values: ⬜ not started · 🟡 in progress · ✅ done
 - [2] `categoryRules` collection not created yet — it belongs to CSV import (Phase 11).
 - [3] docs/04 §3 same-day valuation rule changed to entry order (owner-approved); docs/03 price fields renamed to `*PriceMinorE4` (owner-approved). Both docs updated.
 - [3] No `auto_on_buy` / `auto_on_redeem` valuations are written: values follow from the §3 replay rule, so they would duplicate it. The enum values remain for later use.
+- [4] docs/05 §2 "savings-rate line on a right axis" → a separate savings-rate chart (owner-approved; docs/05 and the
+  analytics-charts skill updated). Seeded asset-class colours replaced by the validated palette (owner-approved).
+- [4] Acceptance "equal reports from the seed scenario" → fixed-scenario integration tests until Phases 11/12 (owner-approved).
+- [4] docs/05 §2 "Net worth trend (12m / 3y / all toggle)" is served by the page-wide TimeRangeBar instead of a per-card toggle.
 
 ## Open questions for the owner
 <!-- Claude: questions that need a human answer. -->
@@ -130,6 +168,13 @@ Status values: ⬜ not started · 🟡 in progress · ✅ done
 - [1] Then try register/login in the browser against Atlas (`npm run dev`). All auth flows pass e2e on the in-memory DB. Once your account exists, consider `DISABLE_SIGNUP=true`.
 
 ## Known issues / tech debt
+- [4] Acceptance "dashboard numbers equal reports from the seed scenario": Reports (Phase 11) and the seed script (Phase 12) do not
+  exist yet, so a fixed scenario in `tests/integration/dashboard.test.ts` checks every dashboard number against an independent
+  calculation (ledger `cashflowOf`, `computeNetWorthAsOf`, account balances). Re-check against real reports in Phase 11.
+- [4] "< 1 s with a few thousand transactions" is measured on the queries (all dashboard queries for 1Y with ~3,000 transactions
+  run in parallel under 1 s on the in-memory DB); end-to-end page time against Atlas is not measured yet (Phase 12 perf check).
+- [4] The series loads every posted transaction and valuation of the user per request (single pass); fine for thousands, revisit
+  with snapshots-as-checkpoints if a user has hundreds of thousands.
 - [mod-2] The `over_earmarked` notification is not raised yet (Phase 10 notification job); MOD-2 shows the badge only.
 - [mod-2] Emergency-flagged holdings in `getBuckets` use the cached value (FDs: today's §9 value); other holdings' values are as
   of their last valuation.

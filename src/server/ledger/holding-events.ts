@@ -55,30 +55,53 @@ export async function loadHoldingEvents(
     ValuationModel.find({ userId, holdingId }).session(session).lean<ValuationDoc[]>(),
   ]);
   const events: HoldingEvent[] = [
-    ...txns.map((t): HoldingEvent => ({
-      kind: "txn",
-      id: String(t._id),
-      type: t.type as HoldingTxnType,
-      date: utcToBusinessDate(t.date, tz),
-      seq: t.createdAt.getTime(),
-      amountMinor: t.amountMinor,
-      feeMinor: t.feeMinor ?? 0,
-      taxMinor: t.taxMinor ?? 0,
-      units: t.units ?? null,
-      priceMinorE4: t.priceMinorE4 ?? null,
-      reinvest: t.reinvest ?? null,
-    })),
-    ...valuations.map((v): HoldingEvent => ({
-      kind: "valuation",
-      id: String(v._id),
-      date: utcToBusinessDate(v.date, tz),
-      seq: v.createdAt.getTime(),
-      valueMinor: v.valueMinor,
-      priceMinorE4: v.priceMinorE4 ?? null,
-      units: v.units ?? null,
-    })),
+    ...txns.map((t) => holdingTxnEvent(t, tz)),
+    ...valuations.map((v) => valuationEvent(v, tz)),
   ];
   return { events, txns, valuations };
+}
+
+type HoldingTxnFields = Pick<
+  TransactionDoc,
+  | "_id"
+  | "type"
+  | "date"
+  | "createdAt"
+  | "amountMinor"
+  | "feeMinor"
+  | "taxMinor"
+  | "units"
+  | "priceMinorE4"
+  | "reinvest"
+>;
+
+/** A posted holding transaction as a replay event (business date in `tz`, entry order as seq). */
+export function holdingTxnEvent(t: HoldingTxnFields, tz: string): HoldingEvent {
+  return {
+    kind: "txn",
+    id: String(t._id),
+    type: t.type as HoldingTxnType,
+    date: utcToBusinessDate(t.date, tz),
+    seq: t.createdAt.getTime(),
+    amountMinor: t.amountMinor,
+    feeMinor: t.feeMinor ?? 0,
+    taxMinor: t.taxMinor ?? 0,
+    units: t.units ?? null,
+    priceMinorE4: t.priceMinorE4 ?? null,
+    reinvest: t.reinvest ?? null,
+  };
+}
+
+export function valuationEvent(v: ValuationDoc, tz: string): HoldingEvent {
+  return {
+    kind: "valuation",
+    id: String(v._id),
+    date: utcToBusinessDate(v.date, tz),
+    seq: v.createdAt.getTime(),
+    valueMinor: v.valueMinor,
+    priceMinorE4: v.priceMinorE4 ?? null,
+    units: v.units ?? null,
+  };
 }
 
 export async function loadHoldingDoc(

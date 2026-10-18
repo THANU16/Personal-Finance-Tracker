@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { DataTable, dataTableColumns } from "@/components/shared/data-table";
 import { Money } from "@/components/shared/money";
+import { vizColor } from "@/lib/viz-palette";
 import { formatPercentBp } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { INSTRUMENT_LABEL } from "@/modules/holdings/components/holding-meta";
@@ -142,7 +143,7 @@ export function HoldingsTable({
                   <span className="inline-flex items-center gap-1">
                     <span
                       className="size-2 rounded-full"
-                      style={{ background: h.assetClass.color }}
+                      style={{ background: vizColor(h.assetClass.color) }}
                       aria-hidden
                     />
                     {h.assetClass.name} ·

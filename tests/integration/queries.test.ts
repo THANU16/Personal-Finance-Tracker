@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { getAccountDetail, getAccountsOverview } from "@/modules/accounts/queries";
+import { saveFxRate } from "@/modules/fx/service";
 import { listTransactions } from "@/modules/transactions/queries";
 import { transactionFiltersSchema } from "@/modules/transactions/schemas";
 import { voidTransaction } from "@/modules/transactions/service";
@@ -90,6 +91,17 @@ beforeEach(async () => {
 });
 
 describe("listTransactions", () => {
+  it("summary converts other currencies at the rate on each transaction's date", async () => {
+    await saveFxRate(ctx, { date: "2026-03-12", base: "LKR", quote: "USD", rate: 1 / 320 });
+    const res = await listTransactions(ctx, filters(), TODAY);
+    expect(res.summary).toMatchObject({ expenseMinor: 20_000 + 900 * 320, fxMissingCount: 0 });
+    // a rate dated after the transaction does not apply
+    await saveFxRate(ctx, { date: "2026-03-13", base: "USD", quote: "LKR", rate: 999 });
+    expect((await listTransactions(ctx, filters(), TODAY)).summary.expenseMinor).toBe(
+      20_000 + 900 * 320,
+    );
+  });
+
   it("defaults to this month, newest first, posted only, with a base-currency summary", async () => {
     const res = await listTransactions(ctx, filters(), TODAY);
     expect(res.range).toEqual({ from: "2026-03-01", to: "2026-03-31" });
@@ -105,7 +117,7 @@ describe("listTransactions", () => {
       incomeMinor: 300_000,
       expenseMinor: 20_000,
       netMinor: 280_000,
-      otherCurrencyCount: 1,
+      fxMissingCount: 1,
     });
     const transfer = res.rows.find((r) => r.type === "transfer")!;
     expect(transfer.fromAccount?.name).toBe("Bank");
@@ -182,13 +194,19 @@ describe("listTransactions", () => {
 });
 
 describe("account queries", () => {
-  it("groups accounts with per-currency subtotals", async () => {
+  it("groups accounts with base-currency subtotals; no rate → left out and counted", async () => {
     const { groups } = await getAccountsOverview(ctx);
     expect(groups.map((g) => g.label)).toEqual(["Cash & bank", "Cards"]);
-    expect(groups[0]!.subtotals).toEqual([
-      { currency: "LKR", totalMinor: 1_000_000 + 300_000 - 8_000 - 12_000 - 2_000 },
-      { currency: "USD", totalMinor: -900 },
-    ]);
+    expect(groups[0]!.subtotal).toEqual({
+      currency: "LKR",
+      totalMinor: 1_000_000 + 300_000 - 8_000 - 12_000 - 2_000,
+    });
+    expect(groups[0]!.fxMissing).toBe(1);
+
+    await saveFxRate(ctx, { date: "2026-01-01", base: "USD", quote: "LKR", rate: 300 });
+    const converted = await getAccountsOverview(ctx);
+    expect(converted.groups[0]!.subtotal.totalMinor).toBe(1_278_000 - 900 * 300);
+    expect(converted.groups[0]!.fxMissing).toBe(0);
     expect(groups[1]!.accounts[0]!.card).toMatchObject({ outstandingMinor: 0, utilisationBp: 0 });
   });
 

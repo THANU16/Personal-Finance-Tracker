@@ -119,3 +119,23 @@ describe("mergeDuplicateCategories (bootstrap v2)", () => {
     expect(await count(b.userId)).toBe(total + starterCount);
   });
 });
+
+describe("asset class palette (bootstrap v3)", () => {
+  it("moves untouched system class colours to the validated palette and keeps custom ones", async () => {
+    const { AssetClassModel } = await import("@/modules/asset-classes/model");
+    const ctx = await makeUser();
+    const uid = new Types.ObjectId(ctx.userId);
+    await AssetClassModel.updateOne(
+      { userId: uid, name: "Equity" },
+      { $set: { color: "#2563eb" } },
+    );
+    await AssetClassModel.updateOne({ userId: uid, name: "Gold" }, { $set: { color: "#123456" } });
+    await SettingsModel.updateOne({ userId: uid }, { $set: { bootstrapVersion: 2 } });
+    await ensureUserSetup(ctx.userId);
+    const byName = new Map(
+      (await AssetClassModel.find({ userId: uid }).lean()).map((c) => [c.name, c.color]),
+    );
+    expect(byName.get("Equity")).toBe("#2a78d6");
+    expect(byName.get("Gold")).toBe("#123456");
+  });
+});

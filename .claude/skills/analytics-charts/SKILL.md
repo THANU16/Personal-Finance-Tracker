@@ -24,8 +24,8 @@ Read docs/04 §2, §4, §16, §22 and docs/05 first. Rules:
 - Range state lives in the URL (?from=&to=&g=&cmp=) via useTimeRange(); server components read searchParams; do not hold range in component state.
 - Cashflow excludes transfers (except their fee), invest, redeem, debt principal, adjustments (docs/04 §4). Savings rate per bucket = (income −
   expense) / income, null when income is 0.
-- Charts: Recharts client components, fixed class colours from assetClasses.color, validated series tokens for single/dual series, crosshair tooltip with
-  full amounts and delta vs previous bucket, compact axis ticks, savings-rate on a right axis, aria summary text, horizontal scroll above ~30 bars on
+- Charts: Recharts client components, fixed class colours from assetClasses.color rendered with vizColor() (validated categorical palette, src/lib/viz-palette.ts), validated series tokens for single/dual series, crosshair tooltip with
+  full amounts and delta vs previous bucket, compact axis ticks, savings rate as its own small chart under income vs expense (never a dual axis; owner decision Phase 4), aria summary text, horizontal scroll above ~30 bars on
   mobile. Every widget has skeleton, empty and error states and sits behind Suspense (cacheComponents).
 - No business maths in components: queries return ready-to-plot values.
 Checklist: gap-filled, correct flow/stock handling, timezone passed, compare works, tests cover boundaries, empty/loading/error present.

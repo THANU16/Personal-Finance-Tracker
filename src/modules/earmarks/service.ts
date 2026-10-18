@@ -23,6 +23,7 @@ import {
   type BucketTotalsDTO,
   type EarmarkDTO,
 } from "@/modules/earmarks/schemas";
+import { loadToBase } from "@/modules/fx/service";
 import { HoldingModel, type HoldingDoc } from "@/modules/holdings/model";
 import { parseInput } from "@/server/action-result";
 import { writeAudit } from "@/server/audit/model";
@@ -369,4 +370,30 @@ export async function hasEarmarks(
   session: ClientSession,
 ): Promise<boolean> {
   return (await EarmarkModel.exists({ userId, accountId }).session(session)) !== null;
+}
+
+/** Bucket totals converted to base at today's rate (dashboard cash bar, safe to spend). */
+export async function getBucketsInBase(ctx: Ctx): Promise<BucketTotalsDTO & { fxMissing: number }> {
+  const [perCurrency, toBase] = await Promise.all([getBuckets(ctx), loadToBase(ctx)]);
+  const today = utcToBusinessDate(new Date(), ctx.tz);
+  const out = {
+    currency: ctx.baseCurrency,
+    emergencyMinor: 0,
+    opportunityMinor: 0,
+    freeMinor: 0,
+    fxMissing: 0,
+  };
+  for (const t of perCurrency) {
+    const e = toBase(t.emergencyMinor, t.currency, today);
+    const o = toBase(t.opportunityMinor, t.currency, today);
+    const f = toBase(t.freeMinor, t.currency, today);
+    if (e === null || o === null || f === null) {
+      out.fxMissing += 1;
+      continue;
+    }
+    out.emergencyMinor += e;
+    out.opportunityMinor += o;
+    out.freeMinor += f;
+  }
+  return out;
 }

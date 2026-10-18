@@ -118,10 +118,10 @@ export async function TransactionsContent({
             />
           }
           hint={
-            summary.otherCurrencyCount > 0 ? (
+            summary.fxMissingCount > 0 ? (
               <span className="flex items-center gap-1">
-                <Badge variant="outline">FX missing</Badge>
-                {summary.otherCurrencyCount} in other currencies not included
+                <Badge variant="outline">FX rate missing</Badge>
+                {summary.fxMissingCount} not included — add rates in Settings
               </span>
             ) : (
               "Income − expense"

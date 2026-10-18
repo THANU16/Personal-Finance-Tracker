@@ -8,6 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { PaletteSelect } from "@/components/shared/palette-select";
+import { CATEGORICAL } from "@/lib/viz-palette";
 import { FormField, fieldAria } from "@/components/shared/form-field";
 import type { ActionResult } from "@/server/action-result";
 import {
@@ -21,7 +23,11 @@ import type { AssetClassDTO } from "@/modules/asset-classes/schemas";
 export function AssetClassesManager({ classes }: { classes: AssetClassDTO[] }) {
   const router = useRouter();
   const [name, setName] = React.useState("");
-  const [color, setColor] = React.useState("#64748b");
+  // Next free palette slot, so a new class gets a colour its neighbours don't use.
+  const used = new Set(classes.map((c) => c.color.toLowerCase()));
+  const [color, setColor] = React.useState<string>(
+    CATEGORICAL.find((c) => !used.has(c.light))?.light ?? CATEGORICAL[7].light,
+  );
   const [error, setError] = React.useState<string>();
   const [pending, setPending] = React.useState(false);
 
@@ -77,15 +83,10 @@ export function AssetClassesManager({ classes }: { classes: AssetClassDTO[] }) {
         <ul className="divide-y">
           {classes.map((c, i) => (
             <li key={c.id} className="flex items-center gap-3 py-2">
-              <input
-                type="color"
-                aria-label={`Colour for ${c.name}`}
-                defaultValue={c.color}
-                className="size-7 cursor-pointer rounded border bg-transparent p-0.5"
-                onChange={(e) => {
-                  const value = e.target.value;
-                  run(() => updateAssetClassAction(c.id, { color: value }));
-                }}
+              <PaletteSelect
+                ariaLabel={`Colour for ${c.name}`}
+                value={c.color}
+                onChange={(value) => run(() => updateAssetClassAction(c.id, { color: value }))}
               />
               <span className="flex-1 font-medium">{c.name}</span>
               {c.isSystem ? (
@@ -138,12 +139,10 @@ export function AssetClassesManager({ classes }: { classes: AssetClassDTO[] }) {
               />
             </FormField>
           </div>
-          <input
-            type="color"
-            aria-label="Colour for the new asset class"
+          <PaletteSelect
+            ariaLabel="Colour for the new asset class"
             value={color}
-            onChange={(e) => setColor(e.target.value)}
-            className="size-8 cursor-pointer rounded border bg-transparent p-0.5"
+            onChange={setColor}
           />
           <Button type="submit" disabled={pending || !name.trim()}>
             <Plus aria-hidden /> Add

@@ -298,6 +298,7 @@ Email sent only if enabled and `RESEND_API_KEY` is configured.
 ## 21. Safe to spend
 `safeToSpend = freeCash − Σ outflowMinor of upcoming items due on or before the end of the current month (user tz) that are not yet
 posted` (recurring expenses, EMIs, card dues, planned SIPs paid from earmarkable accounts). May be negative → show a warning.
+Card dues count their full outstanding when the next due date falls on or before month end (owner decision, Phase 4).
 
 ## 22. Time ranges and series
 - Presets: Today, 7D, 30D, 3M, 6M, YTD, 1Y, All, Custom. Default granularity: ≤ 31 days day, ≤ 183 days week, else month; user can

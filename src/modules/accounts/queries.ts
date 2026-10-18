@@ -2,7 +2,9 @@ import "server-only";
 import { ACCOUNT_GROUPS } from "@/domain/accounts";
 import { utcToBusinessDate } from "@/domain/dates";
 import { runningBalances } from "@/domain/ledger";
+import type { ToBase } from "@/domain/fx";
 import { AccountModel, type AccountDoc } from "@/modules/accounts/model";
+import { loadToBase } from "@/modules/fx/service";
 import type { AccountDTO } from "@/modules/accounts/schemas";
 import { listAccounts, toAccountDTO } from "@/modules/accounts/service";
 import { TransactionModel, type TransactionDoc } from "@/modules/transactions/model";
@@ -23,14 +25,26 @@ export interface AccountGroup {
   key: string;
   label: string;
   accounts: AccountDTO[];
-  /** One subtotal per currency (no FX conversion before Phase 4). */
-  subtotals: CurrencyTotal[];
+  /** Group total in base currency at today's rates (docs/04 §14). */
+  subtotal: CurrencyTotal;
+  /** Accounts left out of the subtotal because no FX rate exists. */
+  fxMissing: number;
 }
 
-function totalsByCurrency(accounts: AccountDTO[]): CurrencyTotal[] {
-  const map = new Map<string, number>();
-  for (const a of accounts) map.set(a.currency, (map.get(a.currency) ?? 0) + a.balanceMinor);
-  return [...map.entries()].map(([currency, totalMinor]) => ({ currency, totalMinor }));
+function baseTotal(
+  accounts: AccountDTO[],
+  toBase: ToBase,
+  base: string,
+  todayKey: string,
+): { subtotal: CurrencyTotal; fxMissing: number } {
+  let total = 0;
+  let fxMissing = 0;
+  for (const a of accounts) {
+    const v = toBase(a.balanceMinor, a.currency, todayKey);
+    if (v === null) fxMissing += 1;
+    else total += v;
+  }
+  return { subtotal: { currency: base, totalMinor: total }, fxMissing };
 }
 
 /** /accounts: accounts grouped by docs/05 §3 groups with per-currency subtotals. */
@@ -38,7 +52,11 @@ export async function getAccountsOverview(
   ctx: Ctx,
   opts: { includeArchived?: boolean } = {},
 ): Promise<{ groups: AccountGroup[]; archivedCount: number }> {
-  const all = await listAccounts(ctx, { includeArchived: true });
+  const [all, toBase] = await Promise.all([
+    listAccounts(ctx, { includeArchived: true }),
+    loadToBase(ctx),
+  ]);
+  const todayKey = utcToBusinessDate(new Date(), ctx.tz);
   const visible = opts.includeArchived ? all : all.filter((a) => !a.archived);
   const groups = ACCOUNT_GROUPS.map((g) => {
     const accounts = visible.filter((a) => (g.types as readonly string[]).includes(a.type));
@@ -46,7 +64,12 @@ export async function getAccountsOverview(
       key: g.key,
       label: g.label,
       accounts,
-      subtotals: totalsByCurrency(accounts.filter((a) => !a.archived)),
+      ...baseTotal(
+        accounts.filter((a) => !a.archived),
+        toBase,
+        ctx.baseCurrency,
+        todayKey,
+      ),
     };
   }).filter((g) => g.accounts.length > 0);
   return { groups, archivedCount: all.filter((a) => a.archived).length };

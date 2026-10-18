@@ -15,6 +15,7 @@ import { loadRefMaps, toTransactionDTO } from "@/modules/transactions/queries";
 import type { TransactionDTO } from "@/modules/transactions/schemas";
 import type { Ctx } from "@/server/ctx";
 import { connectDb } from "@/server/db/connect";
+import { loadToBase } from "@/modules/fx/service";
 import { toObjectId } from "@/server/db/ids";
 import { AppError } from "@/server/errors";
 import {
@@ -65,13 +66,15 @@ export interface PortfolioTotals {
   realizedGainMinor: number;
   incomeMinor: number;
   xirrBp: number | null;
-  /** Holdings in other currencies, left out of totals until FX rates exist (Phase 4). */
-  otherCurrencyCount: number;
+  /** Active holdings left out of totals because no FX rate exists (docs/04 §14). */
+  fxMissingCount: number;
 }
 
 export interface PortfolioHolding extends HoldingDTO {
-  /** Share of the portfolio value in bp (base-currency holdings only). */
+  /** Share of the portfolio value in bp (null when closed or not convertible). */
   weightBp: number | null;
+  /** Current value in base currency (null when the FX rate is missing). */
+  valueBaseMinor: number | null;
   /** Share of its class value in bp. */
   classWeightBp: number | null;
 }
@@ -125,7 +128,8 @@ export async function getPortfolio(
     eventsByHolding.set(key, list);
   }
 
-  const flowsByHolding = new Map<string, CashFlow[]>();
+  const toBase = await loadToBase(ctx);
+  const flowsByHolding = new Map<string, CashFlow[] | null>();
   const all = docs.map((doc) => {
     const base = toHoldingDTO(doc, c);
     const terminal =
@@ -133,54 +137,80 @@ export async function getPortfolio(
         ? { date: c.today, valueMinor: base.currentValueMinor }
         : null;
     const flows = holdingCashFlows(eventsByHolding.get(String(doc._id)) ?? [], terminal);
-    flowsByHolding.set(base.id, flows);
+    // Portfolio/class XIRR in base: each flow at its own date's rate; null if any rate is missing.
+    const converted = flows.map((f) => ({
+      date: f.date,
+      amountMinor: toBase(f.amountMinor, base.currency, f.date),
+    }));
+    flowsByHolding.set(
+      base.id,
+      converted.every((f) => f.amountMinor !== null) ? (converted as CashFlow[]) : null,
+    );
     return { ...base, xirrBp: xirrBp(flows) };
   });
 
+  /** Figures in base at today's rate; null when the rate is missing. */
+  const inBase = new Map(
+    all.map((h) => {
+      const conv = (v: number) => toBase(v, h.currency, c.today);
+      const value = conv(h.currentValueMinor);
+      const invested = conv(h.investedMinor);
+      const realized = conv(h.realizedGainMinor);
+      const income = conv(h.incomeReceivedMinor);
+      return [
+        h.id,
+        value === null || invested === null || realized === null || income === null
+          ? null
+          : { value, invested, realized, income },
+      ] as const;
+    }),
+  );
+  const fig = (h: HoldingDTO) => inBase.get(h.id) ?? null;
+
   const visible = all.filter((h) => opts.includeClosed || h.status === "active");
-  const inBase = (h: HoldingDTO) => h.currency === ctx.baseCurrency;
   const active = all.filter((h) => h.status === "active");
-  const counted = active.filter(inBase);
-  const sum = (list: HoldingDTO[], pick: (h: HoldingDTO) => number) =>
-    list.reduce((s, h) => s + pick(h), 0);
-  const totalValue = sum(counted, (h) => h.currentValueMinor);
-  const totalInvested = sum(counted, (h) => h.investedMinor);
-  const baseIds = new Set(all.filter(inBase).map((h) => h.id));
-  const portfolioFlows = [...flowsByHolding.entries()]
-    .filter(([id]) => baseIds.has(id))
-    .flatMap(([, f]) => f);
+  const counted = active.filter((h) => fig(h) !== null);
+  const sum = (list: HoldingDTO[], pick: (f: NonNullable<ReturnType<typeof fig>>) => number) =>
+    list.reduce((s, h) => s + pick(fig(h)!), 0);
+  const totalValue = sum(counted, (f) => f.value);
+  const totalInvested = sum(counted, (f) => f.invested);
+  const convertible = all.filter((h) => fig(h) !== null);
+  const flowsOf = (ids: Set<string>) =>
+    [...flowsByHolding.entries()]
+      .filter(([id, f]) => ids.has(id) && f !== null)
+      .flatMap(([, f]) => f!);
 
   const classValue = new Map<string, number>();
   for (const h of counted)
-    classValue.set(h.assetClass.id, (classValue.get(h.assetClass.id) ?? 0) + h.currentValueMinor);
+    classValue.set(h.assetClass.id, (classValue.get(h.assetClass.id) ?? 0) + fig(h)!.value);
 
-  const withWeights: PortfolioHolding[] = visible.map((h) => ({
-    ...h,
-    weightBp: h.status === "active" && inBase(h) ? share(h.currentValueMinor, totalValue) : null,
-    classWeightBp:
-      h.status === "active" && inBase(h)
-        ? share(h.currentValueMinor, classValue.get(h.assetClass.id) ?? 0)
-        : null,
-  }));
+  const withWeights: PortfolioHolding[] = visible.map((h) => {
+    const f = fig(h);
+    const live = h.status === "active" && f !== null;
+    return {
+      ...h,
+      valueBaseMinor: f?.value ?? null,
+      weightBp: live ? share(f.value, totalValue) : null,
+      classWeightBp: live ? share(f.value, classValue.get(h.assetClass.id) ?? 0) : null,
+    };
+  });
 
   const classes: PortfolioClass[] = c.classList
     .map((cls) => {
       const holdings = withWeights.filter((h) => h.assetClass.id === String(cls._id));
-      const countedInClass = holdings.filter((h) => h.status === "active" && inBase(h));
-      const value = sum(countedInClass, (h) => h.currentValueMinor);
-      const ids = new Set(holdings.filter(inBase).map((h) => h.id));
+      const countedInClass = holdings.filter((h) => h.status === "active" && fig(h) !== null);
+      const value = sum(countedInClass, (f) => f.value);
+      const invested = sum(countedInClass, (f) => f.invested);
       return {
         id: String(cls._id),
         name: cls.name,
         color: cls.color,
         holdings,
         valueMinor: value,
-        investedMinor: sum(countedInClass, (h) => h.investedMinor),
-        unrealizedGainMinor: sum(countedInClass, (h) => h.unrealizedGainMinor),
+        investedMinor: invested,
+        unrealizedGainMinor: value - invested,
         weightBp: share(value, totalValue),
-        xirrBp: xirrBp(
-          [...flowsByHolding.entries()].filter(([id]) => ids.has(id)).flatMap(([, f]) => f),
-        ),
+        xirrBp: xirrBp(flowsOf(new Set(holdings.map((h) => h.id)))),
       };
     })
     .filter((cls) => cls.holdings.length > 0);
@@ -192,10 +222,10 @@ export async function getPortfolio(
       investedMinor: totalInvested,
       unrealizedGainMinor: totalValue - totalInvested,
       unrealizedBp: simpleReturnBp(totalValue - totalInvested, totalInvested),
-      realizedGainMinor: sum(all.filter(inBase), (h) => h.realizedGainMinor),
-      incomeMinor: sum(all.filter(inBase), (h) => h.incomeReceivedMinor),
-      xirrBp: xirrBp(portfolioFlows),
-      otherCurrencyCount: active.filter((h) => !inBase(h)).length,
+      realizedGainMinor: sum(convertible, (f) => f.realized),
+      incomeMinor: sum(convertible, (f) => f.income),
+      xirrBp: xirrBp(flowsOf(new Set(all.map((h) => h.id)))),
+      fxMissingCount: active.filter((h) => fig(h) === null).length,
     },
     classes,
     holdings: withWeights,

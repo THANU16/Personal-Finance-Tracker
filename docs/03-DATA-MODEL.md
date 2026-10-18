@@ -237,7 +237,7 @@ startDate, renewalDate, nominee?, notes?, status: active|lapsed
 date (month-end, user tz), kind: auto|manual,
 netWorthMinor, assetsMinor, liabilitiesMinor,
 byClass: [{ assetClassId, valueMinor }], byAccountType: [{ type, valueMinor }],
-investedMinor, cashMinor
+investedMinor, cashMinor, holdingsValueMinor, fxMissing   # fxMissing: items left out (no FX rate on that date)
 idx: {userId, date} unique for kind=auto
 ```
 Monthly month-end snapshots are a cache; day/week series are computed on the fly (docs/04 §22).
@@ -253,7 +253,7 @@ dedupeKey (unique per user), readAt?, snoozedUntil?, emailedAt?
 ## fxRates
 ```
 date, base: "USD", quote: "LKR", rate (number, quote per 1 base), source: manual
-idx: {userId, base, quote, date:-1}
+idx: {userId, base, quote, date:-1} unique (one rate per pair per day; saving again replaces it)
 ```
 
 ## attachments

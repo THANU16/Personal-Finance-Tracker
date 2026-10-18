@@ -8,6 +8,7 @@ import { Money } from "@/components/shared/money";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatCard } from "@/components/shared/stat-card";
 import { utcToBusinessDate } from "@/domain/dates";
+import { vizColor } from "@/lib/viz-palette";
 import { formatPercentBp, formatPrice, formatUnits } from "@/lib/format";
 import { listAccounts } from "@/modules/accounts/service";
 import { FdActions } from "@/modules/holdings/components/fd-actions";
@@ -62,7 +63,7 @@ export async function HoldingDetailView({ params }: { params: Promise<{ id: stri
             <span className="inline-flex items-center gap-1">
               <span
                 className="size-2 rounded-full"
-                style={{ background: h.assetClass.color }}
+                style={{ background: vizColor(h.assetClass.color) }}
                 aria-hidden
               />
               {h.assetClass.name}

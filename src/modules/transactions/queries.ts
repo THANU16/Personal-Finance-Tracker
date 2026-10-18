@@ -19,6 +19,7 @@ import {
 import { USER_EDITABLE_TYPES } from "@/modules/transactions/service";
 import type { Ctx } from "@/server/ctx";
 import { connectDb } from "@/server/db/connect";
+import { loadToBase } from "@/modules/fx/service";
 import { toObjectId } from "@/server/db/ids";
 
 export interface RefMaps {
@@ -144,7 +145,8 @@ export interface TransactionsSummary {
   expenseMinor: number;
   netMinor: number;
   /** Income/expense transactions in other currencies, left out until FX rates exist (Phase 4). */
-  otherCurrencyCount: number;
+  /** Transactions in other currencies with no FX rate on their date (left out, badged). */
+  fxMissingCount: number;
 }
 
 export interface TransactionsPage {
@@ -182,7 +184,12 @@ export async function listTransactions(
     },
     {
       $group: {
-        _id: { type: "$type", currency: "$currency" },
+        // Per business day, so other currencies convert at that day's rate (docs/04 §14).
+        _id: {
+          type: "$type",
+          currency: "$currency",
+          day: { $dateToString: { date: "$date", format: "%Y-%m-%d", timezone: ctx.tz } },
+        },
         sum: { $sum: "$amountMinor" },
         n: { $sum: 1 },
         // Transfers count only for their fee (an expense); the amount moved is not cashflow.
@@ -192,7 +199,7 @@ export async function listTransactions(
     },
   ];
 
-  const [total, docs, groups, refs] = await Promise.all([
+  const [total, docs, groups, refs, toBase] = await Promise.all([
     TransactionModel.countDocuments(filter),
     TransactionModel.find(filter)
       .sort({ date: -1, createdAt: -1 })
@@ -200,24 +207,25 @@ export async function listTransactions(
       .limit(TRANSACTION_PAGE_SIZE)
       .lean<TransactionDoc[]>(),
     TransactionModel.aggregate<{
-      _id: { type: string; currency: string };
+      _id: { type: string; currency: string; day: string };
       sum: number;
       n: number;
       fees: number;
       feeN: number;
     }>(summaryPipeline),
     loadRefMaps(userId),
+    loadToBase(ctx),
   ]);
 
   let income = 0;
   let expense = 0;
-  let other = 0;
+  let missing = 0;
   for (const g of groups) {
     const isTransfer = g._id.type === "transfer";
-    if (g._id.currency !== ctx.baseCurrency) other += isTransfer ? g.feeN : g.n;
-    else if (isTransfer) expense += g.fees;
-    else if (g._id.type === "expense") expense += g.sum;
-    else income += g.sum;
+    const value = toBase(isTransfer ? g.fees : g.sum, g._id.currency, g._id.day);
+    if (value === null) missing += isTransfer ? g.feeN : g.n;
+    else if (isTransfer || g._id.type === "expense") expense += value;
+    else income += value;
   }
 
   return {
@@ -231,7 +239,7 @@ export async function listTransactions(
       incomeMinor: income,
       expenseMinor: expense,
       netMinor: income - expense,
-      otherCurrencyCount: other,
+      fxMissingCount: missing,
     },
   };
 }

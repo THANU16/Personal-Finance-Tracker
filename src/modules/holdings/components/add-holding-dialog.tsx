@@ -31,6 +31,7 @@ import { PercentInput } from "@/components/shared/percent-input";
 import { PriceInput, UnitsInput } from "@/components/shared/price-input";
 import { FD_COMPOUNDING, FD_PAYOUTS, fdMaturityValue } from "@/domain/fd";
 import { unitsValueMinor } from "@/domain/redemption";
+import { vizColor } from "@/lib/viz-palette";
 import { COMMON_CURRENCIES } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { zodFieldErrors } from "@/server/action-result";
@@ -268,7 +269,7 @@ export function AddHoldingDialog({
                 >
                   <span
                     className="size-3 rounded-full"
-                    style={{ background: c.color }}
+                    style={{ background: vizColor(c.color) }}
                     aria-hidden
                   />
                   {c.name}
