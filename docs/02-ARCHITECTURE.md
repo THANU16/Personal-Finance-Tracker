@@ -48,6 +48,7 @@ wealthtrack/
 ├── scripts/
 │   ├── seed.ts                   # demo data
 │   ├── db-check.ts               # verify MONGODB_URI: reachable, replica set, transactions
+│   ├── e2e-server.ts             # Playwright server: in-memory replica set + next build/start :3100
 │   └── recompute-all.ts          # rebuild caches from ledger
 ├── src/
 │   ├── proxy.ts                  # auth redirect for (app) routes (Next 16 name for middleware)
@@ -124,7 +125,8 @@ wealthtrack/
 │   │   ├── attachments/
 │   │   └── settings/
 │   ├── server/
-│   │   ├── db/connect.ts · db/transaction.ts (withTransaction)
+│   │   ├── db/connect.ts · db/transaction.ts (withTransaction) · db/model.ts (userScopedModel)
+│   │   ├── db/user-id-guard.ts · ctx.ts (Ctx) · run-action.ts (runAction → ActionResult)
 │   │   ├── auth/auth.ts · auth/require-user.ts
 │   │   ├── ledger/post.ts · ledger/void.ts · ledger/recompute.ts
 │   │   ├── cron/daily.ts (orchestrates jobs) · cron/jobs/*.ts

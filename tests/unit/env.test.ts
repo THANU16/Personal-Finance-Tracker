@@ -56,6 +56,19 @@ describe("parseEnv", () => {
     expect(env.S3_BUCKET).toBe("receipts");
   });
 
+  it.each([
+    [undefined, false],
+    ["", false],
+    ["false", false],
+    ["true", true],
+  ])("parses DISABLE_SIGNUP=%j as %s", (value, expected) => {
+    expect(parseEnv({ ...valid, DISABLE_SIGNUP: value }).DISABLE_SIGNUP).toBe(expected);
+  });
+
+  it("rejects a non-boolean DISABLE_SIGNUP", () => {
+    expect(() => parseEnv({ ...valid, DISABLE_SIGNUP: "yes" })).toThrow("DISABLE_SIGNUP");
+  });
+
   it("requires MAIL_FROM when RESEND_API_KEY is set", () => {
     expect(() => parseEnv({ ...valid, RESEND_API_KEY: "re_123" })).toThrow("MAIL_FROM");
   });

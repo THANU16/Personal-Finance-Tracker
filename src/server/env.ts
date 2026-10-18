@@ -14,6 +14,11 @@ export const envSchema = z
 
     BETTER_AUTH_SECRET: z.string().min(32, "must be at least 32 characters"),
     BETTER_AUTH_URL: z.url(),
+    /** Close registration once the owner account exists. */
+    DISABLE_SIGNUP: z
+      .enum(["true", "false", ""])
+      .default("false")
+      .transform((v) => v === "true"),
 
     APP_URL: z.url(),
     DEFAULT_TIMEZONE: z.string().min(1).default("Asia/Colombo"),

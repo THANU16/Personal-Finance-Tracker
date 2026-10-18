@@ -1,7 +1,11 @@
-// Implemented in Phase 1 (docs/06-BUILD-PLAN.md).
-function notImplemented() {
-  return Response.json({ error: "Not implemented yet" }, { status: 501 });
+import { toNextJsHandler } from "better-auth/next-js";
+import { getAuth } from "@/server/auth/auth";
+
+// Resolved per request so env is read at runtime, not at build time.
+export async function GET(request: Request) {
+  return toNextJsHandler(getAuth()).GET(request);
 }
 
-export const GET = notImplemented;
-export const POST = notImplemented;
+export async function POST(request: Request) {
+  return toNextJsHandler(getAuth()).POST(request);
+}
