@@ -29,5 +29,6 @@ export const VALUATION_SOURCES = [
   "fd_calc",
   "bulk",
   "price_feed",
+  "import",
 ] as const;
 export type ValuationSource = (typeof VALUATION_SOURCES)[number];

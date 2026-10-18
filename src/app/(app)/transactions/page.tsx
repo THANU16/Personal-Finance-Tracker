@@ -1,4 +1,7 @@
 import type { Metadata } from "next";
+import Link from "next/link";
+import { Upload } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Suspense } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/shared/page-header";
@@ -13,7 +16,14 @@ export default function TransactionsPage({ searchParams }: PageProps<"/transacti
       <PageHeader
         title="Transactions"
         description="Every income, expense and transfer — the ledger behind all your balances."
-        actions={<QuickAddButton label="Add transaction" />}
+        actions={
+          <>
+            <Button variant="outline" render={<Link href="/transactions/import" />}>
+              <Upload aria-hidden /> Import
+            </Button>
+            <QuickAddButton label="Add transaction" />
+          </>
+        }
       />
       <Suspense
         fallback={

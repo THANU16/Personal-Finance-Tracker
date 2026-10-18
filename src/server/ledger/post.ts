@@ -74,6 +74,7 @@ const UNGUARDED_SOURCES: readonly SourceKind[] = [
   "opportunity_deployment",
   "fd_maturity",
   "reconcile",
+  "import",
 ];
 
 /** Money leaving the source account that the dip guard checks: expense, transfer + fee, invest + fee. */

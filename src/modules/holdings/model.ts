@@ -123,6 +123,8 @@ export interface ValuationDoc {
   units: number | null;
   source: ValuationSource;
   note: string | null;
+  /** Set for valuations created by an import (undo removes them). */
+  importBatchId: Types.ObjectId | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -137,6 +139,7 @@ const valuationSchema = new Schema<ValuationDoc>(
     units: { type: Number, default: null },
     source: { type: String, enum: VALUATION_SOURCES, required: true, default: "manual" },
     note: { type: String, default: null },
+    importBatchId: { type: Schema.Types.ObjectId, default: null },
   },
   { timestamps: true },
 );

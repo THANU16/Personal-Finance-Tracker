@@ -11,6 +11,7 @@
 | 4 Dashboard, snapshots, FX | ✅ done | 2026-10-18 | `feat(phase-4)` |
 | 5 SIP planner | ✅ done | 2026-10-18 | `feat(phase-5)` |
 | 6 Allocation (rebalancing) | ✅ done | 2026-10-18 | `feat(phase-6)` |
+| MM Money Manager import (docs/07) | ✅ done (real 2025 file to be checked by owner) | 2026-10-18 | `feat: money manager import` |
 | 7 Opportunity Fund | ⬜ | | |
 | 8 Debts & receivables | ⬜ | | |
 | 9 Recurring, budgets, goals | ⬜ | | |
@@ -186,6 +187,33 @@ Status values: ⬜ not started · 🟡 in progress · ✅ done
 - [6] /rebalancing tabs Plan · Planned vs Actual · Rebalance · History (?tab=). History diffs each saved target against the
   previous one (class % changes, holdings added/removed, threshold). Drift gauge shades the tolerance band (± threshold) and
   always shows the drift and an OK/Over/Under chip with an icon. Dashboard Attention shows "N asset classes off target".
+- [mm] Excel reader: `read-excel-file` (maintained, 0 advisories) rather than ExcelJS (2 moderate advisories via `uuid`, ~480
+  packages) or the unmaintained `xlsx`. Cells are read with `parseNumber: s => s` so amounts stay decimal strings (BigInt
+  parse, never floats); Excel date-times are rounded to the second (12:30:00 can read back as 12:29:59.999).
+- [mm] Pure pipeline in `domain/money-manager.ts` (normalise → merge files → pair transfers → attach fees → classify → posting
+  plan). The plan replays rows chronologically; posting goes through `server/ledger/import.ts` `postImportBatch`: same rules as
+  `postTransaction`, references loaded once, one insert, each touched account/holding recomputed once, strictly increasing
+  `createdAt` so same-day holding events replay in Money Manager order. `source.kind = import` is never dip-guarded.
+- [mm] Holdings mirror Money Manager: transfer in → invest, out → redeem, holding → holding → redeem + invest sharing a groupId
+  with no account (bulk path only). A redeem larger than the modelled value is preceded by a valuation equal to it (full
+  redemption, owner decision). A Difference row sets the value to the running balance; on an empty holding it is an
+  opening_balance (invested = value) plus that valuation.
+- [mm] A transfer whose two sides map to one target is dropped, but its attached fee stays as a "Bank fees" expense. A fee
+  matching several transfers equally is a standalone "Bank fees" expense (warned).
+- [mm] Targets: existing holdings only if they have no entries after the file starts for them (empty, or continued by a later
+  file); fixed deposits are refused (value is calculated). An existing account with older rows blocks the preview until step 6
+  "Move its opening date" is ticked. Rows not in the base currency are problem rows (skipped) until FX import exists.
+- [mm] Re-import: rows of earlier imported batches (by row hash in `importRows`) are never posted again; the unique
+  `importHash` index is the safety net. Undo voids the batch, deletes its valuations, recomputes, and suffixes the hashes so
+  the file can be imported again. "Remove unused items" archives (accounts archived, holdings closed, categories archived)
+  instead of deleting, because voided transactions keep their references.
+- [mm] New categories reuse an existing same-name category under the same parent (never duplicate). Saved `importMappings`
+  become the defaults for the next file when their targets still exist.
+- [mm] Upload: `POST /api/import/money-manager` (session required, multipart, ≤ 5 files, .xlsx only, ≤ 10 MB each; the proxy
+  skips /api). Pages: /transactions/import (upload + recent imports) and /transactions/import/money-manager/[batchId] (wizard;
+  every Next saves the mapping; steps 6–7 rerun the dry run). Entry points: Transactions header "Import", Settings → Data.
+- [mm] `npm run recompute [-- <email>]` implemented (`recomputeAllForUser`; a second run reports 0 changed).
+- [mm] e2e `allocation.spec` raced (`isVisible()` right after navigation); it now waits for the editor first.
 
 ## Deviations from docs
 <!-- Claude: anything built differently from the docs, and why. Update the doc too if the user agrees. -->
@@ -202,13 +230,27 @@ Status values: ⬜ not started · 🟡 in progress · ✅ done
   analytics-charts skill updated). Seeded asset-class colours replaced by the validated palette (owner-approved).
 - [4] Acceptance "equal reports from the seed scenario" → fixed-scenario integration tests until Phases 11/12 (owner-approved).
 - [4] docs/05 §2 "Net worth trend (12m / 3y / all toggle)" is served by the page-wide TimeRangeBar instead of a per-card toggle.
+- [mm] docs/07 §2 suggests ExcelJS; `read-excel-file` is used (see Decisions).
+- [mm] docs/07 §3 step 5: no manual pairing of unpaired transfer halves and no in-app "Fix" for problem rows — they are listed and
+  skipped (fix in Money Manager and upload again). Difference handling follows the account mapping, so no bulk "treat all as
+  adjustments" switch is needed.
+- [mm] docs/07 §4 "Difference on an empty holding → opening_balance instead": an opening_balance **and** a valuation are posted, so
+  the value equals the invested amount. Undo voids openings (they are transactions) rather than removing them.
+- [mm] docs/03 `importBatches` replaced by the docs/07 §5 shape (+ `importRows`, `importMappings`, valuation `importBatchId`).
 
 ## Open questions for the owner
 <!-- Claude: questions that need a human answer. -->
 - [0] Please run `npm run db:check` in your own terminal and confirm it passes. Claude's sandboxed shell routes Node DNS to 127.0.0.1, so the `mongodb+srv` SRV lookup was refused there (Windows itself resolves the record fine); env validation of `.env.local` did pass.
 - [1] Then try register/login in the browser against Atlas (`npm run dev`). All auth flows pass e2e on the in-memory DB. Once your account exists, consider `DISABLE_SIGNUP=true`.
+- [mm] docs/07 §6 counts (1,035 rows, 13 accounts, 289 pairs, 28 fees, 702 + 17 entries) are checked on a synthetic fixture with
+  the same structure. Please import your real 2025 file (Transactions → Import) and compare the preview with §6; the file is
+  never committed.
 
 ## Known issues / tech debt
+- [mm] Imported transactions keep the business date only (time of day is dropped); same-day order is kept through `createdAt`.
+- [mm] A holding's value after import can differ from Money Manager's balance when Money Manager redeemed more than it held (the
+  full-redemption rule); the preview lists holding values. Transfers with an ignored account are skipped, so the other
+  account shows a red difference in the balance check.
 - [5] Projected SIP periods in Upcoming ignore carry-in (only generated periods know it).
 - [5] "Cumulative invested vs estimated value" shows the invested line with today's estimated value as a reference line (no
   per-date estimated history yet; holdings have valuation history but a plan's share over time is not stored).

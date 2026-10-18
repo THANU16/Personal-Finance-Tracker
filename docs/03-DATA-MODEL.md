@@ -87,8 +87,8 @@ idx: {userId, status}, {userId, assetClassId}
 
 ## valuations
 ```
-holdingId, date, valueMinor, priceMinorE4?, units?, source: manual|auto_on_buy|auto_on_redeem|fd_calc|bulk|price_feed,
-note?
+holdingId, date, valueMinor, priceMinorE4?, units?, source: manual|auto_on_buy|auto_on_redeem|fd_calc|bulk|price_feed|import,
+note?, importBatchId?                          # set by an import; undo removes these valuations
 idx: {userId, holdingId, date:-1}
 ```
 The latest valuation (by `date`, then `createdAt`) defines `currentValueMinor`, adjusted by
@@ -263,8 +263,32 @@ storageKey, fileName, mimeType, sizeBytes, transactionId?
 
 ## importBatches
 ```
-fileName, accountId, mapping: { date, description, amount|debit|credit, ... }, dateFormat,
-rowCount, importedCount, duplicateCount, status: preview|imported|reverted
+source: money_manager|bank_csv, status: draft|previewed|imported|reverted,
+files: [{ name, sheet, rows, from?, to? }],    # one entry per sheet read; from/to = business dates
+mapping                                        # wizard state (docs/07 §3): accounts, expenseCategories, incomeCategories,
+                                               # skipRowIds, detachFeeIds, openings — validated by imports/schemas.ts
+warnings: [string], summary?,                  # preview/commit counts
+createdItems: { accountIds, categoryIds, holdingIds },
+importedAt?, revertedAt?
+idx: {userId, createdAt:-1}
+```
+Bank CSV import (Phase 11) adds its own mapping (date/description/amount columns, dateFormat, accountId) in `mapping`.
+Transactions of a batch carry `source: { kind: "import", refId: batchId }` and an `importHash`; undo voids them and suffixes
+the hash (`:undone:<batchId>`) so the same rows can be imported again.
+
+## importRows (staging; docs/07 §5)
+```
+batchId, seq (merged chronological order), rowId ("file:row"), kind: expense|income|transfer|fee|difference|problem,
+normalized (the normalised Money Manager row), hash, alreadyImported (row of an earlier imported batch → never posted again)
+idx: {userId, batchId, seq}
+```
+Kept after import: the hashes of imported batches decide what a later file adds.
+
+## importMappings (reused for the next file)
+```
+source, kind: account|expense_category|income_category, sourceKey (trimmed lower-case name; "cat>sub" for subcategories),
+action (the saved choice; created items replaced by their ids)
+idx: {userId, source, kind, sourceKey} unique
 ```
 
 ## auditLog

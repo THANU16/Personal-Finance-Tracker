@@ -1,5 +1,8 @@
 "use client";
 
+import Link from "next/link";
+import { Upload } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AssetClassesManager } from "@/modules/asset-classes/components/asset-classes-manager";
 import type { AssetClassDTO } from "@/modules/asset-classes/schemas";
@@ -13,7 +16,7 @@ import type { SecurityDTO } from "@/modules/settings/security";
 import { FxRatesManager } from "@/modules/fx/components/fx-rates-manager";
 import type { FxRateDTO } from "@/modules/fx/schemas";
 
-// docs/05 §17 — the Data tab arrives with Phase 11.
+// docs/05 §17 — Data tab: imports today; export and backups arrive with Phase 11.
 export function SettingsTabs({
   user,
   settings,
@@ -42,6 +45,7 @@ export function SettingsTabs({
         <TabsTrigger value="asset-classes">Asset classes</TabsTrigger>
         <TabsTrigger value="fx">FX rates</TabsTrigger>
         <TabsTrigger value="security">Security</TabsTrigger>
+        <TabsTrigger value="data">Data</TabsTrigger>
       </TabsList>
       <TabsContent value="profile" className="pt-4">
         <ProfileForm name={user.name} email={user.email} />
@@ -60,6 +64,18 @@ export function SettingsTabs({
       </TabsContent>
       <TabsContent value="security" className="pt-4">
         <SecurityTab security={security} locale={settings.locale} timeZone={settings.timezone} />
+      </TabsContent>
+      <TabsContent value="data" className="space-y-3 pt-4">
+        <div className="max-w-xl rounded-lg border p-4">
+          <h2 className="font-medium">Import from Money Manager</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Upload the Excel export of the Money Manager app, map its accounts and categories,
+            preview the balances and import everything in one step. Every import can be undone.
+          </p>
+          <Button className="mt-3" variant="outline" render={<Link href="/transactions/import" />}>
+            <Upload aria-hidden /> Import data
+          </Button>
+        </div>
       </TabsContent>
     </Tabs>
   );

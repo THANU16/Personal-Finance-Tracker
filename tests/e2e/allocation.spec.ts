@@ -47,6 +47,8 @@ async function addHolding(page: Page, name: string, value: string, first: boolea
 
 async function saveTarget(page: Page, a: string, b: string) {
   await page.goto("/rebalancing");
+  // isVisible() does not wait: let the streamed editor render first.
+  await page.getByRole("button", { name: "Save target" }).waitFor();
   if (await page.getByRole("combobox", { name: "Add an asset class" }).isVisible()) {
     const hasEquity = await field(page, "Equity percent").count();
     if (!hasEquity) {

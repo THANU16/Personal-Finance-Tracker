@@ -54,6 +54,7 @@ const SOURCE_LABEL: Record<ValuationDTO["source"], string> = {
   auto_on_redeem: "On redeem",
   fd_calc: "FD calc",
   bulk: "Bulk update",
+  import: "Imported",
   price_feed: "Price feed",
 };
 
