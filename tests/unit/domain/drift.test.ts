@@ -237,3 +237,22 @@ describe("cashflowPlan (invest new money)", () => {
     expect(cashflowPlan(1_000, [], HOLDINGS)).toEqual([]);
   });
 });
+
+describe("fullRebalance on a large portfolio", () => {
+  it("does not overflow and still sums to zero (LKR 27M with a locked holding)", () => {
+    const big = [
+      h("A", "equity", 1_500_000_000),
+      h("B", "equity", 700_000_000),
+      h("UT", "fixed", 400_000_000),
+      h("EF", "fixed", 300_000_000, { countsTowardEmergencyFund: true }),
+      h("G1", "gold", 27_886_250),
+    ];
+    const trades = fullRebalance(TREE, big);
+    expect(trades.reduce((s, t) => s + t.tradeMinor, 0)).toBe(0);
+    expect(trades.find((t) => t.holdingId === "EF")!.tradeMinor).toBe(0);
+    expect(() => computeDrift(TREE, big, 500)).not.toThrow();
+    expect(cashflowPlan(5_000_000_000, TREE, big).reduce((s, l) => s + l.amountMinor, 0)).toBe(
+      5_000_000_000,
+    );
+  });
+});

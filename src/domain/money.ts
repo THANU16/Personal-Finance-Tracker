@@ -71,10 +71,13 @@ export function allocateLargestRemainder(total: number, weights: readonly number
     weightSum += w;
   }
   if (weightSum === 0) throw new RangeError("weights must not all be zero");
-  assertMinor(Math.abs(total) * weightSum, "total × weight sum");
+  if (!Number.isSafeInteger(weightSum)) throw new RangeError("weight sum must be a safe integer");
 
   const sign = total < 0 ? -1 : 1;
   const abs = Math.abs(total);
+  // Large totals × large weights (e.g. LKR 2.7M × class% × asset% weights) exceed 2^53: same
+  // algorithm in exact BigInt arithmetic.
+  if (!Number.isSafeInteger(abs * weightSum)) return allocateBig(abs, weights, weightSum, sign);
   const parts = weights.map((w) => Math.floor((abs * w) / weightSum));
   // Remainders as integers (abs*w mod weightSum) to avoid float comparisons.
   const remainders = weights.map((w, i) => ({ i, rem: abs * w - parts[i]! * weightSum }));
@@ -85,6 +88,22 @@ export function allocateLargestRemainder(total: number, weights: readonly number
     parts[remainders[k]!.i]! += 1;
   }
   return parts.map((p) => (p === 0 ? 0 : sign * p));
+}
+
+function allocateBig(
+  abs: number,
+  weights: readonly number[],
+  weightSum: number,
+  sign: number,
+): number[] {
+  const A = BigInt(abs);
+  const W = BigInt(weightSum);
+  const parts = weights.map((w) => (A * BigInt(w)) / W);
+  const remainders = weights.map((w, i) => ({ i, rem: A * BigInt(w) - parts[i]! * W }));
+  let leftover = A - parts.reduce((s, p) => s + p, 0n);
+  remainders.sort((x, y) => (y.rem > x.rem ? 1 : y.rem < x.rem ? -1 : x.i - y.i));
+  for (let k = 0; leftover > 0n; k++, leftover--) parts[remainders[k]!.i]! += 1n;
+  return parts.map((p) => (p === 0n ? 0 : sign * Number(p)));
 }
 
 const CRYPTO_DIGITS: Record<string, number> = { BTC: 8, ETH: 8 };

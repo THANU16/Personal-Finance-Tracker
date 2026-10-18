@@ -269,3 +269,17 @@ describe("mulDivRound", () => {
     expect(() => mulDivRound(1.5, 1, 1)).toThrow(RangeError);
   });
 });
+
+describe("allocateLargestRemainder with large totals × weights (BigInt path)", () => {
+  it("stays exact when total × weight sum exceeds 2^53 (Rebalance crash on LKR 2.7M)", async () => {
+    const { allocateLargestRemainder } = await import("@/domain/money");
+    const total = 272_788_625;
+    const weights = [6_000 * 5_000, 6_000 * 5_000, 3_000 * 10_000, 1_000 * 10_000];
+    const parts = allocateLargestRemainder(total, weights);
+    expect(parts.reduce((a, b) => a + b, 0)).toBe(total);
+    expect(parts).toEqual([81_836_588, 81_836_588, 81_836_587, 27_278_862]); // ties → earlier items
+    expect(allocateLargestRemainder(-total, weights).reduce((a, b) => a + b, 0)).toBe(-total);
+    // Same answer as the small path where both apply.
+    expect(allocateLargestRemainder(1_000, [3, 3, 3])).toEqual([334, 333, 333]);
+  });
+});
