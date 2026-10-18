@@ -18,6 +18,8 @@ export interface SettingsDoc {
   hideAmounts: boolean;
   notify: { email: boolean; inApp: boolean; dailyHourLocal: number };
   onboardingCompletedAt: Date | null;
+  /** One-time per-user seeding (categories, asset classes) already applied up to this version. */
+  bootstrapVersion: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -42,6 +44,7 @@ const settingsSchema = new Schema<SettingsDoc>(
       dailyHourLocal: intField({ required: true, default: 6, min: 0, max: 23 }),
     },
     onboardingCompletedAt: { type: Date, default: null },
+    bootstrapVersion: intField({ required: true, default: 0, min: 0 }),
   },
   { timestamps: true },
 );

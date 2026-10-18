@@ -28,6 +28,8 @@ async function main() {
     BETTER_AUTH_URL: url,
     APP_URL: url,
     DISABLE_SIGNUP: "false",
+    // Tests register many users per minute; production limits would block them.
+    AUTH_RATE_LIMIT: "off",
   };
 
   let child: ChildProcess | undefined;

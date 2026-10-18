@@ -101,6 +101,8 @@ wealthtrack/
 │   │   ├── opportunity.ts        # drawdown, rule triggers, cycles
 │   │   ├── recurrence.ts         # next due dates
 │   │   ├── budget.ts · goal.ts · essentials.ts · forecast.ts
+│   │   ├── ledger.ts             # posting effects, balances, running balance, cashflow, splits
+│   │   ├── accounts.ts · dates.ts · date-range.ts  # card utilisation/due, business dates, presets
 │   │   └── periods.ts            # period keys in user timezone
 │   ├── modules/
 │   │   ├── accounts/        { model, schemas, service, actions, queries, components/ }
@@ -126,7 +128,8 @@ wealthtrack/
 │   │   └── settings/
 │   ├── server/
 │   │   ├── db/connect.ts · db/transaction.ts (withTransaction) · db/model.ts (userScopedModel)
-│   │   ├── db/user-id-guard.ts · ctx.ts (Ctx) · run-action.ts (runAction → ActionResult)
+│   │   ├── db/user-id-guard.ts · db/ids.ts · ctx.ts (Ctx) · run-action.ts (runAction → ActionResult)
+│   │   ├── bootstrap.ts (first-login seeding) · audit/model.ts (auditLog + writeAudit)
 │   │   ├── auth/auth.ts · auth/require-user.ts
 │   │   ├── ledger/post.ts · ledger/void.ts · ledger/recompute.ts
 │   │   ├── cron/daily.ts (orchestrates jobs) · cron/jobs/*.ts

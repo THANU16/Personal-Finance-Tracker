@@ -1,0 +1,187 @@
+import Link from "next/link";
+import { redirect } from "next/navigation";
+import { format, parse } from "date-fns";
+import { Landmark } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { EmptyState } from "@/components/shared/empty-state";
+import { Money } from "@/components/shared/money";
+import { utcToBusinessDate } from "@/domain/dates";
+import { formatPercentBp } from "@/lib/format";
+import { cn } from "@/lib/utils";
+import { AccountActions, AddAccountButton } from "@/modules/accounts/components/account-actions";
+import { ACCOUNT_TYPE_META } from "@/modules/accounts/components/account-meta";
+import { getAccountsOverview } from "@/modules/accounts/queries";
+import type { AccountDTO } from "@/modules/accounts/schemas";
+import { getCurrentUser } from "@/server/auth/require-user";
+
+const shortDate = (key: string) => format(parse(key, "yyyy-MM-dd", new Date(2000, 0, 1)), "d MMM");
+
+/** Credit limit used: a bar plus the percentage in text (never colour alone). */
+export function UtilisationBar({ bp }: { bp: number }) {
+  const pct = Math.min(100, bp / 100);
+  return (
+    <div className="flex items-center gap-2">
+      <div
+        className="h-1.5 w-24 overflow-hidden rounded-full bg-muted"
+        role="meter"
+        aria-label="Credit limit used"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.round(pct)}
+      >
+        <div
+          className={cn("h-full rounded-full", bp >= 9_000 ? "bg-destructive" : "bg-primary")}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      <span className="text-xs text-muted-foreground tabular-nums">{formatPercentBp(bp)} used</span>
+    </div>
+  );
+}
+
+function AccountRow({
+  account,
+  todayKey,
+  baseCurrency,
+}: {
+  account: AccountDTO;
+  todayKey: string;
+  baseCurrency: string;
+}) {
+  const meta = ACCOUNT_TYPE_META[account.type];
+  const sub = account.counterparty ?? account.institution ?? meta.label;
+  return (
+    <li className="flex items-center gap-3 py-3">
+      <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+        <meta.icon className="size-4" aria-hidden />
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <Link
+            href={`/accounts/${account.id}`}
+            className="truncate font-medium hover:underline focus-visible:underline"
+          >
+            {account.name}
+          </Link>
+          {account.archived ? <Badge variant="secondary">Archived</Badge> : null}
+        </div>
+        <div className="truncate text-xs text-muted-foreground">{sub}</div>
+        {account.card ? (
+          <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+            {account.card.utilisationBp !== null ? (
+              <UtilisationBar bp={account.card.utilisationBp} />
+            ) : null}
+            {account.creditCard ? (
+              <span>
+                Limit{" "}
+                <Money valueMinor={account.creditCard.limitMinor} currency={account.currency} />
+              </span>
+            ) : null}
+            <span>Due {shortDate(account.card.nextDueDate)}</span>
+          </div>
+        ) : null}
+      </div>
+      <div className="text-right">
+        {account.card ? (
+          <>
+            <Money
+              valueMinor={account.card.outstandingMinor}
+              currency={account.currency}
+              className="font-medium"
+            />
+            <div className="text-xs text-muted-foreground">outstanding</div>
+          </>
+        ) : (
+          <Money
+            valueMinor={account.balanceMinor}
+            currency={account.currency}
+            className="font-medium"
+          />
+        )}
+      </div>
+      <AccountActions account={account} todayKey={todayKey} baseCurrency={baseCurrency} />
+    </li>
+  );
+}
+
+/** Session-dependent header action. Render inside <Suspense>. */
+export async function AddAccountAction() {
+  const current = await getCurrentUser();
+  if (!current) redirect("/login");
+  return (
+    <AddAccountButton
+      todayKey={utcToBusinessDate(new Date(), current.ctx.tz)}
+      baseCurrency={current.ctx.baseCurrency}
+    />
+  );
+}
+
+/** /accounts content: groups with subtotals. Render inside <Suspense>. */
+export async function AccountsOverview({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const current = await getCurrentUser();
+  if (!current) redirect("/login");
+  const showArchived = (await searchParams).archived === "1";
+  const { ctx } = current;
+  const todayKey = utcToBusinessDate(new Date(), ctx.tz);
+  const { groups, archivedCount } = await getAccountsOverview(ctx, {
+    includeArchived: showArchived,
+  });
+
+  if (groups.length === 0 && archivedCount === 0) {
+    return (
+      <EmptyState
+        icon={<Landmark />}
+        title="No accounts yet"
+        description="Add your bank accounts, cash, cards and loans with today's balances. Every transaction then keeps them up to date."
+        action={<AddAccountButton todayKey={todayKey} baseCurrency={ctx.baseCurrency} />}
+      />
+    );
+  }
+
+  return (
+    <div className="grid gap-4">
+      {groups.map((group) => (
+        <Card key={group.key}>
+          <CardHeader className="flex flex-row items-baseline justify-between gap-4">
+            <CardTitle>{group.label}</CardTitle>
+            <div className="flex flex-col items-end text-sm">
+              {group.subtotals.map((s) => (
+                <Money
+                  key={s.currency}
+                  valueMinor={s.totalMinor}
+                  currency={s.currency}
+                  className="font-semibold"
+                />
+              ))}
+            </div>
+          </CardHeader>
+          <CardContent>
+            <ul className="divide-y">
+              {group.accounts.map((a) => (
+                <AccountRow
+                  key={a.id}
+                  account={a}
+                  todayKey={todayKey}
+                  baseCurrency={ctx.baseCurrency}
+                />
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      ))}
+      {archivedCount > 0 ? (
+        <Link
+          href={showArchived ? "/accounts" : "/accounts?archived=1"}
+          className="justify-self-start text-sm text-muted-foreground underline underline-offset-4"
+        >
+          {showArchived ? "Hide archived accounts" : `Show ${archivedCount} archived`}
+        </Link>
+      ) : null}
+    </div>
+  );
+}

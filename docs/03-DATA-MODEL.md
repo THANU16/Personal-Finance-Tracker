@@ -19,7 +19,7 @@ staleDays: 30, bigChangeThresholdBp: 2000, driftThresholdBp: 500,
 emergencyMonths: 6, lifeCoverIncomeMultiple: 10, healthCoverTargetMinor,
 minBalanceWarningMinor: 0, hideAmounts: false,
 notify: { email: boolean, inApp: true, dailyHourLocal: 6 },
-onboardingCompletedAt?
+onboardingCompletedAt?, bootstrapVersion: 0   # one-time per-user seeding applied (Phase 2)
 ```
 
 ## accounts
@@ -100,7 +100,8 @@ status: posted|void, voidedAt?, voidReason?, replacedById?,
 importHash?                                   # dedupe for CSV import
 idx: {userId, date:-1}, {userId, fromAccountId, date}, {userId, toAccountId, date},
      {userId, holdingId, date}, {userId, categoryId, date}, {userId, groupId},
-     {userId, importHash} unique sparse, text index on description/notes
+     {userId, importHash} unique partial (importHash is a string) — a compound *sparse* index
+     would still index every doc (all have userId) and collide on null; text index on description/notes
 ```
 Field requirements per type (validated by Zod discriminated union):
 | type | from | to | holding | category | extra |

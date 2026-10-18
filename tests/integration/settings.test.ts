@@ -31,6 +31,7 @@ describe("getOrCreateSettings", () => {
       hideAmounts: false,
       notify: { email: false, inApp: true, dailyHourLocal: 6 },
       onboardingCompletedAt: null,
+      bootstrapVersion: 0,
     });
   });
 

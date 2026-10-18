@@ -136,3 +136,11 @@
     user-select: none;
   }
 }
+
+/* Chart roles (dataviz reference palette, validated against our surfaces) */
+:root {
+  --viz-series-1: #2a78d6;
+}
+.dark {
+  --viz-series-1: #3987e5;
+}

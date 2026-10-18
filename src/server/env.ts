@@ -14,6 +14,8 @@ export const envSchema = z
 
     BETTER_AUTH_SECRET: z.string().min(32, "must be at least 32 characters"),
     BETTER_AUTH_URL: z.url(),
+    /** Sign-in/up rate limits (production). Only the e2e server turns them off. */
+    AUTH_RATE_LIMIT: z.enum(["on", "off"]).default("on"),
     /** Close registration once the owner account exists. */
     DISABLE_SIGNUP: z
       .enum(["true", "false", ""])

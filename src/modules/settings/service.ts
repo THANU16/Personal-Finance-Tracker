@@ -1,5 +1,5 @@
 import "server-only";
-import { Types } from "mongoose";
+import { Types, type ClientSession } from "mongoose";
 import { SettingsModel, type SettingsDoc } from "@/modules/settings/model";
 import {
   setHideAmountsSchema,
@@ -33,6 +33,7 @@ function toDTO(doc: SettingsDoc): SettingsDTO {
     onboardingCompletedAt: doc.onboardingCompletedAt
       ? doc.onboardingCompletedAt.toISOString()
       : null,
+    bootstrapVersion: doc.bootstrapVersion ?? 0,
   };
 }
 
@@ -99,4 +100,21 @@ export async function updateSettings(ctx: Ctx, input: unknown): Promise<Settings
 export async function setHideAmounts(ctx: Ctx, input: unknown): Promise<SettingsDTO> {
   const { hideAmounts } = parseInput(setHideAmountsSchema, input);
   return applySet(ctx, { hideAmounts });
+}
+
+/**
+ * Atomically claims one-time setup up to `version` (inside the caller's transaction). Returns
+ * false when another request already claimed it, so seeding runs exactly once per user.
+ */
+export async function claimBootstrap(
+  userId: string,
+  version: number,
+  session: ClientSession,
+): Promise<boolean> {
+  const res = await SettingsModel.updateOne(
+    { userId: toObjectId(userId), bootstrapVersion: { $lt: version } },
+    { $set: { bootstrapVersion: version } },
+    { session },
+  );
+  return res.modifiedCount === 1;
 }

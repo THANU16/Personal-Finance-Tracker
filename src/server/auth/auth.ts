@@ -67,7 +67,7 @@ export function getAuth(): Auth {
       secret: env.BETTER_AUTH_SECRET,
       baseURL: env.BETTER_AUTH_URL,
       disableSignUp: env.DISABLE_SIGNUP,
-      rateLimit: env.NODE_ENV === "production",
+      rateLimit: env.NODE_ENV === "production" && env.AUTH_RATE_LIMIT === "on",
     });
   }
   return cache.auth;

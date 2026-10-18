@@ -84,4 +84,5 @@ export interface SettingsDTO {
   hideAmounts: boolean;
   notify: { email: boolean; inApp: boolean; dailyHourLocal: number };
   onboardingCompletedAt: string | null;
+  bootstrapVersion: number;
 }
