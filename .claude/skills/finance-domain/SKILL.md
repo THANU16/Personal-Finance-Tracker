@@ -49,8 +49,9 @@ Liabilities are negative balances. Card payment = transfer bank → card (never 
 Spend X from account A with X > free → NEEDS_CONFIRMATION; confirm reduces opportunity then emergency earmarks in the same transaction.
 
 ## Key formulas
-- Redemption: `costRemoved = round(invested × amount / currentValue)`; `realised = amount − costRemoved − fee`.
-  Example 40,000 / 50,000 / redeem 20,000 / fee 100 → cost 16,000, gain 3,900, cash 19,900.
+- Redemption (cost recovery, owner decision): partial `costRemoved = min(invested, amount − fee)`, full `costRemoved = invested`;
+  `realised = amount − costRemoved − fee`. Example 660,000 / 672,365 / redeem 400,000 → cost 400,000, gain 0; then full
+  272,365 → gain 12,365. With a fee: 40,000 / 50,000 / redeem 20,000 / fee 100 → cost 19,900, gain 0, cash 19,900.
 - Current value = latest valuation + value effects of flows dated after it.
 - Cashflow excludes transfer, invest, redeem, principal, adjustment. Interest is an expense.
 - XIRR: invest −(amt+fee), redeem +(amt−fee−tax), payout +(amt−tax), terminal +value; null if < 90 days.

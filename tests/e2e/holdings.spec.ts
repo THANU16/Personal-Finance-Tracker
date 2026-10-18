@@ -56,18 +56,18 @@ test("add holding → buy → redeem (docs/04 example) → big value change need
   await expect(page.getByText("Invest saved")).toBeVisible();
   await expect(page.getByText("LKR 50,000.00").first()).toBeVisible();
 
-  // Redeem 20,000 with a 100 fee: preview shows the worked example
+  // Redeem 20,000 with a 100 fee: cost recovery returns the 19,900 as capital (docs/04 §3)
   await page.getByRole("button", { name: "Redeem" }).click();
   sheet = page.getByRole("dialog", { name: "Quick add" });
   await sheet.getByLabel("Amount redeemed (gross)").fill("20000");
   await sheet.getByLabel("Fee").fill("100");
-  await expect(sheet.getByText("Cost removed")).toContainText("LKR 16,000.00");
-  await expect(sheet.getByText("Realised gain")).toContainText("LKR 3,900.00");
+  await expect(sheet.getByText("Cost removed")).toContainText("LKR 19,900.00");
+  await expect(sheet.getByText("Realised gain")).toContainText("LKR 0.00");
   await expect(sheet.getByText("Cash to account")).toContainText("LKR 19,900.00");
   await sheet.getByRole("button", { name: "Save" }).click();
   await expect(page.getByText("Redeem saved")).toBeVisible();
   await expect(page.getByText("LKR 30,000.00").first()).toBeVisible(); // value
-  await expect(page.getByText("LKR 24,000.00").first()).toBeVisible(); // invested
+  await expect(page.getByText("LKR 20,100.00").first()).toBeVisible(); // invested
 
   // Update value 30,000 → 40,000 (+33%) needs the confirm tick
   await page.getByRole("button", { name: "Update value" }).click();

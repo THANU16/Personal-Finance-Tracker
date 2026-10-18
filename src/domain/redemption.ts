@@ -1,5 +1,7 @@
-// Redemption cost and gain (docs/04 §3). Proportional-cost method by amount (default) or by units.
-import { mulDivRound, roundHalfAwayFromZero, sub } from "@/domain/money";
+// Redemption cost and gain (docs/04 §3). Cost-recovery method (owner decision): a partial redemption
+// returns capital first; gain or loss is realised only beyond the money still invested, or on the
+// full redemption. By amount (default) or by units.
+import { roundHalfAwayFromZero, sub } from "@/domain/money";
 
 /** Prices carry 4 decimals beyond the currency's minor unit (NAV 12.3456 LKR = 123456). */
 export const PRICE_SCALE = 10_000;
@@ -33,6 +35,22 @@ export interface RedemptionResult {
   unitsRemoved: number | null;
 }
 
+/**
+ * Cost recovery (docs/04 §3): the cash received net of the fee (amount − fee) recovers invested
+ * money first. Partial: costRemoved = min(invested, amount − fee), so realised = 0 until more than
+ * the invested amount has come back. Full: all remaining invested is removed and the difference is
+ * the realised gain or loss. Tax is withheld from the cash and tracked separately.
+ */
+function costRecovered(
+  investedMinor: number,
+  amountMinor: number,
+  feeMinor: number,
+  full: boolean,
+): number {
+  if (full) return investedMinor;
+  return Math.max(0, Math.min(investedMinor, amountMinor - feeMinor));
+}
+
 function checkCharges(amountMinor: number, feeMinor: number, taxMinor: number) {
   for (const [label, v] of [
     ["fee", feeMinor],
@@ -45,8 +63,8 @@ function checkCharges(amountMinor: number, feeMinor: number, taxMinor: number) {
 }
 
 /**
- * Proportional cost: share = amount / currentValue (exact rational);
- * costRemoved = round(invested × share). amount ≥ value → full redemption.
+ * By amount: amount ≥ value → full redemption. Units on tracked holdings are removed in proportion
+ * to the value sold; the cost removed follows the cost-recovery rule.
  */
 export function redeemByAmount(input: {
   investedMinor: number;
@@ -67,9 +85,7 @@ export function redeemByAmount(input: {
   checkCharges(amountMinor, fee, tax);
 
   const full = amountMinor >= currentValueMinor;
-  const costRemovedMinor = full
-    ? investedMinor
-    : mulDivRound(investedMinor, amountMinor, currentValueMinor);
+  const costRemovedMinor = costRecovered(investedMinor, amountMinor, fee, full);
   const unitsHeld = input.unitsHeld ?? null;
   const unitsRemoved =
     unitsHeld === null
@@ -90,7 +106,7 @@ export function redeemByAmount(input: {
 }
 
 /**
- * By units (trackUnits): amount = unitsSold × price; costRemoved = round(invested × sold / held).
+ * By units (trackUnits): amount = unitsSold × price; cost removed by the cost-recovery rule.
  */
 export function redeemByUnits(input: {
   investedMinor: number;
@@ -115,9 +131,7 @@ export function redeemByUnits(input: {
   if (amountMinor <= 0) throw new RangeError("amount rounds to zero");
   checkCharges(amountMinor, fee, tax);
   const full = unitsSold >= unitsHeld - UNIT_EPSILON;
-  const costRemovedMinor = full
-    ? investedMinor
-    : roundHalfAwayFromZero((investedMinor * unitsSold) / unitsHeld);
+  const costRemovedMinor = costRecovered(investedMinor, amountMinor, fee, full);
   return {
     amountMinor,
     costRemovedMinor,

@@ -66,7 +66,7 @@ async function exampleSetup() {
 }
 
 describe("redemption worked example end to end (docs/04 §3)", () => {
-  it("40,000 / 50,000 / redeem 20,000 / fee 100 → cost 16,000, gain 3,900, cash 19,900", async () => {
+  it("40,000 / 50,000 / redeem 20,000 / fee 100 → cost recovered 19,900, gain 0, cash 19,900", async () => {
     const { ctx, bank, fund } = await exampleSetup();
     let h = await holdingDoc(ctx, fund.id);
     expect([h.investedMinor, h.currentValueMinor]).toEqual([4_000_000, 5_000_000]);
@@ -80,16 +80,17 @@ describe("redemption worked example end to end (docs/04 §3)", () => {
       holdingId: fund.id,
     });
     const t = await txnDoc(ctx, redeem);
+    // Cost recovery (owner decision): a partial redemption returns capital first.
     expect(t?.redemption).toMatchObject({
-      costRemovedMinor: 1_600_000,
-      realizedGainMinor: 390_000,
+      costRemovedMinor: 1_990_000,
+      realizedGainMinor: 0,
     });
     expect(t?.currency).toBe("LKR");
     h = await holdingDoc(ctx, fund.id);
     expect(h).toMatchObject({
-      investedMinor: 2_400_000,
+      investedMinor: 2_010_000,
       currentValueMinor: 3_000_000,
-      realizedGainMinor: 390_000,
+      realizedGainMinor: 0,
       feesPaidMinor: 10_000,
     });
     // bank: 100,000 − 10,000 (buy) + 19,900 (cash in)
@@ -129,15 +130,19 @@ describe("redemption worked example end to end (docs/04 §3)", () => {
 
   it("a backdated buy recomputes a later redemption's cost; editing a buy does too", async () => {
     const { ctx, bank, fund, buy } = await exampleSetup();
+    // Invested 40,000, value 50,000: redeem 45,000 → 40,000 capital back, 5,000 realised.
     const redeem = await post(ctx, {
       type: "redeem",
       date: "2026-03-01",
-      amountMinor: 2_000_000,
+      amountMinor: 4_500_000,
       toAccountId: bank.id,
       holdingId: fund.id,
     });
-    expect((await txnDoc(ctx, redeem))?.redemption?.costRemovedMinor).toBe(1_600_000);
-    // Buy 10,000 more on 2026-02-15 with a 1,000 fee → invested 51,000, value 60,000 → share 1/3
+    expect((await txnDoc(ctx, redeem))?.redemption).toMatchObject({
+      costRemovedMinor: 4_000_000,
+      realizedGainMinor: 500_000,
+    });
+    // Buy 10,000 more on 2026-02-15 with a 1,000 fee → invested 51,000: all 45,000 is capital back
     await post(ctx, {
       type: "invest",
       date: "2026-02-15",
@@ -146,16 +151,111 @@ describe("redemption worked example end to end (docs/04 §3)", () => {
       fromAccountId: bank.id,
       holdingId: fund.id,
     });
-    expect((await txnDoc(ctx, redeem))?.redemption?.costRemovedMinor).toBe(1_700_000);
-    // Edit the original buy down to 5,000 → invested 46,000, value 55,000 → 46,000 × 20/55 = 16,727.27
+    expect((await txnDoc(ctx, redeem))?.redemption).toMatchObject({
+      costRemovedMinor: 4_500_000,
+      realizedGainMinor: 0,
+    });
+    // Edit the original buy down to 1,000 → invested 42,000 → 42,000 capital back, 3,000 realised
     await updateTransaction(ctx, buy, {
       type: "invest",
       date: "2026-02-01",
-      amountMinor: 500_000,
+      amountMinor: 100_000,
       fromAccountId: bank.id,
       holdingId: fund.id,
     });
-    expect((await txnDoc(ctx, redeem))?.redemption?.costRemovedMinor).toBe(1_672_727);
+    expect((await txnDoc(ctx, redeem))?.redemption).toMatchObject({
+      costRemovedMinor: 4_200_000,
+      realizedGainMinor: 300_000,
+    });
+  });
+});
+
+describe("cost recovery (owner decision, docs/04 §3)", () => {
+  it("owner example: 660,000 / 672,365 → redeem 400,000 → 260,000 / 272,365; full redeem realises 12,365", async () => {
+    const ctx = await makeUser();
+    const bank = await makeAccount(ctx, { openingBalanceMinor: 0 });
+    const fund = await makeHolding(ctx, {
+      name: "CAL Fixed Income",
+      investedMinor: 66_000_000,
+      currentValueMinor: 67_236_500,
+    });
+    await post(ctx, {
+      type: "redeem",
+      date: "2026-03-01",
+      amountMinor: 40_000_000,
+      toAccountId: bank.id,
+      holdingId: fund.id,
+    });
+    let h = await holdingDoc(ctx, fund.id);
+    expect(h).toMatchObject({
+      investedMinor: 26_000_000,
+      currentValueMinor: 27_236_500,
+      realizedGainMinor: 0,
+    });
+    await post(ctx, {
+      type: "redeem",
+      date: "2026-04-01",
+      amountMinor: 27_236_500,
+      toAccountId: bank.id,
+      holdingId: fund.id,
+    });
+    h = await holdingDoc(ctx, fund.id);
+    expect(h).toMatchObject({
+      investedMinor: 0,
+      currentValueMinor: 0,
+      realizedGainMinor: 1_236_500,
+    });
+    expect(await balanceOf(ctx, bank.id)).toBe(67_236_500);
+  });
+
+  it("existing redemptions are recalculated on the next request after the change (bootstrap v5)", async () => {
+    const ctx = await makeUser();
+    const { SettingsModel } = await import("@/modules/settings/model");
+    const { ensureUserSetup } = await import("@/server/bootstrap");
+    const bank = await makeAccount(ctx, { openingBalanceMinor: 0 });
+    const fund = await makeHolding(ctx, {
+      name: "Old fund",
+      investedMinor: 66_000_000,
+      currentValueMinor: 67_236_500,
+    });
+    const id = await post(ctx, {
+      type: "redeem",
+      date: "2026-03-01",
+      amountMinor: 40_000_000,
+      toAccountId: bank.id,
+      holdingId: fund.id,
+    });
+    const userId = new Types.ObjectId(ctx.userId);
+    // Simulate figures stored by the old proportional method, and a user not yet on v5.
+    await TransactionModel.updateOne(
+      { _id: new Types.ObjectId(id), userId },
+      {
+        $set: {
+          redemption: {
+            costRemovedMinor: 39_264_461,
+            realizedGainMinor: 735_539,
+            unitsRemoved: null,
+          },
+        },
+      },
+    );
+    const { HoldingModel } = await import("@/modules/holdings/model");
+    await HoldingModel.updateOne(
+      { _id: new Types.ObjectId(fund.id), userId },
+      { $set: { investedMinor: 26_735_539, realizedGainMinor: 735_539 } },
+    );
+    await SettingsModel.updateOne({ userId }, { $set: { bootstrapVersion: 4 } });
+
+    await ensureUserSetup(ctx.userId);
+    expect((await txnDoc(ctx, id))?.redemption).toMatchObject({
+      costRemovedMinor: 40_000_000,
+      realizedGainMinor: 0,
+    });
+    expect(await holdingDoc(ctx, fund.id)).toMatchObject({
+      investedMinor: 26_000_000,
+      realizedGainMinor: 0,
+    });
+    expect((await SettingsModel.findOne({ userId }).lean())?.bootstrapVersion).toBe(5);
   });
 });
 
@@ -232,7 +332,7 @@ describe("unit-tracked holdings", () => {
     });
     const t = await txnDoc(ctx, sell);
     expect(t?.amountMinor).toBe(390_000); // 300 × 1,300.00 minor
-    expect(t?.redemption?.costRemovedMinor).toBe(363_456); // 1,817,280 × 300/1500
+    expect(t?.redemption?.costRemovedMinor).toBe(390_000); // cost recovery: the 390,000 proceeds are capital back
     h = await holdingDoc(ctx, ut.id);
     expect(h.units).toBe(1_200);
     expect(h.currentValueMinor).toBe(1_560_000); // 1,200 × 13.00

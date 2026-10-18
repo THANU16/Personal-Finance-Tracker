@@ -57,7 +57,7 @@ Process posted transactions for the holding in date order (ties: createdAt).
 |---|---|---|---|
 | opening_balance | + amount | (valuation created with entered current value) | |
 | invest (buy) | + amount + fee | + amount | feesPaid += fee; units += units |
-| redeem | − costRemoved | − amount | realizedGain += amount − costRemoved − fee; taxWithheld += tax |
+| redeem | − costRemoved (cost recovery) | − amount | realizedGain += amount − costRemoved − fee; taxWithheld += tax |
 | investment_income paid out | – | – | incomeReceived += amount; taxWithheld += tax |
 | investment_income reinvest | + (amount − tax) | + (amount − tax) | incomeReceived += amount; taxWithheld += tax |
 
@@ -74,22 +74,29 @@ where `lastPrice` is the most recent price from a valuation or transaction.
 **Unrealised gain** = currentValue − invested. **Total return** = unrealised + realised + incomeReceived − taxWithheld.
 **Return %** = unrealised ÷ invested (show "—" if invested = 0).
 
-### Redemption — proportional cost method (default)
+### Redemption — cost-recovery method (owner decision, replaces proportional cost)
+A partial redemption returns your capital first; gain or loss is realised only once more than the
+invested amount has come back, or on the full redemption. The fee reduces the cost recovered (it is not
+a separate realised loss).
 ```
-share        = amount / currentValue            (exact rational, not rounded)
-costRemoved  = round(invested × share)
-realizedGain = amount − costRemoved − fee
-cashToAccount= amount − fee − tax
+net          = amount − fee
+partial:  costRemoved = min(invested, net)      → realised = net − costRemoved (0 until invested is used up)
+full:     costRemoved = invested                → realised = amount − fee − invested (gain or loss)
+cashToAccount = amount − fee − tax              (tax is withheld from the cash; tracked as taxWithheld)
 ```
-If `amount ≥ currentValue` → full redemption: costRemoved = invested, value afterwards = 0, holding
-offered "Close holding". If currentValue is stale (§12) show a prompt to update value first.
+If `amount ≥ currentValue` → full redemption: value afterwards = 0, holding offered "Close holding". If
+currentValue is stale (§12) show a prompt to update value first. Existing redemptions are recalculated
+with this rule (bootstrap v5 replays every holding; `npm run recompute` does all users at once).
 
-**Worked example:** invested 40,000, value 50,000, redeem 20,000, fee 100 →
-share 40%, costRemoved 16,000, realised gain 3,900, cash in 19,900, remaining invested 24,000,
-remaining value 30,000.
+**Worked example (owner):** invested 660,000, value 672,365, redeem 400,000 → costRemoved 400,000, realised 0,
+invested 260,000, value 272,365. Then redeem 272,365 (full) → costRemoved 260,000, realised 12,365.
+**With a fee:** invested 40,000, value 50,000, redeem 20,000, fee 100 → net 19,900, costRemoved 19,900,
+realised 0, cash in 19,900, remaining invested 20,100, remaining value 30,000.
+**Beyond the capital:** invested 10,000, value 30,000, redeem 15,000 → costRemoved 10,000, realised 5,000,
+invested 0, value 15,000.
 
 ### Redemption by units (trackUnits on)
-`costRemoved = round(invested × unitsSold / unitsHeld)`; `amount = unitsSold × price`.
+`amount = unitsSold × price`; cost removed by the same cost-recovery rule; units removed = unitsSold.
 
 ### Buying with units on
 `avgCostMinor = round(invested / units)` (per unit, fees included).

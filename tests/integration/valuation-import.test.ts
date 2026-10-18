@@ -87,9 +87,10 @@ describe("valuation CSV import", () => {
 
     const h = await holdingDoc(ctx, r.holdingId);
     expect(h.currentValueMinor).toBe(33_608_300);
-    // 50,000 + 50,000 − round(100,000 × 50,000 / 224,410) + 74,000 + 30,000 (see the unit test)
-    expect(h.investedMinor).toBe(18_171_935);
-    expect(h.currentValueMinor - h.investedMinor).toBe(15_436_365);
+    // 50,000 + 50,000 − 50,000 (withdrawal returns capital) + 74,000 + 30,000 (see the unit test)
+    expect(h.investedMinor).toBe(15_400_000);
+    expect(h.currentValueMinor - h.investedMinor).toBe(18_208_300);
+    expect(h.realizedGainMinor).toBe(0);
 
     const vals = await ValuationModel.find({ userId: uid(ctx), holdingId: h._id }).lean();
     expect(vals).toHaveLength(45);

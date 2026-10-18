@@ -247,6 +247,13 @@ Status values: ⬜ not started · 🟡 in progress · ✅ done
 - [9] Quick add "From template": fills the form from an income/expense/transfer rule (does not advance the rule).
 - [9] Fix: two queries in parallel as the first operation of a DB transaction fail on MongoDB; copy-last-month reads them in
   sequence (others start their transaction with a single query first).
+- [cost] Redemptions use the **cost-recovery** method for every holding (owner decision, replaces proportional cost; docs/04
+  §3 and the finance-domain skill updated). Partial: costRemoved = min(invested, amount − fee) → nothing realised until
+  more than the invested money has come back; full: costRemoved = invested → realised = amount − fee − invested (gain or
+  loss). The fee reduces the cost recovered (owner choice), tax stays withheld from the cash. Owner example: 660,000 /
+  672,365 → redeem 400,000 → 260,000 / 272,365, realised 0; full 272,365 → realised 12,365. Existing data: bootstrap v5
+  replays every holding of a user on their next request (stored redemption figures and caches), and `npm run recompute`
+  does all users at once. Totals are unchanged (total return = unrealised + realised + income − tax).
 - [3b] Rules live in docs/04 **§23** (owner-approved: §20 is Earmarks). Pure `domain/valuation-import.ts` (parser, validation,
   ordering, day-ends, jumps, plan, live simulation) runs in the browser for the preview; the sha256 import hash is computed on
   the server. The server re-parses the file and rebuilds the plan from the user's jump choices on commit (client amounts are

@@ -165,15 +165,12 @@ describe("plan and live summary", () => {
 
     const s = simulateImport({ existing: [], plan, trackUnits: false, todayKey: "2026-10-18" });
     expect(s.currentValueMinor).toBe(33_608_300);
-    // Hand check: invested 50,000.00 (first value) + 50,000.00 (31 Mar) = 100,000.00 before the
-    // withdrawal; it redeems 50,000.00 against the value just before it (28 Apr day-end 224,410.00):
-    // cost removed = round(100,000.00 × 50,000.00 / 224,410.00) = 22,280.65 → 77,719.35 left;
-    // then + 74,000.00 + 30,000.00 = 181,719.35 invested.
-    const cost = Math.round((10_000_000 * 5_000_000) / 22_441_000);
-    expect(cost).toBe(2_228_065);
-    expect(s.investedMinor).toBe(10_000_000 - cost + 7_400_000 + 3_000_000);
-    expect(s.investedMinor).toBe(18_171_935);
-    expect(s.unrealisedMinor).toBe(33_608_300 - 18_171_935);
+    // Hand check (cost recovery, docs/04 §3): invested 50,000.00 (first value) + 50,000.00 (31 Mar)
+    // = 100,000.00 before the withdrawal; the 50,000.00 withdrawal returns capital → 50,000.00 left;
+    // then + 74,000.00 + 30,000.00 = 154,000.00 invested.
+    expect(s.investedMinor).toBe(10_000_000 - 5_000_000 + 7_400_000 + 3_000_000);
+    expect(s.investedMinor).toBe(15_400_000);
+    expect(s.unrealisedMinor).toBe(33_608_300 - 15_400_000);
     expect(s.xirrBp).not.toBeNull();
   });
 });

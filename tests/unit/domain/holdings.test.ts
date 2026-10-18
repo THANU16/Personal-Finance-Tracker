@@ -45,15 +45,16 @@ describe("replayHolding (docs/04 §3 table)", () => {
       ],
       { trackUnits: false },
     );
+    // Cost recovery: the fee-net 19,900 comes back as capital; nothing is realised yet.
     expect(redemptions.get(redeemEvt.id)).toMatchObject({
-      costRemovedMinor: 1_600_000,
-      realizedGainMinor: 390_000,
+      costRemovedMinor: 1_990_000,
+      realizedGainMinor: 0,
       cashToAccountMinor: 1_990_000,
     });
     expect(state).toMatchObject({
-      investedMinor: 2_400_000 + 18_000,
+      investedMinor: 2_010_000 + 18_000,
       currentValueMinor: 3_000_000 + 18_000,
-      realizedGainMinor: 390_000,
+      realizedGainMinor: 0,
       incomeReceivedMinor: 70_000,
       taxWithheldMinor: 9_000,
       feesPaidMinor: 10_000,
@@ -61,8 +62,8 @@ describe("replayHolding (docs/04 §3 table)", () => {
       lastValuedAt: "2026-01-01",
       fullyRedeemed: false,
     });
-    expect(unrealizedGainMinor(state)).toBe(600_000);
-    // total = unrealised 600,000 + realised 390,000 + income 70,000 − tax 9,000
+    expect(unrealizedGainMinor(state)).toBe(990_000);
+    // total = unrealised 990,000 + realised 0 + income 70,000 − tax 9,000 (same total as before)
     expect(totalReturnMinor(state)).toBe(1_051_000);
   });
 
@@ -117,24 +118,56 @@ describe("replayHolding (docs/04 §3 table)", () => {
     expect(state).toMatchObject({ currentValueMinor: 0, realizedGainMinor: 100_000 });
   });
 
-  it("a backdated buy changes a later redemption's cost", () => {
-    const redeem = txn("redeem", "2026-03-01", 50_000);
+  it("a backdated buy changes a later redemption's cost and gain", () => {
+    const redeem = txn("redeem", "2026-03-01", 150_000);
     const without = replayHolding(
-      [txn("invest", "2026-01-01", 100_000), val("2026-02-01", 100_000), redeem],
+      [txn("invest", "2026-01-01", 100_000), val("2026-02-01", 200_000), redeem],
       { trackUnits: false },
     );
-    expect(without.redemptions.get(redeem.id)?.costRemovedMinor).toBe(50_000);
+    // invested 100,000, value 200,000: 150,000 out → 100,000 capital back, 50,000 realised
+    expect(without.redemptions.get(redeem.id)).toMatchObject({
+      costRemovedMinor: 100_000,
+      realizedGainMinor: 50_000,
+    });
     const withBackdated = replayHolding(
       [
         txn("invest", "2026-01-01", 100_000),
-        val("2026-02-01", 100_000),
+        val("2026-02-01", 200_000),
         txn("invest", "2026-02-15", 100_000, { feeMinor: 10_000 }),
         redeem,
       ],
       { trackUnits: false },
     );
-    // invested 210,000, value 200,000 → share 25% → cost 52,500
-    expect(withBackdated.redemptions.get(redeem.id)?.costRemovedMinor).toBe(52_500);
+    // invested 210,000 → all 150,000 is capital back, nothing realised
+    expect(withBackdated.redemptions.get(redeem.id)).toMatchObject({
+      costRemovedMinor: 150_000,
+      realizedGainMinor: 0,
+    });
+  });
+
+  it("cost recovery (owner example): partial redemptions return capital; the full one realises the gain", () => {
+    const partial = txn("redeem", "2026-03-01", 40_000_000);
+    const full = txn("redeem", "2026-04-01", 27_236_500);
+    const { state, redemptions } = replayHolding(
+      [txn("invest", "2026-01-01", 66_000_000), val("2026-02-01", 67_236_500), partial, full],
+      { trackUnits: false },
+    );
+    expect(redemptions.get(partial.id)).toMatchObject({
+      costRemovedMinor: 40_000_000,
+      realizedGainMinor: 0,
+      remainingInvestedMinor: 26_000_000,
+      remainingValueMinor: 27_236_500,
+    });
+    expect(redemptions.get(full.id)).toMatchObject({
+      costRemovedMinor: 26_000_000,
+      realizedGainMinor: 1_236_500,
+      full: true,
+    });
+    expect(state).toMatchObject({
+      investedMinor: 0,
+      currentValueMinor: 0,
+      realizedGainMinor: 1_236_500,
+    });
   });
 
   it("tracks units: value = units × last price, average cost, redeem by units", () => {
@@ -154,12 +187,13 @@ describe("replayHolding (docs/04 §3 table)", () => {
     );
     expect(redemptions.get(sell.id)).toMatchObject({
       amountMinor: 480_000,
-      costRemovedMinor: 400_800,
+      costRemovedMinor: 480_000, // cost recovery: the sale returns capital first
+      realizedGainMinor: 0,
     });
     expect(state.units).toBe(60);
-    expect(state.investedMinor).toBe(601_200);
+    expect(state.investedMinor).toBe(522_000); // 1,002,000 − 480,000
     expect(state.currentValueMinor).toBe(720_000); // 60 × 120.00 (last price from the sale)
-    expect(state.avgCostMinor).toBe(10_020); // 601,200 / 60
+    expect(state.avgCostMinor).toBe(8_700); // 522,000 / 60
   });
 
   it("full redemption leaves zero value and zero invested", () => {

@@ -83,8 +83,8 @@ describe("transfers with assets", () => {
     expect(last.type).toBe("redeem");
     expect(last.amountMinor).toBe(2_010_000);
     expect(await balanceOf(ctx, bank.id)).toBe(12_000_000);
-    // docs/04 §3: cost removed = round(4,000,000 × 2,010,000 / 5,000,000) = 1,608,000
-    expect(last.redemption?.costRemovedMinor).toBe(1_608_000);
+    // docs/04 §3 cost recovery: 2,010,000 − 10,000 fee = 2,000,000 capital back, nothing realised
+    expect(last.redemption).toMatchObject({ costRemovedMinor: 2_000_000, realizedGainMinor: 0 });
     expect((await holdingDoc(ctx, mm.id)).currentValueMinor).toBe(2_990_000);
   });
 
