@@ -6,7 +6,7 @@ import { seedCategories } from "@/modules/categories/service";
 import { STARTER_CATEGORIES, SYSTEM_CATEGORIES } from "@/modules/categories/seed";
 import { SettingsModel } from "@/modules/settings/model";
 import { TransactionModel } from "@/modules/transactions/model";
-import { ensureUserSetup } from "@/server/bootstrap";
+import { BOOTSTRAP_VERSION, ensureUserSetup } from "@/server/bootstrap";
 import { withTransaction } from "@/server/db/transaction";
 import { makeAccount, makeUser, post } from "../helpers/factories";
 import { setupTestDb } from "../helpers/test-db";
@@ -137,6 +137,20 @@ describe("mergeDuplicateCategories (bootstrap v2)", () => {
     } finally {
       await CategoryModel.syncIndexes(); // restore the unique index for the other tests
     }
+  });
+
+  it("settings created before Phase 2 (no bootstrapVersion field) are set up once and repaired", async () => {
+    const ctx = await makeUser();
+    const uid = new Types.ObjectId(ctx.userId);
+    await legacyDuplicateSeed(ctx.userId);
+    await legacyDuplicateSeed(ctx.userId);
+    await SettingsModel.collection.updateOne({ userId: uid }, { $unset: { bootstrapVersion: "" } });
+    await ensureUserSetup(ctx.userId);
+    expect(await count(ctx.userId)).toBe(total);
+    const raw = await SettingsModel.collection.findOne({ userId: uid });
+    expect(raw?.bootstrapVersion).toBe(BOOTSTRAP_VERSION);
+    await ensureUserSetup(ctx.userId); // nothing more happens
+    expect(await count(ctx.userId)).toBe(total);
   });
 
   it("leaves other users alone", async () => {

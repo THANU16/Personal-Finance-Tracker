@@ -6,11 +6,12 @@ import { writeAudit } from "@/server/audit/model";
 import { toObjectId } from "@/server/db/ids";
 
 /**
- * Repairs categories duplicated by an earlier, non-idempotent first-login seed: categories with the
- * same kind, parent and name (case-insensitive) merge into one. The keeper is the active copy
- * created first; transactions, split lines and sub-categories of the others move to it, then the
- * duplicates are deleted (categories are not ledger records). Top level first, so children of
- * merged parents are compared under their new parent. Returns how many were merged.
+ * Repairs categories duplicated by an earlier first-login bug: categories with the same kind,
+ * parent and name (case-insensitive; system and user categories separately) merge into one. The
+ * keeper is the active copy created first; transactions, split lines and sub-categories of the
+ * others move to it, then the copies are deleted (categories are not ledger records). Top level
+ * first, so children of merged parents are compared under their new parent. Work is batched per
+ * group (a few operations however many copies exist). Returns how many categories were removed.
  */
 export async function mergeDuplicateCategories(
   userId: string,
@@ -19,7 +20,6 @@ export async function mergeDuplicateCategories(
   const uid = toObjectId(userId, "User");
   let merged = 0;
   for (const level of ["top", "child"] as const) {
-    // System categories too: a copy made before their unique index existed is merged the same way.
     const docs = await CategoryModel.find({
       userId: uid,
       parentId: level === "top" ? null : { $ne: null },
@@ -29,7 +29,9 @@ export async function mergeDuplicateCategories(
     const groups = new Map<string, CategoryDoc[]>();
     for (const d of docs) {
       const key = `${d.isSystem ? "sys" : "user"}|${d.kind}|${d.parentId ? String(d.parentId) : ""}|${d.name.trim().toLowerCase()}`;
-      groups.set(key, [...(groups.get(key) ?? []), d]);
+      const list = groups.get(key);
+      if (list) list.push(d);
+      else groups.set(key, [d]);
     }
     for (const group of groups.values()) {
       if (group.length < 2) continue;
@@ -40,7 +42,7 @@ export async function mergeDuplicateCategories(
           String(a._id).localeCompare(String(b._id)),
       );
       const [keep, ...dups] = group as [CategoryDoc, ...CategoryDoc[]];
-      for (const dup of dups) await mergeInto(uid, keep, dup, session);
+      await mergeGroup(uid, keep, dups, session);
       merged += dups.length;
       await writeAudit(
         {
@@ -48,7 +50,7 @@ export async function mergeDuplicateCategories(
           action: "merge_duplicates",
           entity: "category",
           entityId: keep._id,
-          before: dups.map((d) => String(d._id)),
+          before: { removed: dups.length },
         },
         session,
       );
@@ -57,21 +59,22 @@ export async function mergeDuplicateCategories(
   return merged;
 }
 
-async function mergeInto(
+async function mergeGroup(
   userId: Types.ObjectId,
   keep: CategoryDoc,
-  dup: CategoryDoc,
+  dups: CategoryDoc[],
   session: ClientSession,
 ): Promise<void> {
+  const dupIds = dups.map((d) => d._id);
   await TransactionModel.updateMany(
-    { userId, categoryId: dup._id },
+    { userId, categoryId: { $in: dupIds } },
     { $set: { categoryId: keep._id } },
     { session },
   );
   await TransactionModel.updateMany(
-    { userId, "splits.categoryId": dup._id },
+    { userId, "splits.categoryId": { $in: dupIds } },
     { $set: { "splits.$[line].categoryId": keep._id } },
-    { session, arrayFilters: [{ "line.categoryId": dup._id }] },
+    { session, arrayFilters: [{ "line.categoryId": { $in: dupIds } }] },
   );
   // A split may now name the keeper twice: combine those lines (the total is unchanged).
   const affected = await TransactionModel.find({ userId, "splits.categoryId": keep._id })
@@ -107,16 +110,16 @@ async function mergeInto(
     );
   }
   await CategoryModel.updateMany(
-    { userId, parentId: dup._id },
+    { userId, parentId: { $in: dupIds } },
     { $set: { parentId: keep._id } },
     { session },
   );
-  if (dup.isEssential && !keep.isEssential) {
+  if (!keep.isEssential && dups.some((d) => d.isEssential)) {
     await CategoryModel.updateOne(
       { _id: keep._id, userId },
       { $set: { isEssential: true } },
       { session },
     );
   }
-  await CategoryModel.deleteOne({ _id: dup._id, userId }, { session });
+  await CategoryModel.deleteMany({ userId, _id: { $in: dupIds } }, { session });
 }

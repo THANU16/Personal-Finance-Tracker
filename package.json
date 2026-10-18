@@ -14,6 +14,7 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "seed": "tsx --conditions=react-server scripts/seed.ts",
+    "repair:categories": "tsx --conditions=react-server scripts/repair-categories.ts",
     "recompute": "tsx --conditions=react-server scripts/recompute-all.ts",
     "db:check": "tsx --conditions=react-server scripts/db-check.ts",
     "reset-password": "tsx --conditions=react-server scripts/reset-password.ts",

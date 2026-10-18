@@ -145,6 +145,12 @@ Status values: ⬜ not started · 🟡 in progress · ✅ done
 - [fix] Duplicate starter categories (owner report): the first-login seed is now idempotent (upserts by kind/parent/name) and
   bootstrap v2 merges existing duplicates into the oldest copy, moving transactions, split lines (combined when they collide)
   and sub-categories first. Commit `fix(categories)`.
+- [fix] Categories duplicated ~180× on the owner's account: a long-running dev server kept the Phase 1 Settings model
+  (`userScopedModel` reused cached models on hot reload), so Mongoose dropped the unknown `bootstrapVersion` from the
+  claim query and update — first-login setup re-ran on every request. Models are now recompiled on re-evaluation; the
+  claim treats a missing version as 0; the merge is batched per group and runs as bootstrap v4 for everyone.
+  `npm run repair:categories -- <email>` repairs one account on demand (owner's account: 3,507 → 27, all references intact).
+- [seed] `npm run seed -- <email> [--append]` adds ~6 months of demo data to one existing user (Phase 12 will extend it).
 
 ## Deviations from docs
 <!-- Claude: anything built differently from the docs, and why. Update the doc too if the user agrees. -->

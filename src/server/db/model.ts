@@ -2,12 +2,13 @@ import mongoose, { type Model, type Schema } from "mongoose";
 import { userIdGuardPlugin } from "@/server/db/user-id-guard";
 
 /**
- * Registers a model for a user-owned collection: applies the userId guard and reuses an existing
- * model on dev hot reload instead of recompiling.
+ * Registers a model for a user-owned collection with the userId guard. When a module is evaluated
+ * again (dev hot reload after a schema change) the model is recompiled from the NEW schema: reusing
+ * the cached one kept stale schemas alive, and Mongoose then silently dropped new fields from
+ * queries and updates (this re-ran first-login setup on every request and duplicated categories).
  */
 export function userScopedModel<T>(name: string, schema: Schema<T>, collection: string): Model<T> {
-  const existing = mongoose.models[name] as Model<T> | undefined;
-  if (existing) return existing;
+  if (mongoose.models[name]) mongoose.deleteModel(name);
   schema.plugin(userIdGuardPlugin);
   return mongoose.model<T>(name, schema, collection);
 }

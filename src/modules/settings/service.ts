@@ -129,7 +129,11 @@ export async function claimBootstrap(
   session: ClientSession,
 ): Promise<boolean> {
   const res = await SettingsModel.updateOne(
-    { userId: toObjectId(userId), bootstrapVersion: { $lt: version } },
+    {
+      userId: toObjectId(userId),
+      // Settings created before Phase 2 have no bootstrapVersion at all: treat it as 0.
+      $or: [{ bootstrapVersion: { $lt: version } }, { bootstrapVersion: { $exists: false } }],
+    },
     { $set: { bootstrapVersion: version } },
     { session },
   );
