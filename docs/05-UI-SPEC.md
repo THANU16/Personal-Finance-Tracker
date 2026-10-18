@@ -61,6 +61,18 @@ with drill-down, top categories (click filters Transactions with the same range)
 - Add holding wizard: class → instrument (only the types of that class; custom classes show all) → name/details →
   opening invested & current value (or FD terms, switchable off) → optional track units.
 
+### Import valuation history `/assets/import-valuations` (Phase 3b, docs/04 §23)
+Entry: Assets header and an "Import CSV" button on the holding's Valuations tab (holding preselected).
+1. **Upload** one or more CSV files; each file becomes its own import card.
+2. **Setup per file**: holding (suggested from the file name "<Asset Name> - valuations <date>.csv", optional
+   "<digits>_" prefix; or create a new holding), funding account (or create "Historical funding (external)"), "first value
+   = initial investment" toggle, jump threshold.
+3. **Preview** (oldest first): date · recorded at · value · change vs previous day · badges (Duplicate, Same day, Big change,
+   Error) · for flagged jumps an action select (Deposit / Withdrawal / Market move) with amount and date. Superseded
+   same-day rows are greyed out. **Summary**: rows to import, duplicates, errors, total deposits/withdrawals and the
+   resulting invested, current value, unrealised gain and XIRR, recalculated live.
+4. **Confirm** → result with a link to the holding, "Rebuild net-worth history" and "Undo import". History in Settings → Data.
+
 ### Holding detail `/assets/[id]`
 Header (value, gain, XIRR, income) · value vs invested line chart · tabs: Transactions · Valuations ·
 Income · Details (edit, track-units toggle, close). FD variant: maturity countdown, accrued interest,

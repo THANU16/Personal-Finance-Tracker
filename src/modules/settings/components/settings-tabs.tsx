@@ -1,5 +1,7 @@
 "use client";
 
+import { ImportHistoryList } from "@/modules/imports/components/import-history-list";
+import type { ImportHistoryItem } from "@/modules/imports/valuation-service";
 import Link from "next/link";
 import { Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -26,6 +28,7 @@ export function SettingsTabs({
   security,
   fxRates,
   todayKey,
+  imports,
 }: {
   user: { name: string; email: string };
   settings: SettingsDTO;
@@ -35,6 +38,7 @@ export function SettingsTabs({
   security: SecurityDTO;
   fxRates: FxRateDTO[];
   todayKey: string;
+  imports: ImportHistoryItem[];
 }) {
   return (
     <Tabs defaultValue="preferences">
@@ -75,6 +79,24 @@ export function SettingsTabs({
           <Button className="mt-3" variant="outline" render={<Link href="/transactions/import" />}>
             <Upload aria-hidden /> Import data
           </Button>
+        </div>
+        <div className="max-w-xl rounded-lg border p-4">
+          <h2 className="font-medium">Import valuation history</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Past values of a holding from a CSV (one file per asset), with deposits and withdrawals
+            marked from the jumps.
+          </p>
+          <Button
+            className="mt-3"
+            variant="outline"
+            render={<Link href="/assets/import-valuations" />}
+          >
+            <Upload aria-hidden /> Import values
+          </Button>
+        </div>
+        <div className="max-w-3xl space-y-2">
+          <h2 className="font-medium">Import history</h2>
+          <ImportHistoryList items={imports} />
         </div>
       </TabsContent>
     </Tabs>

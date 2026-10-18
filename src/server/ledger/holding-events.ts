@@ -97,7 +97,8 @@ export function valuationEvent(v: ValuationDoc, tz: string): HoldingEvent {
     kind: "valuation",
     id: String(v._id),
     date: utcToBusinessDate(v.date, tz),
-    seq: v.createdAt.getTime(),
+    // Same-day order: when it was entered (an import keeps the original time), else creation.
+    seq: (v.recordedAt ?? v.createdAt).getTime(),
     valueMinor: v.valueMinor,
     priceMinorE4: v.priceMinorE4 ?? null,
     units: v.units ?? null,

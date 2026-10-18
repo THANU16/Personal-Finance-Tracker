@@ -38,6 +38,8 @@ export type ImportEntry =
       importHash: string;
       /** A holding → holding move: the redeem and the invest share it and need no account. */
       groupId?: Types.ObjectId | null;
+      /** Explicit replay order (same-day): placed at this instant instead of entry order. */
+      createdAt?: Date;
     }
   | {
       kind: "valuation";
@@ -45,6 +47,10 @@ export type ImportEntry =
       date: Date;
       valueMinor: number;
       note: string;
+      units?: number | null;
+      priceMinorE4?: number | null;
+      recordedAt?: Date | null;
+      importHash?: string;
     };
 
 const fail = (index: number, message: string): never => {
@@ -126,7 +132,7 @@ export async function postImportBatch(
   const touchedHoldings = new Map<string, Types.ObjectId>();
 
   entries.forEach((e, i) => {
-    const createdAt = new Date(base + i);
+    const createdAt = (e.kind === "txn" ? e.createdAt : undefined) ?? new Date(base + i);
     if (e.kind === "valuation") {
       const h = holding(i, e.holdingId)!;
       if (!Number.isSafeInteger(e.valueMinor) || e.valueMinor < 0) fail(i, "invalid value");
@@ -135,8 +141,10 @@ export async function postImportBatch(
         holdingId: h._id,
         date: e.date,
         valueMinor: e.valueMinor,
-        priceMinorE4: null,
-        units: null,
+        priceMinorE4: e.priceMinorE4 ?? null,
+        units: e.units ?? null,
+        recordedAt: e.recordedAt ?? null,
+        ...(e.importHash ? { importHash: e.importHash } : {}),
         source: "import",
         note: e.note,
         importBatchId: batchId,
@@ -233,8 +241,19 @@ export async function postImportBatch(
       throw err;
     }
   }
-  if (valuationDocs.length)
-    await ValuationModel.insertMany(valuationDocs, { session, ordered: true });
+  if (valuationDocs.length) {
+    try {
+      await ValuationModel.insertMany(valuationDocs, { session, ordered: true });
+    } catch (err) {
+      if ((err as { code?: number }).code === 11000) {
+        throw new AppError(
+          "CONFLICT",
+          "Some of these values were already imported; reload the preview",
+        );
+      }
+      throw err;
+    }
+  }
 
   await recomputeAccounts(userId, touchedAccounts, session);
   for (const id of touchedHoldings.values()) await recomputeHolding(ctx, id, session);

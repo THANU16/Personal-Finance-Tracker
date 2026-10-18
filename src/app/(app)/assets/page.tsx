@@ -17,6 +17,9 @@ export default function AssetsPage({ searchParams }: PageProps<"/assets">) {
         description="Every investment with invested, value, gains and XIRR."
         actions={
           <>
+            <Button variant="outline" render={<Link href="/assets/import-valuations" />}>
+              Import history
+            </Button>
             <Button variant="outline" render={<Link href="/assets/update-values" />}>
               <RefreshCw aria-hidden /> Update values
             </Button>

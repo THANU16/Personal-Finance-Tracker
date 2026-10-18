@@ -89,10 +89,13 @@ idx: {userId, status}, {userId, assetClassId}
 ```
 holdingId, date, valueMinor, priceMinorE4?, units?, source: manual|auto_on_buy|auto_on_redeem|fd_calc|bulk|price_feed|import,
 note?, importBatchId?                          # set by an import; undo removes these valuations
-idx: {userId, holdingId, date:-1}
+recordedAt?                                    # when the value was entered (imports carry the original time); orders same-day events
+importHash?                                    # valuation CSV import dedupe (Phase 3b)
+idx: {userId, holdingId, date:-1} · {userId, importHash} unique partial (importHash is a string)
 ```
-The latest valuation (by `date`, then `createdAt`) defines `currentValueMinor`, adjusted by
-buys/redeems posted **after** that valuation date (see Business Rules §3).
+The latest valuation (by `date`, then `recordedAt`, then `createdAt`) defines `currentValueMinor`, adjusted by
+buys/redeems posted **after** that valuation date (see Business Rules §3). The importHash index is partial, not sparse: a
+compound sparse index still indexes every document that has `userId` (same as transactions).
 
 ## transactions
 ```
@@ -277,13 +280,16 @@ storageKey, fileName, mimeType, sizeBytes, transactionId?
 
 ## importBatches
 ```
-source: money_manager|bank_csv, status: draft|previewed|imported|reverted,
+kind: transactions|valuations (default transactions),
+source: money_manager|bank_csv|valuation_csv, status: draft|previewed|imported|reverted,
+holdingId?, fundingAccountId?                  # valuation imports (Phase 3b)
 files: [{ name, sheet, rows, from?, to? }],    # one entry per sheet read; from/to = business dates
 mapping                                        # wizard state (docs/07 §3): accounts, expenseCategories, incomeCategories,
                                                # skipRowIds, detachFeeIds, openings — validated by imports/schemas.ts
 warnings: [string], summary?,                  # preview/commit counts
 createdItems: { accountIds, categoryIds, holdingIds },
 importedAt?, revertedAt?
+summary (valuations): { rows, imported, duplicates, errors, deposits, withdrawals, depositMinor, withdrawalMinor }
 idx: {userId, createdAt:-1}
 ```
 Bank CSV import (Phase 11) adds its own mapping (date/description/amount columns, dateFormat, accountId) in `mapping`.

@@ -76,6 +76,19 @@ Phase 3. Use the finance-domain skill. Build the holdings module per docs/03 and
 ```
 **Acceptance:** redemption example (40k/50k/20k/fee 100) exact; XIRR 10% test; FD values correct; stale and big-change work.
 
+## Phase 3b — Valuation history CSV import
+_Added after Phase 9 (owner request); builds on Phase 3 holdings and the import batches of docs/07._
+**Prompt**
+```
+Import holding valuation history from CSV per docs/04 §23 and docs/05 §5 (Import valuation history): pure parser, ordering,
+same-day handling, dedupe, jump detection and plan in src/domain/valuation-import.ts; valuations gain recordedAt and
+importHash; commit and undo in one DB transaction through the ledger; page /assets/import-valuations, holding Valuations tab
+button, history in Settings → Data.
+```
+**Acceptance:** fixture tests/fixtures/valuations-cse-stock.csv: 45 rows; 338738.45 → 33873845; 2026-09-17 day value 28002300;
+3 dates with several rows; final value 33608300; jumps flagged (03-29→03-31, 04-28→04-29, 07-22→07-24, 09-16→09-17);
+re-import adds 0; undo restores caches exactly; userId isolation; failure mid-commit leaves nothing.
+
 ## Phase 4 — Dashboard, net worth series, FX, time ranges, buckets
 _Revised after Phase 3 (owner decision, MOD-DOCS). Run after MOD-1 and MOD-2 are committed._
 **Prompt**

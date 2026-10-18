@@ -6,6 +6,7 @@
 | 1 Foundations | ✅ done (login against Atlas to be tried by owner) | 2026-10-18 | `feat(phase-1)` |
 | 2 Accounts & ledger | ✅ done | 2026-10-18 | `feat(phase-2)` |
 | 3 Holdings & returns | ✅ done | 2026-10-18 | `feat(phase-3)` |
+| 3b Valuation history CSV import | ✅ done | 2026-10-19 | `feat(phase-3b)` |
 | MOD-1 Phase 1 additions | ✅ done | 2026-10-18 | `feat(mod-1)` |
 | MOD-2 Phase 2 additions | ✅ done | 2026-10-18 | `feat(mod-2)` |
 | 4 Dashboard, snapshots, FX | ✅ done | 2026-10-18 | `feat(phase-4)` |
@@ -246,6 +247,25 @@ Status values: ⬜ not started · 🟡 in progress · ✅ done
 - [9] Quick add "From template": fills the form from an income/expense/transfer rule (does not advance the rule).
 - [9] Fix: two queries in parallel as the first operation of a DB transaction fail on MongoDB; copy-last-month reads them in
   sequence (others start their transaction with a single query first).
+- [3b] Rules live in docs/04 **§23** (owner-approved: §20 is Earmarks). Pure `domain/valuation-import.ts` (parser, validation,
+  ordering, day-ends, jumps, plan, live simulation) runs in the browser for the preview; the sha256 import hash is computed on
+  the server. The server re-parses the file and rebuilds the plan from the user's jump choices on commit (client amounts are
+  only the user's chosen deposit/withdrawal amounts).
+- [3b] Same-day order: valuations replay by `recordedAt ?? createdAt` (docs/04 §3); imported deposits/withdrawals get a
+  `createdAt` 1 ms before the first valuation of their date (bulk ledger path now accepts an explicit createdAt), so a
+  withdrawal is redeemed against the value just before it. Fixture check: invested 181,719.35 = 50,000 + 50,000 −
+  round(100,000 × 50,000 / 224,410) + 74,000 + 30,000; current value 336,083.00.
+- [3b] Jumps on day-end values: |change| ≥ threshold (default 10%) or a non-zero whole multiple of 1,000.00 (owner-approved);
+  amount defaults to the change rounded to 1,000.00. "Already recorded" = an invest/redeem of the holding within ±3 days and
+  within max(2%, 1,000.00) (owner-approved). Jumps into dates whose rows are all duplicates are not offered again. Same-day
+  steps are listed with the day's jump (the fixture's 16→17 Sep is one +30,000 jump made of +15,000, +15,000).
+- [3b] File names: "<digits>_<Asset> - valuations_<date>.csv" and the real export "<Asset> - valuations <date>.csv".
+  Funding: an existing bank/cash/wallet/broker-cash account (refused if it opens after the first deposit) or
+  "Historical funding (external)" (cash, not in net worth, opened on the first deposit date; reused if it exists). A new
+  holding can be created in the commit transaction. CSV text is sent to server actions (≤ 900 KB, the 1 MB action limit).
+- [3b] importBatches: `kind: valuations`, `source: valuation_csv`, `holdingId`, `fundingAccountId`, summary counts; history of
+  every import with Undo/View in Settings → Data. "Rebuild net-worth history" after an import rebuilds all month-end snapshots.
+- [3b] Playwright `expect` timeout 5 s → 10 s: first login (account seeding + full dashboard) took ~4.7 s on a busy dev machine.
 - [mm] Excel reader: `read-excel-file` (maintained, 0 advisories) rather than ExcelJS (2 moderate advisories via `uuid`, ~480
   packages) or the unmaintained `xlsx`. Cells are read with `parseNumber: s => s` so amounts stay decimal strings (BigInt
   parse, never floats); Excel date-times are rounded to the second (12:30:00 can read back as 12:29:59.999).
@@ -301,6 +321,7 @@ Status values: ⬜ not started · 🟡 in progress · ✅ done
   analytics-charts skill updated). Seeded asset-class colours replaced by the validated palette (owner-approved).
 - [4] Acceptance "equal reports from the seed scenario" → fixed-scenario integration tests until Phases 11/12 (owner-approved).
 - [4] docs/05 §2 "Net worth trend (12m / 3y / all toggle)" is served by the page-wide TimeRangeBar instead of a per-card toggle.
+- [3b] docs/03 valuations `importHash` index is unique **partial** (not sparse), as for transactions; docs/03 updated.
 - [8] docs/03 debts gained `paymentAccountId`, `paidBeforeTracking`, `paymentsCount` and prepayment before/after fields (docs/03
   updated). Debt dates are business date keys.
 - [7] docs/03 opportunityFund: reference high / triggered rules are replayed, not stored; `accountId` → optional

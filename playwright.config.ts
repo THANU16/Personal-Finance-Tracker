@@ -12,6 +12,9 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   reporter: "list",
   timeout: 60_000,
+  // First login seeds the account and renders the whole dashboard on a production build; 5 s was
+  // too tight on a busy dev machine.
+  expect: { timeout: 10_000 },
   use: {
     baseURL,
     trace: "retain-on-failure",

@@ -11,11 +11,13 @@ import { SettingsTabs } from "@/modules/settings/components/settings-tabs";
 export async function SettingsContent() {
   const current = await getCurrentUser();
   if (!current) redirect("/login");
-  const [categories, assetClasses, security, fxRates] = await Promise.all([
+  const { listImportHistory } = await import("@/modules/imports/valuation-service");
+  const [categories, assetClasses, security, fxRates, imports] = await Promise.all([
     getCategoryTree(current.ctx, { includeArchived: true }),
     listAssetClasses(current.ctx),
     getSecurityOverview(),
     listFxRates(current.ctx),
+    listImportHistory(current.ctx),
   ]);
   return (
     <SettingsTabs
@@ -27,6 +29,7 @@ export async function SettingsContent() {
       security={security}
       fxRates={fxRates}
       todayKey={utcToBusinessDate(new Date(), current.ctx.tz)}
+      imports={imports}
     />
   );
 }

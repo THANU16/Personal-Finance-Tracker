@@ -4,7 +4,8 @@ import { intField, userScopedModel } from "@/server/db/model";
 // docs/03 + docs/07 §5 — import batches (draft → previewed → imported → reverted), staging rows and
 // saved mappings reused for the next file.
 
-export const IMPORT_SOURCES = ["money_manager", "bank_csv"] as const;
+export const IMPORT_SOURCES = ["money_manager", "bank_csv", "valuation_csv"] as const;
+export const IMPORT_KINDS = ["transactions", "valuations"] as const;
 export type ImportSource = (typeof IMPORT_SOURCES)[number];
 export const BATCH_STATUSES = ["draft", "previewed", "imported", "reverted"] as const;
 export type BatchStatus = (typeof BATCH_STATUSES)[number];
@@ -13,8 +14,12 @@ export const ROW_KINDS = ["expense", "income", "transfer", "fee", "difference", 
 export interface ImportBatchDoc {
   _id: Types.ObjectId;
   userId: Types.ObjectId;
+  kind: (typeof IMPORT_KINDS)[number];
   source: ImportSource;
   status: BatchStatus;
+  /** Valuation imports: the holding and the cash account deposits/withdrawals use. */
+  holdingId: Types.ObjectId | null;
+  fundingAccountId: Types.ObjectId | null;
   files: { name: string; sheet: string; rows: number; from: string | null; to: string | null }[];
   /** Wizard state: ImportMapping + create specs + openings (validated by the service). */
   mapping: unknown;
@@ -36,7 +41,10 @@ export interface ImportBatchDoc {
 const batchSchema = new Schema<ImportBatchDoc>(
   {
     userId: { type: Schema.Types.ObjectId, required: true },
+    kind: { type: String, enum: IMPORT_KINDS, required: true, default: "transactions" },
     source: { type: String, enum: IMPORT_SOURCES, required: true },
+    holdingId: { type: Schema.Types.ObjectId, default: null },
+    fundingAccountId: { type: Schema.Types.ObjectId, default: null },
     status: { type: String, enum: BATCH_STATUSES, required: true, default: "draft" },
     files: [
       {

@@ -2,3 +2,5 @@
 * text=auto eol=lf
 *.ico binary
 *.png binary
+# Import fixtures keep their exact bytes (UTF-8 BOM, CRLF) so parsers are tested on real exports
+tests/fixtures/** -text

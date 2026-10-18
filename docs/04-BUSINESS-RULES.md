@@ -61,8 +61,9 @@ Process posted transactions for the holding in date order (ties: createdAt).
 | investment_income paid out | – | – | incomeReceived += amount; taxWithheld += tax |
 | investment_income reinvest | + (amount − tax) | + (amount − tax) | incomeReceived += amount; taxWithheld += tax |
 
-**Current value:** take the latest valuation `V` at date `D`. Events are processed by date and,
-within the same date, **in the order they were entered** (owner decision, Phase 3): `V` includes
+**Current value:** take the latest valuation `V` at date `D` (latest by `date`, then `recordedAt`, then `createdAt`).
+Events are processed by date and, within the same date, **in the order they were entered** (owner decision, Phase 3;
+a valuation's entry time is its `recordedAt` when it has one, e.g. imported history): `V` includes
 flows dated before `D` and same-day flows entered before it; flows entered after it on `D`, and
 flows dated after `D`, adjust it. `currentValue = V.value + Σ value effects of those later flows`.
 (Example: add a holding today with today's value, then buy today → the buy adds to the value.) With no
@@ -327,3 +328,35 @@ Card dues count their full outstanding when the next due date falls on or before
 - Insights (max 5, ranked): category spend > 30% above its 3-month average; fees paid this quarter above a threshold; stale values or FD
   maturing within 30 days; budget ≥ 80% before day 20; free cash idle > 3 × monthly expense with emergency full; drift beyond
   tolerance or missed SIP; savings rate down ≥ 10 points vs previous period.
+
+## 23. Valuation import (Phase 3b)
+Imports a holding's value history from a CSV (`Valuation Date,Recorded At (UTC),Value,Units,NAV,Price Per Unit,Currency,Note`),
+one file per asset. (Numbered 23 because §20 is Earmarks.)
+1. **Parse**: UTF-8 BOM, CRLF, blank lines and quoted numbers with thousands separators are accepted. Value is parsed as a
+   decimal string to minor units (never floats). Units/NAV/price are kept only when the holding tracks units.
+2. **Validate** each row: date valid and not in the future, value ≥ 0, currency = the holding's currency. Error rows are
+   shown and skipped, never dropped silently.
+3. **Order** by Valuation Date, then Recorded At. Every row becomes its own valuation; the last recorded row of a date is
+   that day's value (earlier same-day rows are superseded but kept).
+4. **Dedupe**: `importHash = sha256(userId|holdingId|date|valueMinor|recordedAt)`; rows already imported are duplicates and
+   are skipped (re-importing a file adds 0 rows).
+5. **Jumps** on day-end values: a change between consecutive days is flagged when |change| ≥ 10% of the previous value
+   (configurable) or it is a non-zero whole multiple of 1,000.00. Each flagged jump is a **Deposit** (invest), a
+   **Withdrawal** (redeem) or a **Market move** (nothing). Amount defaults to the change rounded to the nearest 1,000.00 and
+   the date to the later valuation's date; both are editable. When an invest/redeem of the holding already exists within
+   ±3 days with a similar amount (within 2% of the jump or 1,000.00, whichever is larger), the default is Market move
+   ("already recorded"). Same-day steps of a jump are listed with it.
+6. **First value**: if the holding has no invest/opening transactions, "treat the first value as the initial investment"
+   (default on) adds an invest of that value on the first date.
+7. **Funding account**: deposits come from and withdrawals go to the chosen cash account; "Historical funding (external)"
+   (type cash, `includeInNetWorth = false`, opening on the first imported date) keeps real bank balances undistorted.
+8. The big-change safeguard (§12) is skipped for imports; every big change is listed in the preview.
+9. **Order with flows**: an imported deposit/withdrawal is placed just before the first valuation of its date, so a
+   withdrawal is redeemed with proportional cost (§3) against the value just before it, and a deposit is part of that
+   day's value.
+10. **Commit** (one DB transaction): create the import batch, insert the valuations (source `import`, `recordedAt`,
+    `importBatchId`, `importHash`), post the invest/redeem transactions through the ledger with
+    `source { kind: "import", refId: batchId }` (no dip guard), recompute the holding and the funding account. Then offer
+    "Rebuild net-worth history".
+11. **Undo**: one DB transaction voids the batch's transactions, deletes its valuations, recomputes, and marks the batch
+    `reverted` (the hashes are released so the file can be imported again).

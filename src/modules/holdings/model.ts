@@ -125,6 +125,10 @@ export interface ValuationDoc {
   note: string | null;
   /** Set for valuations created by an import (undo removes them). */
   importBatchId: Types.ObjectId | null;
+  /** When the value was entered (imports keep the original time); orders same-day events (docs/04 §3). */
+  recordedAt: Date | null;
+  /** Valuation CSV import dedupe (docs/04 §23); absent otherwise. */
+  importHash?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -140,11 +144,22 @@ const valuationSchema = new Schema<ValuationDoc>(
     source: { type: String, enum: VALUATION_SOURCES, required: true, default: "manual" },
     note: { type: String, default: null },
     importBatchId: { type: Schema.Types.ObjectId, default: null },
+    recordedAt: { type: Date, default: null },
+    importHash: { type: String },
   },
   { timestamps: true },
 );
 
 valuationSchema.index({ userId: 1, holdingId: 1, date: -1 });
+// Partial, not sparse: a compound sparse index still indexes every document with userId.
+valuationSchema.index(
+  { userId: 1, importHash: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { importHash: { $type: "string" } },
+    name: "uniq_valuation_import_hash",
+  },
+);
 
 export const ValuationModel = userScopedModel<ValuationDoc>(
   "Valuation",

@@ -1,9 +1,10 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { format, parse } from "date-fns";
-import { ArrowDownToLine, ArrowUpFromLine, Coins, RefreshCw, Trash2 } from "lucide-react";
+import { ArrowDownToLine, ArrowUpFromLine, Coins, FileUp, RefreshCw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -121,82 +122,95 @@ function ValuationsTable({
       </p>
     );
   }
+  const importButton = (
+    <Button
+      variant="outline"
+      size="sm"
+      render={<Link href={`/assets/import-valuations?holding=${holding.id}`} />}
+    >
+      <FileUp aria-hidden /> Import CSV
+    </Button>
+  );
   if (!valuations.length) {
     return (
       <EmptyState
         title="No valuations yet"
-        description="Use Update value whenever you check the holding's worth."
+        description="Use Update value whenever you check the holding's worth, or import its history from a CSV."
+        action={importButton}
       />
     );
   }
   return (
-    <div className="rounded-xl border">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Date</TableHead>
-            <TableHead className="text-right">Value</TableHead>
-            {holding.trackUnits ? <TableHead className="text-right">Price</TableHead> : null}
-            {holding.trackUnits ? <TableHead className="text-right">Units</TableHead> : null}
-            <TableHead>Source</TableHead>
-            <TableHead className="w-10">
-              <span className="sr-only">Actions</span>
-            </TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {valuations.map((v) => (
-            <TableRow key={v.id}>
-              <TableCell className="text-muted-foreground tabular-nums">{day(v.date)}</TableCell>
-              <TableCell className="text-right">
-                <Money valueMinor={v.valueMinor} currency={holding.currency} />
-              </TableCell>
-              {holding.trackUnits ? (
-                <TableCell className="text-right tabular-nums" data-money="">
-                  {v.priceMinorE4 ? formatPrice(v.priceMinorE4, holding.currency) : "—"}
-                </TableCell>
-              ) : null}
-              {holding.trackUnits ? (
-                <TableCell className="text-right tabular-nums">
-                  {v.units !== null ? formatUnits(v.units) : "—"}
-                </TableCell>
-              ) : null}
-              <TableCell>
-                <Badge variant="outline">{SOURCE_LABEL[v.source]}</Badge>
-                {v.note ? (
-                  <span className="ml-2 text-xs text-muted-foreground">{v.note}</span>
-                ) : null}
-              </TableCell>
-              <TableCell>
-                <ConfirmDialog
-                  trigger={
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label={`Delete valuation of ${day(v.date)}`}
-                    >
-                      <Trash2 aria-hidden />
-                    </Button>
-                  }
-                  title="Delete this valuation?"
-                  description={`Removes the ${formatMoney(v.valueMinor, holding.currency)} value recorded on ${day(v.date)}. The holding's value is recalculated from the remaining history.`}
-                  confirmLabel="Delete"
-                  destructive
-                  onConfirm={async () => {
-                    const result = await deleteValuationAction(holding.id, v.id);
-                    if (!result.ok) {
-                      toast.error(result.error.message);
-                      return false;
-                    }
-                    toast.success("Valuation deleted");
-                    router.refresh();
-                  }}
-                />
-              </TableCell>
+    <div className="space-y-3">
+      <div className="flex justify-end">{importButton}</div>
+      <div className="rounded-xl border">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Date</TableHead>
+              <TableHead className="text-right">Value</TableHead>
+              {holding.trackUnits ? <TableHead className="text-right">Price</TableHead> : null}
+              {holding.trackUnits ? <TableHead className="text-right">Units</TableHead> : null}
+              <TableHead>Source</TableHead>
+              <TableHead className="w-10">
+                <span className="sr-only">Actions</span>
+              </TableHead>
             </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+          </TableHeader>
+          <TableBody>
+            {valuations.map((v) => (
+              <TableRow key={v.id}>
+                <TableCell className="text-muted-foreground tabular-nums">{day(v.date)}</TableCell>
+                <TableCell className="text-right">
+                  <Money valueMinor={v.valueMinor} currency={holding.currency} />
+                </TableCell>
+                {holding.trackUnits ? (
+                  <TableCell className="text-right tabular-nums" data-money="">
+                    {v.priceMinorE4 ? formatPrice(v.priceMinorE4, holding.currency) : "—"}
+                  </TableCell>
+                ) : null}
+                {holding.trackUnits ? (
+                  <TableCell className="text-right tabular-nums">
+                    {v.units !== null ? formatUnits(v.units) : "—"}
+                  </TableCell>
+                ) : null}
+                <TableCell>
+                  <Badge variant="outline">{SOURCE_LABEL[v.source]}</Badge>
+                  {v.note ? (
+                    <span className="ml-2 text-xs text-muted-foreground">{v.note}</span>
+                  ) : null}
+                </TableCell>
+                <TableCell>
+                  <ConfirmDialog
+                    trigger={
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={`Delete valuation of ${day(v.date)}`}
+                      >
+                        <Trash2 aria-hidden />
+                      </Button>
+                    }
+                    title="Delete this valuation?"
+                    description={`Removes the ${formatMoney(v.valueMinor, holding.currency)} value recorded on ${day(v.date)}. The holding's value is recalculated from the remaining history.`}
+                    confirmLabel="Delete"
+                    destructive
+                    onConfirm={async () => {
+                      const result = await deleteValuationAction(holding.id, v.id);
+                      if (!result.ok) {
+                        toast.error(result.error.message);
+                        return false;
+                      }
+                      toast.success("Valuation deleted");
+                      router.refresh();
+                    }}
+                  />
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
     </div>
   );
 }
