@@ -373,7 +373,7 @@ export async function addMarketLevel(ctx: Ctx, input: unknown): Promise<{ id: st
     const doc = await MarketLevelModel.findOneAndUpdate(
       { userId, benchmarkName: fund.benchmarkName, date: data.date },
       { $set: { level: data.level, note: data.note ?? null } },
-      { upsert: true, new: true, session },
+      { upsert: true, returnDocument: "after", session },
     ).lean<MarketLevelDoc>();
     const state = replayCycle(await loadLevels(ctx, fund.benchmarkName, session), fund.rules);
     await syncCycle(ctx, fund, state, balance, session);
