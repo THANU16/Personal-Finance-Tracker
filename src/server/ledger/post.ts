@@ -279,6 +279,9 @@ export async function postTransaction(
       "income",
       session,
     );
+  } else if (t === "transfer" && fee > 0) {
+    // The fee is an expense; tag it so spending by category shows it (docs/04 §4).
+    categoryId = await getSystemCategoryId(ctx, SYSTEM_CATEGORY.bankFees, "expense", session);
   }
 
   const [doc] = await TransactionModel.create(
@@ -298,7 +301,7 @@ export async function postTransaction(
         holdingId: holding?._id ?? null,
         units,
         priceMinorE4,
-        feeMinor: t === "invest" || t === "redeem" ? fee : 0,
+        feeMinor: t === "invest" || t === "redeem" || t === "transfer" ? fee : 0,
         taxMinor: t === "redeem" || t === "investment_income" ? tax : 0,
         incomeKind: t === "investment_income" ? (draft.incomeKind ?? "other") : null,
         reinvest: t === "investment_income" ? Boolean(draft.reinvest) : null,

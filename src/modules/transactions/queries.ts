@@ -168,7 +168,7 @@ export async function listTransactions(
 
   // docs/04 §4: income = income + investment income paid out (reinvested is not cash);
   // expense = expense. A type filter narrows it further.
-  const cashflowTypes = ["income", "expense", "investment_income"].filter(
+  const cashflowTypes = ["income", "expense", "investment_income", "transfer"].filter(
     (t) => !filters.types.length || (filters.types as string[]).includes(t),
   );
   const summaryPipeline: PipelineStage[] = [
@@ -185,6 +185,9 @@ export async function listTransactions(
         _id: { type: "$type", currency: "$currency" },
         sum: { $sum: "$amountMinor" },
         n: { $sum: 1 },
+        // Transfers count only for their fee (an expense); the amount moved is not cashflow.
+        fees: { $sum: "$feeMinor" },
+        feeN: { $sum: { $cond: [{ $gt: ["$feeMinor", 0] }, 1, 0] } },
       },
     },
   ];
@@ -196,9 +199,13 @@ export async function listTransactions(
       .skip((filters.page - 1) * TRANSACTION_PAGE_SIZE)
       .limit(TRANSACTION_PAGE_SIZE)
       .lean<TransactionDoc[]>(),
-    TransactionModel.aggregate<{ _id: { type: string; currency: string }; sum: number; n: number }>(
-      summaryPipeline,
-    ),
+    TransactionModel.aggregate<{
+      _id: { type: string; currency: string };
+      sum: number;
+      n: number;
+      fees: number;
+      feeN: number;
+    }>(summaryPipeline),
     loadRefMaps(userId),
   ]);
 
@@ -206,7 +213,9 @@ export async function listTransactions(
   let expense = 0;
   let other = 0;
   for (const g of groups) {
-    if (g._id.currency !== ctx.baseCurrency) other += g.n;
+    const isTransfer = g._id.type === "transfer";
+    if (g._id.currency !== ctx.baseCurrency) other += isTransfer ? g.feeN : g.n;
+    else if (isTransfer) expense += g.fees;
     else if (g._id.type === "expense") expense += g.sum;
     else income += g.sum;
   }

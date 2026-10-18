@@ -66,7 +66,8 @@ export function accountEffects(t: LedgerTxn): AccountEffect[] {
       from(-t.amountMinor);
       break;
     case "transfer":
-      from(-t.amountMinor);
+      // An optional fee leaves the source account on top of the amount (owner request).
+      from(-add(t.amountMinor, fee));
       to(t.toAmountMinor ?? t.amountMinor);
       break;
     case "invest":
@@ -164,12 +165,12 @@ export interface CashflowSummary {
 
 /**
  * docs/04 §4. Income = income + investment income paid out; expense = expense (+ splits) +
- * interest part of debt payments. Excludes transfer, invest, redeem, principal, adjustment,
+ * interest part of debt payments + transfer fees. Excludes transfer, invest, redeem, principal, adjustment,
  * opening_balance and reinvested income. All txns must share one currency (caller converts).
  */
 export function cashflowOf(
   txns: readonly LedgerTxn[],
-  opts: { interestCategoryId?: string } = {},
+  opts: { interestCategoryId?: string; bankFeesCategoryId?: string } = {},
 ): CashflowSummary {
   let income = 0;
   let investmentIncome = 0;
@@ -194,6 +195,13 @@ export function cashflowOf(
         if (t.splits && t.splits.length > 0)
           t.splits.forEach((s) => addCat(s.categoryId, s.amountMinor));
         else addCat(t.categoryId, t.amountMinor);
+        break;
+      case "transfer":
+        // The amount moved is not cashflow; a transfer fee is a real expense ("Bank fees").
+        if (t.feeMinor) {
+          expense = add(expense, t.feeMinor);
+          addCat(opts.bankFeesCategoryId ?? t.categoryId, t.feeMinor);
+        }
         break;
       case "debt_payment":
         if (t.interestMinor) {

@@ -105,6 +105,62 @@ describe("accountEffects (docs/04 §1)", () => {
   });
 });
 
+describe("transfer fees (owner request)", () => {
+  it("take the fee from the source account on top of the amount; the receiver gets the amount", () => {
+    expect(
+      accountEffects(
+        t({
+          type: "transfer",
+          amountMinor: 1_000_000,
+          feeMinor: 5_000,
+          fromAccountId: BANK,
+          toAccountId: CARD,
+        }),
+      ),
+    ).toEqual([
+      { accountId: BANK, deltaMinor: -1_005_000 },
+      { accountId: CARD, deltaMinor: 1_000_000 },
+    ]);
+  });
+
+  it("charge the fee in the source currency on cross-currency transfers", () => {
+    expect(
+      accountEffects(
+        t({
+          type: "transfer",
+          amountMinor: 3_000_000,
+          feeMinor: 25_000,
+          toAmountMinor: 10_000,
+          fromAccountId: BANK,
+          toAccountId: USD,
+        }),
+      ),
+    ).toEqual([
+      { accountId: BANK, deltaMinor: -3_025_000 },
+      { accountId: USD, deltaMinor: 10_000 },
+    ]);
+  });
+
+  it("count only the fee as an expense, under Bank fees", () => {
+    const cf = cashflowOf(
+      [
+        t({
+          type: "transfer",
+          amountMinor: 1_000_000,
+          feeMinor: 5_000,
+          fromAccountId: BANK,
+          toAccountId: CARD,
+        }),
+        t({ type: "transfer", amountMinor: 200_000, fromAccountId: BANK, toAccountId: CARD }),
+      ],
+      { bankFeesCategoryId: "bank-fees" },
+    );
+    expect(cf.expenseMinor).toBe(5_000);
+    expect(cf.incomeMinor).toBe(0);
+    expect(Object.fromEntries(cf.expenseByCategory)).toEqual({ "bank-fees": 5_000 });
+  });
+});
+
 describe("computeBalance / runningBalances", () => {
   it("card spend + card payment: card back to zero, bank pays once", () => {
     const txns = [

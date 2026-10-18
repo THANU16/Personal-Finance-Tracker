@@ -40,7 +40,8 @@ export function voidEffect(t: TransactionDTO): string {
       const received = t.toAmountMinor
         ? formatMoney(t.toAmountMinor, t.toAccount?.currency ?? t.currency)
         : amount;
-      return `Returns ${amount} to ${t.fromAccount?.name} and takes ${received} back out of ${t.toAccount?.name}.`;
+      const sent = t.feeMinor > 0 ? formatMoney(t.amountMinor + t.feeMinor, t.currency) : amount;
+      return `Returns ${sent}${t.feeMinor > 0 ? " (incl. the fee)" : ""} to ${t.fromAccount?.name} and takes ${received} back out of ${t.toAccount?.name}.`;
     }
     case "adjustment":
       return t.toAccount

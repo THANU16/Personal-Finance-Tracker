@@ -96,14 +96,19 @@ test("transfer to a card and the transactions page summary", async ({ page }) =>
   await sheet.getByLabel("Amount").fill("12000");
   await choose(page, "From", /^Bank/);
   await choose(page, "To", /^Visa/);
+  await sheet.getByLabel(/^Fee/).fill("50");
+  await expect(sheet.getByText("Total leaving Bank").locator("..")).toContainText("LKR 12,050.00");
   await sheet.getByRole("button", { name: "Save" }).click();
   await expect(page.getByText("Transfer saved")).toBeVisible();
 
-  // A card payment is a transfer: no expense in the summary
+  // A card payment is a transfer: only its fee is an expense
   await expect(page.getByText("1 transaction")).toBeVisible();
+  await expect(
+    page.getByText("Transfer · Bank fees").filter({ visible: true }).first(),
+  ).toBeVisible();
   await page.goto("/accounts");
   await expect(page.getByText("0.0% used")).toBeVisible();
-  await expect(page.getByText("LKR 38,000.00").first()).toBeVisible();
+  await expect(page.getByText("LKR 37,950.00").first()).toBeVisible(); // 50,000 − 12,000 − 50 fee
 });
 
 test("settings show seeded categories and asset classes", async ({ page }) => {

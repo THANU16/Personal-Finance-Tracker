@@ -600,3 +600,92 @@ describe("ledger rules", () => {
     expect(actions.map((a) => a.action)).toEqual(["post", "void"]);
   });
 });
+
+describe("transfer fees (owner request)", () => {
+  it("charge the source account, tag Bank fees, count as expense, and void cleanly", async () => {
+    const { listTransactions } = await import("@/modules/transactions/queries");
+    const { transactionFiltersSchema } = await import("@/modules/transactions/schemas");
+    const ctx = await makeUser();
+    const bank = await makeAccount(ctx, { openingBalanceMinor: 10_000_000 });
+    const card = await makeAccount(ctx, {
+      type: "credit_card",
+      openingBalanceMinor: -2_000_000,
+      creditCard: { limitMinor: 5_000_000, statementDay: 20, dueDay: 5 },
+    });
+    const id = await post(ctx, {
+      type: "transfer",
+      date: "2026-02-10",
+      amountMinor: 2_000_000,
+      feeMinor: 5_000,
+      fromAccountId: bank.id,
+      toAccountId: card.id,
+    });
+    expect(await balanceOf(ctx, bank.id)).toBe(7_995_000); // 100,000 − 20,000 − 50
+    expect(await balanceOf(ctx, card.id)).toBe(0);
+    const doc = await TransactionModel.findOne({
+      _id: id,
+      userId: new Types.ObjectId(ctx.userId),
+    }).lean<TransactionDoc>();
+    expect(doc?.feeMinor).toBe(5_000);
+    expect(String(doc?.categoryId)).toBe(await categoryId(ctx, "Bank fees"));
+
+    const cf = cashflowOf(await postedTxns(ctx));
+    expect(cf.expenseMinor).toBe(5_000);
+    const summary = (
+      await listTransactions(ctx, transactionFiltersSchema.parse({ preset: "all" }), "2026-02-28")
+    ).summary;
+    expect(summary).toMatchObject({ incomeMinor: 0, expenseMinor: 5_000 });
+
+    // A transfer without a fee stays uncategorised and out of cashflow
+    await post(ctx, {
+      type: "transfer",
+      date: "2026-02-11",
+      amountMinor: 1_000,
+      fromAccountId: bank.id,
+      toAccountId: card.id,
+    });
+    expect(cashflowOf(await postedTxns(ctx)).expenseMinor).toBe(5_000);
+
+    await voidTransaction(ctx, id, { reason: "test" });
+    expect(await balanceOf(ctx, bank.id)).toBe(9_999_000);
+    expect(await balanceOf(ctx, card.id)).toBe(-1_999_000);
+    const uid = new Types.ObjectId(ctx.userId);
+    await recomputeAccount(uid, new Types.ObjectId(bank.id), null);
+    expect(await balanceOf(ctx, bank.id)).toBe(9_999_000);
+  });
+
+  it("charges the fee in the source currency on cross-currency transfers", async () => {
+    const ctx = await makeUser();
+    const lkr = await makeAccount(ctx, { openingBalanceMinor: 10_000_000 });
+    const usd = await makeAccount(ctx, { currency: "USD", type: "wallet" });
+    await post(ctx, {
+      type: "transfer",
+      date: "2026-02-01",
+      amountMinor: 3_000_000,
+      toAmountMinor: 10_000,
+      feeMinor: 25_000,
+      fromAccountId: lkr.id,
+      toAccountId: usd.id,
+    });
+    expect(await balanceOf(ctx, lkr.id)).toBe(6_975_000);
+    expect(await balanceOf(ctx, usd.id)).toBe(10_000);
+  });
+
+  it("rejects a negative fee", async () => {
+    const ctx = await makeUser();
+    const a = await makeAccount(ctx, { openingBalanceMinor: 1_000 });
+    const b = await makeAccount(ctx);
+    await expectAppError(
+      post(ctx, {
+        type: "transfer",
+        date: "2026-02-01",
+        amountMinor: 100,
+        feeMinor: -1,
+        fromAccountId: a.id,
+        toAccountId: b.id,
+      }),
+      "VALIDATION",
+      "feeMinor",
+    );
+  });
+});

@@ -13,7 +13,7 @@ Rounding helper: `roundHalfAwayFromZero`. Never use floats for stored money.
 |---|---|---|
 | income | – | + amount |
 | expense | − amount | – |
-| transfer | − amount | + (toAmountMinor ?? amount) |
+| transfer | − (amount + fee) | + (toAmountMinor ?? amount) |
 | invest | − (amount + fee) | – |
 | redeem | – | + (amount − fee − tax) |
 | investment_income (paid out) | – | + (amount − tax) |
@@ -21,6 +21,9 @@ Rounding helper: `roundHalfAwayFromZero`. Never use floats for stored money.
 | debt_payment | − amount | loan account: + principal |
 | adjustment | − amount (if from) | + amount (if to) |
 | opening_balance | – (holdings only) | – |
+
+Transfer fee (optional, owner request): charged to the source account on top of the amount, in the
+source currency; the transfer is tagged with the system category "Bank fees".
 
 Sign convention: liabilities (`credit_card`, `loan`, `payable`) sit below zero. Card spend makes the
 card more negative; paying the card is a **transfer** bank → card (never an expense).
@@ -83,8 +86,9 @@ remaining value 30,000.
 
 ## 4. Cashflow & savings rate (monthly, user timezone)
 - **Income** = Σ `income` + Σ `investment_income` paid out (shown as a separate "Investment income" line).
-- **Expense** = Σ `expense` (splits counted per category) + Σ interest portion of `debt_payment`.
-- Excluded: transfer, invest, redeem, principal portion of debt_payment, adjustment, opening_balance.
+- **Expense** = Σ `expense` (splits counted per category) + Σ interest portion of `debt_payment`
+  + Σ transfer fees ("Bank fees").
+- Excluded: transfer amounts (only their fee counts), invest, redeem, principal portion of debt_payment, adjustment, opening_balance.
 - **Savings** = income − expense; **Savings rate** = savings ÷ income (— if income = 0).
 - Investment fees are part of investment return, not expenses. Card spend counts on the spend date.
 

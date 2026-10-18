@@ -203,6 +203,7 @@ function toInput(v: FormValues) {
       fromAccountId: v.fromAccountId,
       toAccountId: v.toAccountId,
       toAmountMinor: v.toAmountMinor,
+      feeMinor: v.feeMinor ?? 0,
     };
   }
   if (v.type === "invest") {
@@ -622,6 +623,45 @@ function QuickAddForm({
               )}
             />
           </FormField>
+        ) : null}
+
+        {type === "transfer" ? (
+          <FormField
+            id="qa-transfer-fee"
+            label={`Fee (optional${from ? `, ${from.currency}` : ""})`}
+            error={err("feeMinor")}
+            description="Bank charge taken from the source account on top of the amount; recorded under Bank fees."
+          >
+            <Controller
+              control={control}
+              name="feeMinor"
+              render={({ field }) => (
+                <MoneyInput
+                  id="qa-transfer-fee"
+                  currency={from?.currency ?? currency}
+                  value={field.value}
+                  onChange={field.onChange}
+                  onBlur={field.onBlur}
+                  ref={field.ref}
+                  {...fieldAria("qa-transfer-fee", err("feeMinor"), true)}
+                />
+              )}
+            />
+          </FormField>
+        ) : null}
+        {type === "transfer" &&
+        fee &&
+        !Number.isNaN(fee) &&
+        amount &&
+        !Number.isNaN(amount) &&
+        from ? (
+          <div
+            className="flex justify-between rounded-lg bg-muted px-3 py-2 text-sm"
+            aria-live="polite"
+          >
+            <span>Total leaving {from.name}</span>
+            <Money valueMinor={amount + fee} currency={from.currency} />
+          </div>
         ) : null}
 
         {(type === "income" || type === "expense") && !(type === "expense" && splitMode) ? (

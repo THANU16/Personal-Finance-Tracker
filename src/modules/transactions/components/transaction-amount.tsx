@@ -55,6 +55,11 @@ export function TransactionAmount({ txn }: { txn: TransactionDTO }) {
             → <Money valueMinor={txn.toAmountMinor} currency={txn.toAccount.currency} />
           </span>
         ) : null}
+        {txn.feeMinor > 0 ? (
+          <span className="text-xs text-muted-foreground">
+            + fee <Money valueMinor={txn.feeMinor} currency={txn.currency} />
+          </span>
+        ) : null}
       </span>
     );
   }
@@ -100,7 +105,7 @@ export function TypeIcon({ type }: { type: TransactionType }) {
 
 /** "Groceries", "Split · …", "Transfer", "Buy · Ceylon Equity Fund", … */
 export function categoryLabel(t: TransactionDTO): string {
-  if (t.type === "transfer") return "Transfer";
+  if (t.type === "transfer") return t.feeMinor > 0 ? "Transfer · Bank fees" : "Transfer";
   if (t.holding) return t.holding.name;
   if (t.splits.length) return `Split · ${t.splits.map((s) => s.category.name).join(", ")}`;
   return t.category?.name ?? "Uncategorised";

@@ -60,6 +60,7 @@ function toDraft(ctx: Ctx, data: TransactionData): LedgerDraft {
         fromAccountId: data.fromAccountId,
         toAccountId: data.toAccountId,
         toAmountMinor: data.toAmountMinor ?? null,
+        feeMinor: data.feeMinor,
       };
     case "invest":
       return {

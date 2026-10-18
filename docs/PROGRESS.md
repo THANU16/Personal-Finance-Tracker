@@ -69,6 +69,7 @@ Status values: ⬜ not started · 🟡 in progress · ✅ done
 - [3] Transaction lists show holding transactions as "Buy/Redeem/Dividend…" with the holding as the category; amounts are cash-signed (buy −(amount+fee), redeem +(amount−fee−tax), paid income +(amount−tax)); opening balances and reinvested income show "no cash moved"/"reinvested". The /transactions summary counts paid-out investment income as income (docs/04 §4).
 - [3] Value vs invested chart: two series → validated slots 1/2 (`--viz-series-1/2`, light and dark), legend, crosshair tooltip listing both.
 - [3] `tsconfig` target raised to ES2022 (BigInt literals). Holding enums live in `holdings/constants.ts` so client components don't pull Mongoose into the browser bundle (caught by the production build).
+- [3+] **Transfer fee (owner request, after Phase 3):** optional `feeMinor` on transfers, charged to the source account on top of the amount (source currency; receiver gets the full amount/toAmount). The transfer is tagged with the system category "Bank fees" and only the fee counts as expense in cashflow and the /transactions summary. Void/edit/recompute handle it via `accountEffects`. docs/03 and docs/04 §1/§4 updated.
 - [2] Settings gained Categories (tree, add/rename/archive/restore, essential flag) and Asset classes (colour, order, add/archive custom) tabs. System categories/classes can't be renamed or archived; colours and essential flags can change.
 
 ## Deviations from docs

@@ -110,7 +110,7 @@ Field requirements per type (validated by Zod discriminated union):
 |---|---|---|---|---|---|
 | income | – | req | – | req (income) | |
 | expense | req | – | – | req or splits | |
-| transfer | req | req | – | – | toAmountMinor if currencies differ |
+| transfer | req | req | – | system "Bank fees" if fee | toAmountMinor if currencies differ; optional feeMinor |
 | invest | req (cash) | – | req | – | fee, units/price optional |
 | redeem | – | req (cash) | req | – | fee, tax, units optional; redemption computed |
 | investment_income | – | req unless reinvest | req | system | incomeKind, tax, reinvest |

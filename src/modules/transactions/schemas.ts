@@ -87,6 +87,13 @@ const expenseSchema = z
     }
   });
 
+const nonNegativeMinor = z
+  .number()
+  .int("Must be a whole amount")
+  .min(0, "Cannot be negative")
+  .max(Number.MAX_SAFE_INTEGER)
+  .default(0);
+
 const transferSchema = z
   .object({
     ...base,
@@ -95,6 +102,8 @@ const transferSchema = z
     toAccountId: objectId,
     /** Required when the two accounts use different currencies. */
     toAmountMinor: amountMinor.nullish(),
+    /** Optional bank fee, charged to the source account on top of the amount. */
+    feeMinor: nonNegativeMinor,
   })
   .strict()
   .refine((v) => v.fromAccountId !== v.toAccountId, {
@@ -102,12 +111,6 @@ const transferSchema = z
     message: "Choose a different account",
   });
 
-const nonNegativeMinor = z
-  .number()
-  .int("Must be a whole amount")
-  .min(0, "Cannot be negative")
-  .max(Number.MAX_SAFE_INTEGER)
-  .default(0);
 const units = z
   .number({ error: "Enter units" })
   .positive("Enter units above zero")
