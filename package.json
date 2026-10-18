@@ -19,7 +19,8 @@
     "db:check": "tsx --conditions=react-server scripts/db-check.ts",
     "reset-password": "tsx --conditions=react-server scripts/reset-password.ts",
     "verify": "npm run typecheck && npm run lint && npm run test",
-    "prepare": "husky"
+    "prepare": "husky",
+    "delete-users": "tsx scripts/delete-users.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",
