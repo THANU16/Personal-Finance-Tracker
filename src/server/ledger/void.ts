@@ -9,6 +9,7 @@ import { writeAudit } from "@/server/audit/model";
 import type { Ctx } from "@/server/ctx";
 import { toObjectId } from "@/server/db/ids";
 import { AppError } from "@/server/errors";
+import { recomputeDebt } from "@/server/ledger/debt";
 import { recomputeAccounts, recomputeHolding } from "@/server/ledger/recompute";
 
 /**
@@ -46,6 +47,7 @@ export async function voidTransaction(
   );
   await recomputeAccounts(userId, [txn.fromAccountId, txn.toAccountId], session);
   if (txn.holdingId) await recomputeHolding(ctx, txn.holdingId, session);
+  if (txn.debtId) await recomputeDebt(ctx, txn.debtId, session);
   await writeAudit(
     {
       userId: ctx.userId,

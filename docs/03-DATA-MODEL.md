@@ -201,13 +201,17 @@ idx: {userId, date:-1}
 
 ## debts
 ```
-name, kind: bank_loan|leasing|personal|other, accountId (type loan),
-principalMinor, annualRateBp, tenureMonths, startDate, paymentDay, emiMinor,
-lender?, status: active|closed, closedAt?,
-prepayments: [{ date, amountMinor, mode: reduce_tenure|reduce_emi }],
-# caches
-outstandingMinor, principalPaidMinor, interestPaidMinor, nextDueDate, projectedPayoffDate
+name, kind: bank_loan|leasing|personal|other, accountId (type loan), paymentAccountId?,
+principalMinor, annualRateBp, tenureMonths (current plan), startDate, paymentDay, emiMinor,
+lender?, paidBeforeTracking (instalments paid before the loan was added), status: active|closed, closedAt?,
+prepayments: [{ date, amountMinor, mode: reduce_tenure|reduce_emi, transactionId,
+                emiBeforeMinor, tenureBeforeMonths, emiAfterMinor, tenureAfterMonths, reverted }],
+# caches (recomputeDebt, after every post/void with a debtId)
+outstandingMinor, principalPaidMinor, interestPaidMinor, paymentsCount, nextDueDate, projectedPayoffDate
+idx: {userId, accountId} unique · {userId, status}
 ```
+Dates are business date keys. A `debt_payment` transaction stores the paying account as `fromAccountId`, the loan account
+as `toAccountId` (it receives the principal), `debtId`, `principalMinor`, `interestMinor` and the "Loan interest" category.
 
 ## recurringRules
 ```

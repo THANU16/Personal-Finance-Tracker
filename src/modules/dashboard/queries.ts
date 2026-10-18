@@ -526,7 +526,7 @@ export interface UpcomingItem {
 }
 
 /**
- * Items due from today up to `until` (inclusive). Later phases add SIPs (5), EMIs (8) and recurring
+ * Items due from today up to `until` (inclusive): FD maturities, card dues, SIPs (5), EMIs (8); recurring
  * items (9) with `outflowMinor` so safe-to-spend picks them up automatically.
  */
 export async function getUpcoming(ctx: Ctx, until: string): Promise<UpcomingItem[]> {
@@ -571,6 +571,9 @@ export async function getUpcoming(ctx: Ctx, until: string): Promise<UpcomingItem
     if (s.dueDate < today && !s.href.startsWith("/sip/execute/")) continue;
     items.push({ ...s, kind: "sip" });
   }
+  // EMIs (Phase 8): outflow only when the payment account is earmarkable.
+  const { debtUpcoming } = await import("@/modules/debts/service");
+  for (const e of await debtUpcoming(ctx, until)) items.push({ ...e, kind: "emi" });
   return items.sort((x, y) => x.dueDate.localeCompare(y.dueDate) || x.title.localeCompare(y.title));
 }
 

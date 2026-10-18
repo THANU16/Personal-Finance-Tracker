@@ -32,6 +32,8 @@ export function toLedgerTxn(
     reinvest: doc.reinvest ?? null,
     principalMinor: doc.principalMinor ?? null,
     interestMinor: doc.interestMinor ?? null,
+    // debt_payment: the loan account is stored as the destination; it receives the principal.
+    loanAccountId: doc.type === "debt_payment" && doc.toAccountId ? String(doc.toAccountId) : null,
     categoryId: doc.categoryId ? String(doc.categoryId) : null,
     splits: (doc.splits ?? []).map((s) => ({
       categoryId: String(s.categoryId),

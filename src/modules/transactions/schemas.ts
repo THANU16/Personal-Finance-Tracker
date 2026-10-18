@@ -243,6 +243,7 @@ export const transactionFiltersSchema = z.object({
           "redeem",
           "investment_income",
           "opening_balance",
+          "debt_payment",
         ]),
       ),
     )

@@ -6,6 +6,7 @@ import {
   ArrowUpRight,
   Coins,
   Flag,
+  Landmark,
   Scale,
   type LucideIcon,
 } from "lucide-react";
@@ -22,6 +23,7 @@ export const TYPE_META: Partial<Record<TransactionType, { label: string; icon: L
   redeem: { label: "Redeem", icon: ArrowUpFromLine },
   investment_income: { label: "Investment income", icon: Coins },
   opening_balance: { label: "Opening balance", icon: Flag },
+  debt_payment: { label: "Loan payment", icon: Landmark },
 };
 
 const INCOME_KIND_LABEL = {
@@ -37,7 +39,7 @@ const INCOME_KIND_LABEL = {
  * expense/buy −, adjustment by direction; transfers, opening balances and reinvested income unsigned.
  */
 export function signedAmount(t: TransactionDTO): number {
-  if (t.type === "expense") return -t.amountMinor;
+  if (t.type === "expense" || t.type === "debt_payment") return -t.amountMinor;
   if (t.type === "invest") return -(t.amountMinor + t.feeMinor);
   if (t.type === "redeem") return t.amountMinor - t.feeMinor - t.taxMinor;
   if (t.type === "investment_income") return t.reinvest ? 0 : t.amountMinor - t.taxMinor;
@@ -106,6 +108,7 @@ export function TypeIcon({ type }: { type: TransactionType }) {
 /** "Groceries", "Split · …", "Transfer", "Buy · Ceylon Equity Fund", … */
 export function categoryLabel(t: TransactionDTO): string {
   if (t.type === "transfer") return t.feeMinor > 0 ? "Transfer · Bank fees" : "Transfer";
+  if (t.type === "debt_payment") return "Loan payment";
   if (t.holding) return t.holding.name;
   if (t.splits.length) return `Split · ${t.splits.map((s) => s.category.name).join(", ")}`;
   return t.category?.name ?? "Uncategorised";
@@ -119,6 +122,8 @@ export function holdingTxnTitle(t: TransactionDTO): string | null {
 }
 
 export function accountsLabel(t: TransactionDTO): string {
-  if (t.type === "transfer") return `${t.fromAccount?.name ?? "?"} → ${t.toAccount?.name ?? "?"}`;
+  if (t.type === "transfer" || t.type === "debt_payment") {
+    return `${t.fromAccount?.name ?? "?"} → ${t.toAccount?.name ?? "?"}`;
+  }
   return (t.fromAccount ?? t.toAccount)?.name ?? "";
 }

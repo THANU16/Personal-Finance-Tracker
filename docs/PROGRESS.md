@@ -13,7 +13,7 @@
 | 6 Allocation (rebalancing) | ✅ done | 2026-10-18 | `feat(phase-6)` |
 | MM Money Manager import (docs/07) | ✅ done (real 2025 file to be checked by owner) | 2026-10-18 | `feat: money manager import` |
 | 7 Opportunity Fund | ✅ done | 2026-10-18 | `feat(phase-7)` |
-| 8 Debts & receivables | ⬜ | | |
+| 8 Debts & receivables | ✅ done | 2026-10-18 | `feat(phase-8)` |
 | 9 Recurring, budgets, goals | ⬜ | | |
 | 10 Essentials, notifications, cron, forecast | ⬜ | | |
 | 11 Reports, import/export, attachments | ⬜ | | |
@@ -206,6 +206,24 @@ Status values: ⬜ not started · 🟡 in progress · ✅ done
 - [7] UI: banner, cards (fund vs target, latest level, reference high, drawdown gauge with rule ticks), market levels form + chart
   (benchmark in slot 1; high and rule levels as labelled dashed lines), rules & allocation editor, deployment dialog, history with
   Undo. Dashboard "Opportunity fund" card is live (size vs target, drawdown).
+- [8] `domain/loan.ts`: `emiMinor` (0% → ceil(P/n) so n payments cover P), `dueDate` (month after the start, day clamped),
+  `amortisation` (interest = round(outstanding × r), final row pays the remainder), `splitPayment`, `monthsToRepay`,
+  `applyPrepayment`, `outstandingAfter`, `dtiBp`. Known schedule: 1,000,000 @ 12% × 12 → EMI 88,848.79, interest 66,185.45.
+- [8] `debt_payment` is posted by the ledger with to = the loan account (gets the principal; `toLedgerTxn` maps it to
+  `loanAccountId`), "Loan interest" category, dip guard on the paying account, principal + interest = amount. `recomputeDebt`
+  (server/ledger/debt.ts) runs on every post/void with a debtId, so voiding on /transactions updates the loan too. Next due =
+  instalment (paid before tracking + regular payments + 1); the debt closes at 0 and reopens when a payment is voided.
+- [8] Payment split: interest on the current outstanding first; extra over the EMI prepays principal; below the interest → all
+  interest + warning; more than outstanding + interest is refused. Prepayment = principal-only payment, then reduce_tenure keeps the
+  EMI (fewer months) or reduce_emi keeps the end date (lower EMI); the change is stored with before/after values and undone when
+  its transaction is voided (owner-approved Q1–3: optional "Money received into" posts a transfer loan → account; "Instalments
+  already paid" opens the loan on the k-th due date at the scheduled outstanding; `paymentAccountId` pre-fills and drives
+  Upcoming/safe-to-spend outflows).
+- [8] DTI = Σ active EMIs ÷ average monthly income (income + paid-out investment income) of the last 3 complete months, base
+  currency; chip: ≤ 30% healthy, ≤ 50% watch, above high. EMIs appear in Upcoming (outflow only from an earmarkable payment
+  account, like SIPs). Receivables/payables settle via transfer (receivable → account, account → payable), capped at the open
+  balance, dip guard + confirm.
+- [8] Transactions list: "Loan payment" type (signed −, "Bank → Loan" accounts, filter option).
 - [mm] Excel reader: `read-excel-file` (maintained, 0 advisories) rather than ExcelJS (2 moderate advisories via `uuid`, ~480
   packages) or the unmaintained `xlsx`. Cells are read with `parseNumber: s => s` so amounts stay decimal strings (BigInt
   parse, never floats); Excel date-times are rounded to the second (12:30:00 can read back as 12:29:59.999).
@@ -261,6 +279,8 @@ Status values: ⬜ not started · 🟡 in progress · ✅ done
   analytics-charts skill updated). Seeded asset-class colours replaced by the validated palette (owner-approved).
 - [4] Acceptance "equal reports from the seed scenario" → fixed-scenario integration tests until Phases 11/12 (owner-approved).
 - [4] docs/05 §2 "Net worth trend (12m / 3y / all toggle)" is served by the page-wide TimeRangeBar instead of a per-card toggle.
+- [8] docs/03 debts gained `paymentAccountId`, `paidBeforeTracking`, `paymentsCount` and prepayment before/after fields (docs/03
+  updated). Debt dates are business date keys.
 - [7] docs/03 opportunityFund: reference high / triggered rules are replayed, not stored; `accountId` → optional
   `defaultSourceAccountId`; deployments gained source account, cycle, allocation used, earmark reduced and status (docs/03 updated).
 - [mm] docs/07 §2 suggests ExcelJS; `read-excel-file` is used (see Decisions).
@@ -280,6 +300,8 @@ Status values: ⬜ not started · 🟡 in progress · ✅ done
   never committed.
 
 ## Known issues / tech debt
+- [8] No interest-rate changes for floating loans yet (owner-approved scope). Interest is a flat monthly r on the outstanding
+  whatever the payment date (docs/04 §10), so early/late payments do not change it. Debt payments are voided, not edited.
 - [7] No in-app notification for a triggered rule until Phase 10 (banner + Attention only). One benchmark per fund; changing its
   name starts from that benchmark's own levels.
 - [mm] Imported transactions keep the business date only (time of day is dropped); same-day order is kept through `createdAt`.

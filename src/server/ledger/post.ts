@@ -17,13 +17,15 @@ import {
   type TransactionDoc,
 } from "@/modules/transactions/model";
 import { writeAudit } from "@/server/audit/model";
+import { recomputeDebt } from "@/server/ledger/debt";
 import type { Ctx } from "@/server/ctx";
 import { toObjectId } from "@/server/db/ids";
 import { AppError, type ActionWarning } from "@/server/errors";
 import { holdingStateAsOf, recomputeAccounts, recomputeHolding } from "@/server/ledger/recompute";
 
-/** Ledger types that can be posted so far (debt_payment: Phase 8). */
+/** Ledger types that can be posted. */
 export type PostableType =
+  | "debt_payment"
   | "income"
   | "expense"
   | "transfer"
@@ -57,6 +59,10 @@ export interface LedgerDraft {
   tags?: string[];
   source?: { kind: SourceKind; refId?: Types.ObjectId | null };
   groupId?: Types.ObjectId | null;
+  /** debt_payment: the debt (its loan account is `toAccountId`) and the server-computed split. */
+  debtId?: Types.ObjectId | null;
+  principalMinor?: number | null;
+  interestMinor?: number | null;
   /** Dip guard confirmations (docs/04 §20). Emergency money needs its own flag. */
   confirmOpportunity?: boolean;
   confirmEmergency?: boolean;
@@ -265,10 +271,15 @@ export async function postTransaction(
   const t = draft.type;
   const fee = draft.feeMinor ?? 0;
   const tax = draft.taxMinor ?? 0;
-  const needsFrom = t === "expense" || t === "transfer" || (t === "invest" && !draft.switchLeg);
+  const needsFrom =
+    t === "expense" ||
+    t === "transfer" ||
+    t === "debt_payment" ||
+    (t === "invest" && !draft.switchLeg);
   const needsTo =
     t === "income" ||
     t === "transfer" ||
+    t === "debt_payment" ||
     (t === "redeem" && !draft.switchLeg) ||
     (t === "investment_income" && !draft.reinvest);
   const needsHolding =
@@ -281,6 +292,23 @@ export async function postTransaction(
   }
   if (t === "transfer" && draft.fromAccountId === draft.toAccountId) {
     fail("toAccountId", "Choose a different account");
+  }
+  if (t === "debt_payment") {
+    const principal = draft.principalMinor ?? -1;
+    const interest = draft.interestMinor ?? -1;
+    if (!draft.debtId) fail("debtId", "Choose a loan");
+    if (
+      !Number.isSafeInteger(principal) ||
+      principal < 0 ||
+      !Number.isSafeInteger(interest) ||
+      interest < 0
+    ) {
+      fail("amountMinor", "Invalid principal / interest split");
+    }
+    if (principal + interest !== draft.amountMinor)
+      fail("amountMinor", "Principal + interest must equal the payment");
+    if (draft.fromAccountId === draft.toAccountId)
+      fail("fromAccountId", "Pay from another account");
   }
   for (const [field, v] of [
     ["feeMinor", fee],
@@ -365,6 +393,11 @@ export async function postTransaction(
   if (!Number.isSafeInteger(amountMinor) || amountMinor <= 0) {
     fail("amountMinor", "Enter an amount above zero");
   }
+  if (t === "debt_payment") {
+    if (to!.type !== "loan") fail("toAccountId", `"${to!.name}" is not a loan account`);
+    if (from!.currency !== to!.currency)
+      fail("fromAccountId", `Pay "${to!.name}" from a ${to!.currency} account`);
+  }
   if (t === "investment_income" && tax > amountMinor)
     fail("taxMinor", "Tax cannot exceed the amount");
 
@@ -414,6 +447,9 @@ export async function postTransaction(
       "income",
       session,
     );
+  } else if (t === "debt_payment") {
+    // Interest is an expense (docs/04 §4); the principal only reduces the loan.
+    categoryId = await getSystemCategoryId(ctx, SYSTEM_CATEGORY.loanInterest, "expense", session);
   } else if (t === "transfer" && fee > 0) {
     // The fee is an expense; tag it so spending by category shows it (docs/04 §4).
     categoryId = await getSystemCategoryId(ctx, SYSTEM_CATEGORY.bankFees, "expense", session);
@@ -456,6 +492,9 @@ export async function postTransaction(
         tags: draft.tags ?? [],
         source: { kind: draft.source?.kind ?? "manual", refId: draft.source?.refId ?? null },
         groupId: draft.groupId ?? null,
+        debtId: t === "debt_payment" ? draft.debtId : null,
+        principalMinor: t === "debt_payment" ? draft.principalMinor : null,
+        interestMinor: t === "debt_payment" ? draft.interestMinor : null,
         status: "posted",
       },
     ],
@@ -464,6 +503,7 @@ export async function postTransaction(
   let txn = doc!.toObject() as TransactionDoc;
 
   await recomputeAccounts(userId, [txn.fromAccountId, txn.toAccountId], session);
+  if (txn.debtId) await recomputeDebt(ctx, txn.debtId, session);
   if (holding) {
     await recomputeHolding(ctx, holding._id, session);
     // Redemption figures are filled in by the replay.

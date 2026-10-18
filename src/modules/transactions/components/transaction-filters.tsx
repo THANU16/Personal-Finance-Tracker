@@ -37,6 +37,7 @@ const TYPES = [
   { value: "income", label: "Income" },
   { value: "transfer", label: "Transfers" },
   { value: "adjustment", label: "Adjustments" },
+  { value: "debt_payment", label: "Loan payments" },
 ];
 
 export interface FilterOptions {
