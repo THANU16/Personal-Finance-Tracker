@@ -50,6 +50,11 @@ import type {
   QuickAddType,
 } from "@/modules/transactions/components/quick-add-context";
 import { transactionInputSchema, type TransactionDTO } from "@/modules/transactions/schemas";
+import {
+  DipConfirmDialog,
+  type DipConfirmation,
+} from "@/modules/transactions/components/dip-confirm-dialog";
+import type { ActionWarning } from "@/server/errors";
 
 type FormValues = QuickAddFormValues;
 
@@ -408,11 +413,27 @@ function QuickAddForm({
       }
       return;
     }
+    await save(v, input);
+  }
+
+  // Dip guard (docs/04 §20): NEEDS_CONFIRMATION opens a dialog; confirming resubmits with the flags.
+  const [confirm, setConfirm] = React.useState<{
+    values: FormValues;
+    input: ReturnType<typeof toInput>;
+    warnings: ActionWarning[];
+  } | null>(null);
+
+  async function save(v: FormValues, input: ReturnType<typeof toInput>, flags?: DipConfirmation) {
+    const payload = flags ? { ...input, ...flags } : input;
     const result =
       request.mode === "edit"
-        ? await updateTransactionAction(request.txn.id, input)
-        : await createTransactionAction(input);
+        ? await updateTransactionAction(request.txn.id, payload)
+        : await createTransactionAction(payload);
     if (!result.ok) {
+      if (result.error.code === "NEEDS_CONFIRMATION" && result.error.warnings?.length) {
+        setConfirm({ values: v, input, warnings: result.error.warnings });
+        return;
+      }
       for (const [key, messages] of Object.entries(result.error.fieldErrors ?? {})) {
         setError((key === "_form" ? "root" : key) as Path<FormValues>, { message: messages[0] });
       }
@@ -853,6 +874,16 @@ function QuickAddForm({
           {isSubmitting ? "Saving…" : editing ? "Save changes" : "Save"}
         </Button>
       </SheetFooter>
+      <DipConfirmDialog
+        warnings={confirm?.warnings ?? null}
+        onCancel={() => setConfirm(null)}
+        onConfirm={async (flags) => {
+          if (!confirm) return;
+          const pending = confirm;
+          setConfirm(null);
+          await save(pending.values, pending.input, flags);
+        }}
+      />
     </form>
   );
 }

@@ -13,6 +13,7 @@ import {
   type AccountDTO,
 } from "@/modules/accounts/schemas";
 import { TransactionModel } from "@/modules/transactions/model";
+import { hasEarmarks } from "@/modules/earmarks/service";
 import { parseInput } from "@/server/action-result";
 import { writeAudit } from "@/server/audit/model";
 import type { Ctx } from "@/server/ctx";
@@ -139,6 +140,15 @@ export async function updateAccount(ctx: Ctx, id: string, input: unknown): Promi
       throw new AppError("CONFLICT", "Currency cannot change once the account has transactions", {
         currency: ["Account already has transactions"],
       });
+    }
+    if (
+      data.countsTowardEmergencyFund === true &&
+      !current.countsTowardEmergencyFund &&
+      (await hasEarmarks(current.userId, current._id, session))
+    ) {
+      // docs/04 §20: a dedicated emergency account is emergency money as a whole.
+      const message = "Remove this account's earmarks first";
+      throw new AppError("CONFLICT", message, { countsTowardEmergencyFund: [message] });
     }
     if (data.creditCard !== undefined && current.type !== "credit_card" && data.creditCard) {
       throw new AppError("VALIDATION", "Only credit cards have a limit");

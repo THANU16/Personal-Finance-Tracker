@@ -7,7 +7,7 @@
 | 2 Accounts & ledger | ✅ done | 2026-10-18 | `feat(phase-2)` |
 | 3 Holdings & returns | ✅ done | 2026-10-18 | `feat(phase-3)` |
 | MOD-1 Phase 1 additions | ✅ done | 2026-10-18 | `feat(mod-1)` |
-| MOD-2 Phase 2 additions | ⬜ | | |
+| MOD-2 Phase 2 additions | ✅ done | 2026-10-18 | `feat(mod-2)` |
 | 4 Dashboard, snapshots, FX | ⬜ | | |
 | 5 SIP planner | ⬜ | | |
 | 6 Rebalancing | ⬜ | | |
@@ -97,6 +97,20 @@ Status values: ⬜ not started · 🟡 in progress · ✅ done
   QR codes are rendered client-side with `qrcode` (SVG). Login keeps `?next=` through /two-factor.
 - [mod-1] `npm run reset-password -- <email> <newPassword>` (`scripts/reset-password.ts`) uses Better Auth's own hashing and
   adapter (`ctx.password.hash`, `internalAdapter.updatePassword`) and signs the user out everywhere; 2FA is left as is.
+- [mod-2] Earmarks: `domain/earmarks.ts` (pure: `rawEarmark`, `effectiveEarmarks`, `dipCheck`, `earmarksAfterDip`,
+  `moveBetweenBuckets`, account rules) and `modules/earmarks` (`setEarmark` upserts one earmark per bucket per account,
+  `removeEarmark` deletes it — earmarks are not ledger records; `moveBetweenBuckets`; `getAccountBuckets`, `listAccountBuckets`,
+  `getBuckets` per currency until FX in Phase 4). Every earmark write is audited (`earmark_set/remove/move/dip`).
+- [mod-2] Dip guard in `postTransaction` (owner-approved decisions): exempt sources apply on every account; the guard uses the
+  current balance; a confirmed dip stores the dipped buckets as fixed amounts; voids never restore earmarks. All warnings
+  are returned whenever any is unconfirmed, so the dialog always shows the full picture. Warnings carry amount, currency and
+  account name; `ActionResult` errors gained `warnings`. docs/04 §20 records these notes.
+- [mod-2] Edits: the guard runs after the original is voided (the original outflow is back in the balance), so only the
+  increase is checked; an edit that does not increase the outflow on the same account is never guarded.
+- [mod-2] UI: shared `BucketBar` (emergency = `--viz-series-1`, opportunity = `--viz-series-2`, free = neutral grey; legend
+  and an aria summary, never colour alone). Accounts list shows the bar for earmarked accounts and "All emergency/opportunity
+  money" for dedicated ones, plus an Over-earmarked badge; "Earmark / move" in the row menu and on account detail (Earmarks
+  card with edit/remove); Quick add (create and edit) shows a confirm dialog; emergency needs a ticked checkbox.
 
 ## Deviations from docs
 <!-- Claude: anything built differently from the docs, and why. Update the doc too if the user agrees. -->
@@ -116,6 +130,9 @@ Status values: ⬜ not started · 🟡 in progress · ✅ done
 - [1] Then try register/login in the browser against Atlas (`npm run dev`). All auth flows pass e2e on the in-memory DB. Once your account exists, consider `DISABLE_SIGNUP=true`.
 
 ## Known issues / tech debt
+- [mod-2] The `over_earmarked` notification is not raised yet (Phase 10 notification job); MOD-2 shows the badge only.
+- [mod-2] Emergency-flagged holdings in `getBuckets` use the cached value (FDs: today's §9 value); other holdings' values are as
+  of their last valuation.
 - [0] Node v25.8.1 (non-LTS) on the dev machine; everything works so far. Consider Node 24 LTS if a tool breaks.
 - [0] `npm audit` reports 5 high-severity issues in dev-only dependencies; production deps: 0.
   [mod-1] Now 9 high, all in tooling (`shadcn` CLI and its `ts-morph`/`fast-glob`/`micromatch`/`braces` chain,

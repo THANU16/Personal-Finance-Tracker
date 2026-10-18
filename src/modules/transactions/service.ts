@@ -15,7 +15,7 @@ import type { Ctx } from "@/server/ctx";
 import { toObjectId } from "@/server/db/ids";
 import { withTransaction } from "@/server/db/transaction";
 import { AppError } from "@/server/errors";
-import { postTransaction, type LedgerDraft } from "@/server/ledger/post";
+import { guardedOutflow, postTransaction, type LedgerDraft } from "@/server/ledger/post";
 import { voidTransaction as ledgerVoid } from "@/server/ledger/void";
 
 /** Types a user can create and edit directly; others come from their owning feature. */
@@ -36,6 +36,8 @@ function toDraft(ctx: Ctx, data: TransactionData): LedgerDraft {
     counterparty: data.counterparty,
     notes: data.notes,
     tags: data.tags,
+    confirmOpportunity: data.confirmOpportunity ?? false,
+    confirmEmergency: data.confirmEmergency ?? false,
   };
   switch (data.type) {
     case "income":
@@ -134,6 +136,10 @@ export async function updateTransaction(
         ...toDraft(ctx, data),
         source: { kind: old.source.kind, refId: old.source.refId },
         groupId: old.groupId,
+        // Dip guard checks only an increase over the original outflow on the same account.
+        replaces: old.fromAccountId
+          ? { fromAccountId: String(old.fromAccountId), outflowMinor: guardedOutflow(old) }
+          : null,
       },
       session,
     );

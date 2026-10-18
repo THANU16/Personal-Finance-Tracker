@@ -4,6 +4,7 @@ import { format, parse } from "date-fns";
 import { Landmark } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { BucketBar } from "@/components/shared/bucket-bar";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Money } from "@/components/shared/money";
 import { utcToBusinessDate } from "@/domain/dates";
@@ -12,6 +13,8 @@ import { cn } from "@/lib/utils";
 import { AccountActions, AddAccountButton } from "@/modules/accounts/components/account-actions";
 import { ACCOUNT_TYPE_META } from "@/modules/accounts/components/account-meta";
 import { getAccountsOverview } from "@/modules/accounts/queries";
+import { listAccountBuckets } from "@/modules/earmarks/queries";
+import type { AccountBucketsDTO } from "@/modules/earmarks/schemas";
 import type { AccountDTO } from "@/modules/accounts/schemas";
 import { getCurrentUser } from "@/server/auth/require-user";
 
@@ -40,12 +43,41 @@ export function UtilisationBar({ bp }: { bp: number }) {
   );
 }
 
+function BucketsLine({ buckets }: { buckets: AccountBucketsDTO }) {
+  if (buckets.archived) return null;
+  if (buckets.dedicated) {
+    return (
+      <div className="mt-1 text-xs text-muted-foreground">
+        All {buckets.dedicated} money ·{" "}
+        <Money
+          valueMinor={
+            buckets.dedicated === "emergency" ? buckets.emergencyMinor : buckets.opportunityMinor
+          }
+          currency={buckets.currency}
+        />
+      </div>
+    );
+  }
+  if (!buckets.earmarkable || buckets.earmarks.length === 0) return null;
+  return (
+    <BucketBar
+      className="mt-1.5 max-w-sm"
+      emergencyMinor={buckets.emergencyMinor}
+      opportunityMinor={buckets.opportunityMinor}
+      freeMinor={buckets.freeMinor}
+      currency={buckets.currency}
+    />
+  );
+}
+
 function AccountRow({
   account,
+  buckets,
   todayKey,
   baseCurrency,
 }: {
   account: AccountDTO;
+  buckets: AccountBucketsDTO | undefined;
   todayKey: string;
   baseCurrency: string;
 }) {
@@ -65,8 +97,12 @@ function AccountRow({
             {account.name}
           </Link>
           {account.archived ? <Badge variant="secondary">Archived</Badge> : null}
+          {buckets?.overEarmarked && !account.archived ? (
+            <Badge variant="destructive">Over-earmarked</Badge>
+          ) : null}
         </div>
         <div className="truncate text-xs text-muted-foreground">{sub}</div>
+        {buckets ? <BucketsLine buckets={buckets} /> : null}
         {account.card ? (
           <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
             {account.card.utilisationBp !== null ? (
@@ -100,7 +136,12 @@ function AccountRow({
           />
         )}
       </div>
-      <AccountActions account={account} todayKey={todayKey} baseCurrency={baseCurrency} />
+      <AccountActions
+        account={account}
+        buckets={buckets}
+        todayKey={todayKey}
+        baseCurrency={baseCurrency}
+      />
     </li>
   );
 }
@@ -128,9 +169,10 @@ export async function AccountsOverview({
   const showArchived = (await searchParams).archived === "1";
   const { ctx } = current;
   const todayKey = utcToBusinessDate(new Date(), ctx.tz);
-  const { groups, archivedCount } = await getAccountsOverview(ctx, {
-    includeArchived: showArchived,
-  });
+  const [{ groups, archivedCount }, buckets] = await Promise.all([
+    getAccountsOverview(ctx, { includeArchived: showArchived }),
+    listAccountBuckets(ctx),
+  ]);
 
   if (groups.length === 0 && archivedCount === 0) {
     return (
@@ -166,6 +208,7 @@ export async function AccountsOverview({
                 <AccountRow
                   key={a.id}
                   account={a}
+                  buckets={buckets.get(a.id)}
                   todayKey={todayKey}
                   baseCurrency={ctx.baseCurrency}
                 />

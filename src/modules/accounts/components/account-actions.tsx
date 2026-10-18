@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Archive, ArchiveRestore, MoreHorizontal, Pencil, Scale } from "lucide-react";
+import { Archive, ArchiveRestore, MoreHorizontal, Pencil, PiggyBank, Scale } from "lucide-react";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -26,15 +26,20 @@ import { archiveAccountAction, unarchiveAccountAction } from "@/modules/accounts
 import { AccountFormDialog } from "@/modules/accounts/components/account-form-dialog";
 import { ReconcileDialog } from "@/modules/accounts/components/reconcile-dialog";
 import type { AccountDTO } from "@/modules/accounts/schemas";
+import { EarmarkDialog } from "@/modules/earmarks/components/earmark-dialog";
+import type { AccountBucketsDTO } from "@/modules/earmarks/schemas";
 
 /** Row / header menu: Edit · Reconcile · Archive (with a confirm stating the effect) · Restore. */
 export function AccountActions({
   account,
+  buckets,
   todayKey,
   baseCurrency,
   variant = "icon",
 }: {
   account: AccountDTO;
+  /** Earmark / move is offered for earmarkable accounts (docs/05 §3). */
+  buckets?: AccountBucketsDTO;
   todayKey: string;
   baseCurrency: string;
   variant?: "icon" | "buttons";
@@ -43,6 +48,7 @@ export function AccountActions({
   const [editOpen, setEditOpen] = React.useState(false);
   const [reconcileOpen, setReconcileOpen] = React.useState(false);
   const [archiveOpen, setArchiveOpen] = React.useState(false);
+  const [earmarkOpen, setEarmarkOpen] = React.useState(false);
   const [pending, setPending] = React.useState(false);
 
   async function archive() {
@@ -107,6 +113,11 @@ export function AccountActions({
           <DropdownMenuContent align="end">
             {!account.archived ? (
               <>
+                {buckets?.earmarkable ? (
+                  <DropdownMenuItem onClick={() => setEarmarkOpen(true)}>
+                    <PiggyBank aria-hidden /> Earmark / move
+                  </DropdownMenuItem>
+                ) : null}
                 <DropdownMenuItem onClick={() => setReconcileOpen(true)}>
                   <Scale aria-hidden /> Reconcile
                 </DropdownMenuItem>
@@ -139,6 +150,14 @@ export function AccountActions({
         onOpenChange={setReconcileOpen}
         todayKey={todayKey}
       />
+      {buckets?.earmarkable && earmarkOpen ? (
+        <EarmarkDialog
+          open
+          onOpenChange={setEarmarkOpen}
+          accountName={account.name}
+          buckets={buckets}
+        />
+      ) : null}
       <AlertDialog open={archiveOpen} onOpenChange={(o) => !pending && setArchiveOpen(o)}>
         <AlertDialogContent>
           <AlertDialogHeader>

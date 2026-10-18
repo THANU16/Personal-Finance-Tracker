@@ -1,6 +1,8 @@
 import "server-only";
 import type { ClientSession, Types } from "mongoose";
 import { minorUnitDigits } from "@/domain/money";
+import { dedicatedBucket, dipCheck, earmarksAfterDip, isEarmarkable } from "@/domain/earmarks";
+import { effectiveEarmarksOf, storeBucketAmounts } from "@/modules/earmarks/service";
 import { utcToBusinessDate } from "@/domain/dates";
 import { validateSplits } from "@/domain/ledger";
 import { PRICE_SCALE, redeemByAmount, redeemByUnits, roundUnits } from "@/domain/redemption";
@@ -17,7 +19,7 @@ import {
 import { writeAudit } from "@/server/audit/model";
 import type { Ctx } from "@/server/ctx";
 import { toObjectId } from "@/server/db/ids";
-import { AppError } from "@/server/errors";
+import { AppError, type ActionWarning } from "@/server/errors";
 import { holdingStateAsOf, recomputeAccounts, recomputeHolding } from "@/server/ledger/recompute";
 
 /** Ledger types that can be posted so far (debt_payment: Phase 8). */
@@ -55,6 +57,94 @@ export interface LedgerDraft {
   tags?: string[];
   source?: { kind: SourceKind; refId?: Types.ObjectId | null };
   groupId?: Types.ObjectId | null;
+  /** Dip guard confirmations (docs/04 §20). Emergency money needs its own flag. */
+  confirmOpportunity?: boolean;
+  confirmEmergency?: boolean;
+  /** Edit (void + repost): the voided original, so only an increase on the same account is guarded. */
+  replaces?: { fromAccountId: string; outflowMinor: number } | null;
+}
+
+/** Sources that move earmarked money on purpose and are never guarded (docs/04 §20). */
+const UNGUARDED_SOURCES: readonly SourceKind[] = [
+  "opportunity_deployment",
+  "fd_maturity",
+  "reconcile",
+];
+
+/** Money leaving the source account that the dip guard checks: expense, transfer + fee, invest + fee. */
+export function guardedOutflow(t: {
+  type: string;
+  amountMinor: number;
+  feeMinor?: number | null;
+}): number {
+  if (t.type === "expense") return t.amountMinor;
+  if (t.type === "transfer" || t.type === "invest") return t.amountMinor + (t.feeMinor ?? 0);
+  if (t.type === "debt_payment") return t.amountMinor;
+  return 0;
+}
+
+/**
+ * Dip guard (docs/04 §20). Earmarkable source: an outflow beyond free cash needs confirmation;
+ * confirmed, the dipped earmarks are reduced (opportunity first) in this same DB transaction.
+ * Dedicated source (emergency / opportunity account): any outflow needs confirmation.
+ */
+async function guardOutflow(
+  ctx: Ctx,
+  from: AccountDoc,
+  outflowMinor: number,
+  draft: LedgerDraft,
+  session: ClientSession,
+): Promise<void> {
+  if (outflowMinor <= 0) return;
+  if (UNGUARDED_SOURCES.includes(draft.source?.kind ?? "manual")) return;
+  if (
+    draft.replaces &&
+    draft.replaces.fromAccountId === String(from._id) &&
+    outflowMinor <= draft.replaces.outflowMinor
+  ) {
+    return;
+  }
+  const warn = (code: ActionWarning["code"], amountMinor: number): ActionWarning => ({
+    code,
+    amountMinor,
+    currency: from.currency,
+    accountName: from.name,
+  });
+
+  const dedicated = dedicatedBucket(from);
+  if (dedicated) {
+    const confirmed = dedicated === "emergency" ? draft.confirmEmergency : draft.confirmOpportunity;
+    if (confirmed) return;
+    const code =
+      dedicated === "emergency" ? "WITHDRAWS_FROM_EMERGENCY" : "WITHDRAWS_FROM_OPPORTUNITY";
+    throw new AppError(
+      "NEEDS_CONFIRMATION",
+      `This takes money out of "${from.name}", which is ${dedicated} money. Confirm to continue.`,
+      undefined,
+      { warnings: [warn(code, outflowMinor)] },
+    );
+  }
+
+  if (!isEarmarkable(from)) return;
+  const effective = await effectiveEarmarksOf(from, session);
+  const dip = dipCheck(outflowMinor, effective);
+  if (!dip.needsConfirm) return;
+  const opportunityOk = dip.dipsOpportunityMinor === 0 || draft.confirmOpportunity === true;
+  const emergencyOk = dip.dipsEmergencyMinor === 0 || draft.confirmEmergency === true;
+  if (!opportunityOk || !emergencyOk) {
+    const warnings: ActionWarning[] = [];
+    if (dip.dipsOpportunityMinor > 0)
+      warnings.push(warn("DIPS_INTO_OPPORTUNITY", dip.dipsOpportunityMinor));
+    if (dip.dipsEmergencyMinor > 0)
+      warnings.push(warn("DIPS_INTO_EMERGENCY", dip.dipsEmergencyMinor));
+    throw new AppError(
+      "NEEDS_CONFIRMATION",
+      `This is more than the free cash in "${from.name}" and uses earmarked money. Confirm to continue.`,
+      undefined,
+      { warnings },
+    );
+  }
+  await storeBucketAmounts(ctx, from, earmarksAfterDip(effective, dip), "earmark_dip", session);
 }
 
 const SPLIT_MESSAGES = {
@@ -282,6 +372,16 @@ export async function postTransaction(
   } else if (t === "transfer" && fee > 0) {
     // The fee is an expense; tag it so spending by category shows it (docs/04 §4).
     categoryId = await getSystemCategoryId(ctx, SYSTEM_CATEGORY.bankFees, "expense", session);
+  }
+
+  if (from && t !== "adjustment") {
+    await guardOutflow(
+      ctx,
+      from,
+      guardedOutflow({ type: t, amountMinor, feeMinor: fee }),
+      draft,
+      session,
+    );
   }
 
   const [doc] = await TransactionModel.create(

@@ -1,10 +1,12 @@
 import { z } from "zod";
-import { AppError, type ErrorCode, type FieldErrors } from "@/server/errors";
+import { AppError, type ActionWarning, type ErrorCode, type FieldErrors } from "@/server/errors";
 
 export interface ActionError {
   code: ErrorCode;
   message: string;
   fieldErrors?: FieldErrors;
+  /** NEEDS_CONFIRMATION: what to confirm before retrying with the confirm flags. */
+  warnings?: ActionWarning[];
 }
 
 export type ActionResult<T> = { ok: true; data: T } | { ok: false; error: ActionError };
@@ -32,6 +34,7 @@ export function toActionError(err: unknown): { ok: false; error: ActionError } {
         code: err.code,
         message: err.message,
         ...(err.fieldErrors ? { fieldErrors: err.fieldErrors } : {}),
+        ...(err.warnings ? { warnings: err.warnings } : {}),
       },
     };
   }

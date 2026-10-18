@@ -16,6 +16,8 @@ import { ACCOUNT_TYPE_META } from "@/modules/accounts/components/account-meta";
 import { UtilisationBar } from "@/modules/accounts/components/accounts-overview";
 import { BalanceHistoryChart } from "@/modules/accounts/components/balance-history-chart";
 import { getAccountDetail, type AccountDetail as Detail } from "@/modules/accounts/queries";
+import { EarmarksCard } from "@/modules/earmarks/components/earmarks-card";
+import { getAccountBuckets } from "@/modules/earmarks/queries";
 import { QuickAddButton } from "@/modules/transactions/components/quick-add-context";
 import { TransactionsTable } from "@/modules/transactions/components/transactions-table";
 import { getCurrentUser } from "@/server/auth/require-user";
@@ -47,6 +49,8 @@ export async function AccountDetail({
     throw err;
   }
   const { account, rows, history } = detail;
+  const buckets = await getAccountBuckets(ctx, account.id);
+  const showBuckets = !account.archived && (buckets.canCarryEarmarks || buckets.dedicated !== null);
   const meta = ACCOUNT_TYPE_META[account.type];
   const todayKey = utcToBusinessDate(new Date(), ctx.tz);
   const liability = isLiability(account.type);
@@ -135,6 +139,12 @@ export async function AccountDetail({
           hint={`on ${longDate(account.openingDate)}`}
         />
       </div>
+
+      {showBuckets ? (
+        <div className="mb-4">
+          <EarmarksCard accountName={account.name} buckets={buckets} />
+        </div>
+      ) : null}
 
       <Card className="mb-4">
         <CardHeader>

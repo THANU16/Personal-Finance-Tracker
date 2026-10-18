@@ -38,6 +38,9 @@ const base = {
   counterparty: text(100),
   notes: text(1000),
   tags,
+  /** Dip guard (docs/04 §20): retry flags after NEEDS_CONFIRMATION. Emergency needs its own flag. */
+  confirmOpportunity: z.boolean().optional(),
+  confirmEmergency: z.boolean().optional(),
 };
 
 export const splitLineSchema = z

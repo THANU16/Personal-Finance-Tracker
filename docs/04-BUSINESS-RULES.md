@@ -289,6 +289,11 @@ Email sent only if enabled and `RESEND_API_KEY` is configured.
   reduces stored earmarks (opportunity first) and writes an audit entry. Outflows from dedicated accounts warn
   `WITHDRAWS_FROM_EMERGENCY` / `WITHDRAWS_FROM_OPPORTUNITY` unless `source.kind` is opportunity_deployment, fd_maturity or reconcile.
   Edits guard only the increase over the voided original on the same account; voids and reconcile are never guarded.
+- Implementation notes (MOD-2, owner-approved): the source exemption (opportunity_deployment, fd_maturity, reconcile) applies to
+  every account, not only dedicated ones (an FD renewal redeems into an account and reinvests the same day). The guard uses the
+  account's current balance. A confirmed dip stores each dipped bucket as a fixed amount (effective − dip). Voiding a confirmed
+  outflow returns the money to free cash; earmarks are not restored. An account with explicit earmarks cannot be flagged
+  `countsTowardEmergencyFund` until they are removed.
 
 ## 21. Safe to spend
 `safeToSpend = freeCash − Σ outflowMinor of upcoming items due on or before the end of the current month (user tz) that are not yet
