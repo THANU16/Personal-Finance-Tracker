@@ -65,6 +65,7 @@ export const updateSettingsSchema = z
     lifeCoverIncomeMultiple: int(1, 30),
     healthCoverTargetMinor: minorAmount.nullable(),
     minBalanceWarningMinor: minorAmount,
+    projectionReturnBp: int(0, 3_000),
     notify: z
       .object({
         email: z.boolean(),
@@ -94,6 +95,7 @@ export interface SettingsDTO {
   lifeCoverIncomeMultiple: number;
   healthCoverTargetMinor: number | null;
   minBalanceWarningMinor: number;
+  projectionReturnBp: number;
   hideAmounts: boolean;
   notify: { email: boolean; inApp: boolean; dailyHourLocal: number };
   onboardingCompletedAt: string | null;

@@ -269,6 +269,23 @@ async function flowTotalsFor(ctx: Ctx, range: KeyRange, buckets?: Bucket[]): Pro
   return bucketFlows(days, buckets ?? [{ key: range.from, start: range.from, end: range.to }]);
 }
 
+/**
+ * The last `months` complete months (oldest first) as monthly flow points in base (Essentials,
+ * insights, health score).
+ */
+export async function completeMonthFlows(ctx: Ctx, months: number): Promise<FlowPoint[]> {
+  const monthStart = `${todayOf(ctx).slice(0, 7)}-01`;
+  const lastMonthEnd = utcToBusinessDate(
+    new Date(businessDateToUtc(monthStart, "UTC").getTime() - 86_400_000),
+    "UTC",
+  );
+  const buckets = buildBuckets(
+    { from: addMonthsKey(monthStart, -months), to: lastMonthEnd },
+    "month",
+  );
+  return flowTotalsFor(ctx, { from: buckets[0]!.start, to: lastMonthEnd }, buckets);
+}
+
 // ---------------------------------------------------------------------------- top categories
 
 export interface TopCategory {
@@ -448,10 +465,10 @@ export interface Standing {
   investmentRateBp: number | null;
   /** Tenths of a month; null without expense history. */
   runwayTenths: number | null;
-  /** Phase 8. */
-  debtLoadBp: null;
-  /** Phase 10. */
-  healthScore: null;
+  /** Debt-to-income (Σ EMIs ÷ average income of the last 3 complete months); null without income. */
+  debtLoadBp: number | null;
+  /** docs/04 §13 health score with its (up to) two weakest reasons. */
+  healthScore: { score: number; reasons: string[] } | null;
   fxMissing: number;
 }
 
@@ -486,6 +503,8 @@ export async function getStanding(ctx: Ctx, view: RangeView): Promise<Standing> 
     .filter((h) => h.liquidity === "high")
     .reduce((s, h) => s + (now.byHolding[String(h._id)] ?? 0), 0);
   const end = pts.get(view.range.to)!;
+  const { getEssentials } = await import("@/modules/essentials/service");
+  const essentials = await getEssentials(ctx);
   return {
     currency: ctx.baseCurrency,
     netWorthMinor: end.netWorthMinor,
@@ -497,8 +516,11 @@ export async function getStanding(ctx: Ctx, view: RangeView): Promise<Standing> 
     thisMonthSavingsRateBp: flowTotals(monthFlows).savingsRateBp,
     investmentRateBp: totals.investmentRateBp,
     runwayTenths: runwayTenths(now.cashMinor + highLiquidity, avgExpense),
-    debtLoadBp: null,
-    healthScore: null,
+    debtLoadBp: essentials.debt.dtiBp,
+    healthScore: {
+      score: essentials.score.score,
+      reasons: essentials.score.reasons.map((r) => r.text),
+    },
     fxMissing: end.fxMissing,
   };
 }
@@ -580,7 +602,19 @@ export async function getUpcoming(ctx: Ctx, until: string): Promise<UpcomingItem
     debtUpcoming(ctx, until),
     debtIdsWithRules(ctx),
   ]);
-  for (const r of recurring) items.push({ ...r, kind: "recurring" });
+  for (const r of recurring) {
+    items.push({
+      id: r.id,
+      title: r.title,
+      dueDate: r.dueDate,
+      amountMinor: r.amountMinor,
+      currency: r.currency,
+      outflowMinor: r.outflowMinor,
+      accountId: r.accountId,
+      href: r.href,
+      kind: "recurring",
+    });
+  }
   for (const e of emis) {
     if (!covered.has(e.href.replace("/debts/", ""))) items.push({ ...e, kind: "emi" });
   }
@@ -644,6 +678,8 @@ export interface Attention {
   opportunity: { drawdownBp: number; amountMinor: number; currency: string } | null;
   /** Budgets this month at ≥ 80% (warn) and ≥ 100% (over). */
   budgets: { warn: number; over: number };
+  /** First 30-day forecast breach (docs/05 §2 "forecast warning"). */
+  forecast: { date: string; below: "zero" | "minimum"; name: string } | null;
 }
 
 export async function getAttention(ctx: Ctx): Promise<Attention> {
@@ -665,8 +701,19 @@ export async function getAttention(ctx: Ctx): Promise<Attention> {
   const rule =
     opp.suggestion.ruleIdx !== null ? opp.settings.rules[opp.suggestion.ruleIdx] : undefined;
   const { budgetsNeedingAttention } = await import("@/modules/budgets/service");
+  const { getForecast } = await import("@/modules/forecast/service");
+  const fc = await getForecast(ctx, 30);
+  const firstBreach = fc.accounts
+    .filter((x) => x.breach)
+    .sort((x, y) => x.breach!.date.localeCompare(y.breach!.date))[0];
+  const forecast = fc.total.breach
+    ? { date: fc.total.breach.date, below: fc.total.breach.below, name: "Total cash" }
+    : firstBreach
+      ? { date: firstBreach.breach!.date, below: firstBreach.breach!.below, name: firstBreach.name }
+      : null;
   return {
     staleCount,
+    forecast,
     budgets: await budgetsNeedingAttention(ctx),
     offTargetCount: await countOffTarget(ctx),
     opportunity:

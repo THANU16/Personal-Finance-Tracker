@@ -78,3 +78,27 @@ export function fdPayoutPerPeriod(t: FdTerms): number | null {
 export function daysToMaturity(t: Pick<FdTerms, "maturityDate">, today: string): number {
   return daysBetween(today, t.maturityDate);
 }
+
+/**
+ * Latest interest date of a payout FD on or before `today` (start + k × 1 or 3 months, day clamped
+ * to month end; the last one is the maturity date). null before the first payout or for at-maturity FDs.
+ */
+export function lastPayoutDate(t: FdTerms, today: string): string | null {
+  if (t.payout === "at_maturity") return null;
+  const step = t.payout === "monthly" ? 1 : 3;
+  const [y, m, d] = t.startDate.split("-").map(Number) as [number, number, number];
+  const end = today < t.maturityDate ? today : t.maturityDate;
+  let last: string | null = null;
+  for (let k = 1; k < 1200; k++) {
+    const idx = y * 12 + (m - 1) + k * step;
+    const yy = Math.floor(idx / 12);
+    const mm = (idx % 12) + 1;
+    const dd = Math.min(d, new Date(Date.UTC(yy, mm, 0)).getUTCDate());
+    let key = `${yy}-${String(mm).padStart(2, "0")}-${String(dd).padStart(2, "0")}`;
+    if (key > t.maturityDate) key = t.maturityDate;
+    if (key > end) break;
+    last = key;
+    if (key === t.maturityDate) break;
+  }
+  return last;
+}

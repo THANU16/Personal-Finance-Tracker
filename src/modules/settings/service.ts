@@ -27,6 +27,7 @@ function toDTO(doc: SettingsDoc): SettingsDTO {
     lifeCoverIncomeMultiple: doc.lifeCoverIncomeMultiple,
     healthCoverTargetMinor: doc.healthCoverTargetMinor ?? null,
     minBalanceWarningMinor: doc.minBalanceWarningMinor,
+    projectionReturnBp: doc.projectionReturnBp ?? 800,
     hideAmounts: doc.hideAmounts,
     notify: {
       email: doc.notify?.email ?? false,

@@ -402,6 +402,10 @@ export async function recurringUpcoming(
     outflowMinor: number | null;
     accountId: string | null;
     href: string;
+    /** Forecast (Phase 10): what the occurrence does to which accounts. */
+    ruleKind: RecurringRuleDoc["kind"];
+    fromAccountId: string | null;
+    toAccountId: string | null;
   }[]
 > {
   await connectDb();
@@ -429,6 +433,9 @@ export async function recurringUpcoming(
         (r.kind === "income" ? r.template.toAccountId : r.template.fromAccountId)?.toString() ??
         null,
       href: "/recurring",
+      ruleKind: r.kind,
+      fromAccountId: r.template.fromAccountId ? String(r.template.fromAccountId) : null,
+      toAccountId: r.template.toAccountId ? String(r.template.toAccountId) : null,
     }));
   });
 }

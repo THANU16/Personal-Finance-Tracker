@@ -78,9 +78,21 @@ const nextMonth = (m: string) => {
 export const currentMonth = (ctx: Ctx) => utcToBusinessDate(new Date(), ctx.tz).slice(0, 7);
 
 /** Categorised expense lines of a month in base currency (user timezone). */
-async function spendLines(ctx: Ctx, m: string): Promise<{ lines: SpendLine[]; fxMissing: number }> {
-  const from = businessDateToUtc(`${m}-01`, ctx.tz);
-  const to = businessDateToUtc(`${nextMonth(m)}-01`, ctx.tz);
+export async function spendLines(
+  ctx: Ctx,
+  m: string,
+): Promise<{ lines: SpendLine[]; fxMissing: number }> {
+  return spendLinesBetween(ctx, m, nextMonth(m));
+}
+
+/** Categorised expense lines from month `fromMonth` up to (not including) `toMonth`, base currency. */
+export async function spendLinesBetween(
+  ctx: Ctx,
+  fromMonth: string,
+  toMonth: string,
+): Promise<{ lines: SpendLine[]; fxMissing: number }> {
+  const from = businessDateToUtc(`${fromMonth}-01`, ctx.tz);
+  const to = businessDateToUtc(`${toMonth}-01`, ctx.tz);
   const [txns, toBase] = await Promise.all([
     TransactionModel.find({
       userId: uid(ctx),

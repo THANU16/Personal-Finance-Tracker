@@ -47,6 +47,7 @@ function toFormValues(s: SettingsDTO): FormValues {
     lifeCoverIncomeMultiple: s.lifeCoverIncomeMultiple,
     healthCoverTargetMinor: s.healthCoverTargetMinor,
     minBalanceWarningMinor: s.minBalanceWarningMinor,
+    projectionReturnBp: s.projectionReturnBp,
     notify: { ...s.notify },
   };
 }
@@ -298,6 +299,27 @@ export function PreferencesForm({
                 onBlur={field.onBlur}
                 ref={field.ref}
                 {...fieldAria("minBalanceWarningMinor", err("minBalanceWarningMinor"), true)}
+              />
+            )}
+          />
+        </FormField>
+        <FormField
+          id="projectionReturnBp"
+          label="Projection return (yearly)"
+          error={err("projectionReturnBp")}
+          description="Net worth projection on Forecast uses this ± 2 points. An estimate only."
+        >
+          <Controller
+            control={control}
+            name="projectionReturnBp"
+            render={({ field }) => (
+              <PercentInput
+                id="projectionReturnBp"
+                value={field.value}
+                onChange={field.onChange}
+                onBlur={field.onBlur}
+                ref={field.ref}
+                {...fieldAria("projectionReturnBp", err("projectionReturnBp"), true)}
               />
             )}
           />

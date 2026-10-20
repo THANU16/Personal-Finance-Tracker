@@ -24,7 +24,7 @@ staleDays: 30, bigChangeThresholdBp: 2000, driftThresholdBp: 500,
 emergencyMonths: 6, lifeCoverIncomeMultiple: 10, healthCoverTargetMinor,
 emergencyExpenseBasis: essential|all|manual (default essential), emergencyManualMonthlyMinor?,
 emergencyTargetOverrideMinor?,
-minBalanceWarningMinor: 0, hideAmounts: false,
+minBalanceWarningMinor: 0, projectionReturnBp: 800, hideAmounts: false,
 notify: { email: boolean, inApp: true, dailyHourLocal: 6 },
 onboardingCompletedAt?, bootstrapVersion: 0   # one-time per-user seeding applied (Phase 2)
 ```
@@ -247,6 +247,7 @@ idx: {userId, status}
 type: life|health|critical_illness|vehicle|home|other, provider, policyNumberLast4?,
 coverMinor, premiumMinor, premiumFrequency: monthly|quarterly|yearly,
 startDate, renewalDate, nominee?, notes?, status: active|lapsed
+idx: {userId, status}   # base currency; dates are business date keys (Phase 10)
 ```
 
 ## snapshots
@@ -265,6 +266,7 @@ type: sip_due|sip_overdue|recurring_due|emi_due|card_due|fd_maturing|insurance_r
       budget_80|budget_100|goal_off_track|opportunity_trigger|negative_forecast|over_earmarked|system,
 title, body, link, dueDate?, severity: info|warning|critical,
 dedupeKey (unique per user), readAt?, snoozedUntil?, emailedAt?
+idx: {userId, dedupeKey} unique; {userId, readAt, createdAt:-1}
 ```
 
 ## fxRates

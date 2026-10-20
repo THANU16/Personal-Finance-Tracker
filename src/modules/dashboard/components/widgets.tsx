@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { cache, type ReactNode } from "react";
-import { CalendarClock, CircleAlert, Construction } from "lucide-react";
+import { CalendarClock, CircleAlert } from "lucide-react";
 import {
   AllocationDonut,
   AssetsLiabilitiesChart,
@@ -173,10 +173,21 @@ export async function StandingCards({ searchParams }: { searchParams: SearchPara
                 {s.runwayTenths === null ? "—" : `${(s.runwayTenths / 10).toFixed(1)} months`}
               </dd>
               <dt className="text-muted-foreground">Debt load</dt>
-              <dd className="text-right">—</dd>
-              <dt className="text-muted-foreground">Health score</dt>
-              <dd className="text-right">—</dd>
+              <dd className="text-right tabular-nums">{pct(s.debtLoadBp)}</dd>
             </dl>
+            {s.healthScore ? (
+              <Link
+                href="/essentials"
+                className="mt-2 flex flex-wrap items-center gap-2 text-xs hover:underline"
+              >
+                <Badge variant="secondary">Health {s.healthScore.score}/100</Badge>
+                <span className="text-muted-foreground">
+                  {s.healthScore.reasons.length
+                    ? s.healthScore.reasons.join(" · ")
+                    : "All parts full"}
+                </span>
+              </Link>
+            ) : null}
             <FxBadge count={s.fxMissing} />
           </CardContent>
         </Card>
@@ -391,10 +402,27 @@ export async function AttentionCard({ searchParams }: { searchParams: SearchPara
         {a.staleCount === 0 &&
         a.offTargetCount === 0 &&
         !a.opportunity &&
+        !a.forecast &&
         a.budgets.warn + a.budgets.over === 0 ? (
           <p className="text-sm text-muted-foreground">All caught up.</p>
         ) : (
           <ul className="grid gap-2 text-sm">
+            {a.forecast ? (
+              <li>
+                <Link
+                  href="/forecast"
+                  className="flex items-center justify-between gap-3 hover:underline"
+                >
+                  <span className="flex items-center gap-1.5">
+                    <CircleAlert className="size-4 text-destructive" aria-hidden />
+                    {a.forecast.name}{" "}
+                    {a.forecast.below === "zero" ? "goes below zero" : "drops below your minimum"}{" "}
+                    on {a.forecast.date}
+                  </span>
+                  <span className="text-muted-foreground">Forecast →</span>
+                </Link>
+              </li>
+            ) : null}
             {a.opportunity ? (
               <li>
                 <Link
@@ -455,9 +483,6 @@ export async function AttentionCard({ searchParams }: { searchParams: SearchPara
             ) : null}
           </ul>
         )}
-        <p className="mt-2 text-xs text-muted-foreground">
-          Forecast warnings appear here with Phase 10.
-        </p>
       </Widget>
     );
   });
@@ -549,12 +574,47 @@ export async function GoalsCard({ searchParams }: { searchParams: SearchParams }
   });
 }
 
-export function LaterCard({ title, phase, text }: { title: string; phase: number; text: string }) {
-  return (
-    <Widget title={title}>
-      <p className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Construction className="size-4" aria-hidden /> {text} (Phase {phase}).
-      </p>
-    </Widget>
-  );
+const TONE_BAR = { red: "bg-destructive", amber: "bg-amber-500", green: "bg-emerald-600" } as const;
+
+/** docs/05 §2 row 5 — Essentials mini: emergency months and health score. */
+export async function EssentialsCard({ searchParams }: { searchParams: SearchParams }) {
+  return guarded("Essentials", async () => {
+    const { ctx } = await load(searchParams);
+    const { getEssentials } = await import("@/modules/essentials/service");
+    const e = await getEssentials(ctx);
+    const ef = e.emergency;
+    return (
+      <Widget title="Essentials">
+        <div className="space-y-3 text-sm">
+          <div>
+            <div className="flex justify-between gap-2">
+              <span>Emergency fund</span>
+              <span className="text-muted-foreground">
+                {ef.coverageTenths === null ? "—" : `${(ef.coverageTenths / 10).toFixed(1)} months`}{" "}
+                · {formatPercentBp(ef.progressBp)}
+              </span>
+            </div>
+            <div className="mt-1 h-2 rounded-full bg-muted" aria-hidden>
+              <div
+                className={`h-2 rounded-full ${TONE_BAR[ef.tone]}`}
+                style={{ width: `${ef.progressBp / 100}%` }}
+              />
+            </div>
+          </div>
+          <p>
+            Health score <span className="text-lg font-semibold">{e.score.score}</span>
+            <span className="text-muted-foreground">/100</span>
+          </p>
+          {e.score.reasons.length ? (
+            <p className="text-xs text-muted-foreground">
+              {e.score.reasons.map((r) => r.text).join(" · ")}
+            </p>
+          ) : null}
+          <Link href="/essentials" className="text-sm text-primary hover:underline">
+            Essentials →
+          </Link>
+        </div>
+      </Widget>
+    );
+  });
 }

@@ -38,6 +38,8 @@ async function main() {
     RESEND_API_KEY: "",
     MAIL_CAPTURE_FILE: E2E_MAIL_FILE,
     REQUIRE_EMAIL_VERIFICATION: "false",
+    // Fixed test secret so tests/e2e/essentials.spec.ts can call the daily job.
+    CRON_SECRET: "e2e-cron-secret-not-for-production",
   };
   writeFileSync(E2E_MAIL_FILE, "");
 

@@ -267,7 +267,10 @@ describe("dashboard queries on the fixed scenario", () => {
     expect(s.savingsRateBp).toBe(Math.round(((900_000 - 258_050) * 10_000) / 900_000));
     expect(s.investmentRateBp).toBe(Math.round((50_000 * 10_000) / 900_000));
     expect(s.debtLoadBp).toBeNull();
-    expect(s.healthScore).toBeNull();
+    // Phase 10: wired to Essentials (scenario data is months old, so only part of the score is earned).
+    expect(s.healthScore).toEqual({ score: expect.any(Number), reasons: expect.any(Array) });
+    expect(s.healthScore!.score).toBeGreaterThanOrEqual(0);
+    expect(s.healthScore!.score).toBeLessThanOrEqual(100);
     expect(s.netWorthChange.currentMinor).toBe(s.netWorthMinor);
   });
 

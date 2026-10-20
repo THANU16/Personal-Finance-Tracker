@@ -31,6 +31,7 @@ describe("getOrCreateSettings", () => {
       lifeCoverIncomeMultiple: 10,
       healthCoverTargetMinor: null,
       minBalanceWarningMinor: 0,
+      projectionReturnBp: 800,
       hideAmounts: false,
       notify: { email: false, inApp: true, dailyHourLocal: 6 },
       onboardingCompletedAt: null,

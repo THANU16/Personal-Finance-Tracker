@@ -3,6 +3,7 @@ import {
   daysBetween,
   daysToMaturity,
   fdAccruedInterest,
+  lastPayoutDate,
   fdMaturityValue,
   fdPayoutPerPeriod,
   fdValue,
@@ -64,5 +65,26 @@ describe("fdValue (docs/04 §9)", () => {
     ["maturity before start", { maturityDate: "2025-12-31" }],
   ])("rejects %s", (_l, override) => {
     expect(() => fdValue({ ...base, ...override }, "2026-06-01")).toThrow(RangeError);
+  });
+});
+
+describe("lastPayoutDate", () => {
+  const t = {
+    principalMinor: 1_000_000,
+    rateBp: 1_200,
+    startDate: "2026-01-31",
+    maturityDate: "2026-12-15",
+    compounding: "simple" as const,
+    payout: "monthly" as const,
+  };
+  it("monthly payouts clamp to month end; none before the first", () => {
+    expect(lastPayoutDate(t, "2026-02-27")).toBeNull();
+    expect(lastPayoutDate(t, "2026-02-28")).toBe("2026-02-28");
+    expect(lastPayoutDate(t, "2026-04-29")).toBe("2026-03-31");
+  });
+  it("quarterly, and the last payout is the maturity date", () => {
+    expect(lastPayoutDate({ ...t, payout: "quarterly" }, "2026-08-01")).toBe("2026-07-31");
+    expect(lastPayoutDate(t, "2027-03-01")).toBe("2026-12-15");
+    expect(lastPayoutDate({ ...t, payout: "at_maturity" }, "2027-03-01")).toBeNull();
   });
 });

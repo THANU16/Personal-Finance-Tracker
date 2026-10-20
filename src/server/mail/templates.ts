@@ -47,3 +47,31 @@ export function verifyEmailEmail(user: { email: string; name: string }, url: str
     footer: "If you did not create an account, ignore this email.",
   });
 }
+
+/** Daily digest of new notifications (Phase 10, docs/04 §19). */
+export function notificationDigestEmail(
+  user: { email: string; name: string },
+  items: { title: string; body: string; link: string }[],
+  appUrl: string,
+): MailMessage {
+  const base = appUrl.replace(/\/$/, "");
+  const lines = items.map((i) => `• ${i.title} — ${i.body}\n  ${base}${i.link}`).join("\n");
+  const text = `Hi ${user.name},\n\nNew in WealthTrack:\n\n${lines}\n\nAll notifications: ${base}/notifications\n\n— WealthTrack`;
+  const html = `<p>Hi ${escapeHtml(user.name)},</p><p>New in WealthTrack:</p><ul>${items
+    .map(
+      (i) =>
+        `<li><a href="${escapeHtml(base + i.link)}">${escapeHtml(i.title)}</a> — ${escapeHtml(i.body)}</li>`,
+    )
+    .join(
+      "",
+    )}</ul><p><a href="${escapeHtml(`${base}/notifications`)}">All notifications</a></p><p>— WealthTrack</p>`;
+  return {
+    to: user.email,
+    subject:
+      items.length === 1
+        ? `WealthTrack: ${items[0]!.title}`
+        : `WealthTrack: ${items.length} new reminders`,
+    text,
+    html,
+  };
+}

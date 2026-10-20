@@ -1,7 +1,5 @@
 import { Suspense } from "react";
-import Link from "next/link";
-import { Bell, Search } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
@@ -9,6 +7,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { HideAmountsToggle } from "@/components/shared/hide-amounts";
 import { ThemeToggle } from "@/components/shared/theme-toggle";
 import { UserArea } from "@/components/layout/user-area";
+import {
+  NotificationBell,
+  NotificationBellFallback,
+} from "@/modules/notifications/components/notification-bell";
 import { QuickAddButton } from "@/modules/transactions/components/quick-add-context";
 
 export function Topbar() {
@@ -33,15 +35,9 @@ export function Topbar() {
       <div className="ml-auto flex items-center gap-1">
         <QuickAddButton label="Add" className="mr-1" />
         <HideAmountsToggle />
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label="Notifications"
-          title="Notifications"
-          render={<Link href="/notifications" />}
-        >
-          <Bell aria-hidden />
-        </Button>
+        <Suspense fallback={<NotificationBellFallback />}>
+          <NotificationBell />
+        </Suspense>
         <ThemeToggle />
         <Suspense fallback={<Skeleton className="size-8 rounded-full" />}>
           <UserArea />

@@ -19,6 +19,8 @@ export interface SettingsDoc {
   lifeCoverIncomeMultiple: number;
   healthCoverTargetMinor: number | null;
   minBalanceWarningMinor: number;
+  /** Net worth projection base return (docs/04 §22), bp. */
+  projectionReturnBp: number;
   hideAmounts: boolean;
   notify: { email: boolean; inApp: boolean; dailyHourLocal: number };
   onboardingCompletedAt: Date | null;
@@ -49,6 +51,7 @@ const settingsSchema = new Schema<SettingsDoc>(
     lifeCoverIncomeMultiple: intField({ required: true, default: 10, min: 0 }),
     healthCoverTargetMinor: intField({ default: null, min: 0 }),
     minBalanceWarningMinor: intField({ required: true, default: 0, min: 0 }),
+    projectionReturnBp: intField({ required: true, default: 800, min: 0, max: 3_000 }),
     hideAmounts: { type: Boolean, required: true, default: false },
     notify: {
       email: { type: Boolean, required: true, default: false },

@@ -8,9 +8,9 @@ import {
   AttentionCard,
   CashCard,
   CashflowCard,
+  EssentialsCard,
   DashboardRangeBar,
   GoalsCard,
-  LaterCard,
   OpportunityCard,
   NetWorthCard,
   StandingCards,
@@ -76,11 +76,9 @@ export default function DashboardPage({ searchParams }: PageProps<"/dashboard">)
           <Suspense fallback={box("h-48")}>
             <GoalsCard searchParams={searchParams} />
           </Suspense>
-          <LaterCard
-            title="Essentials"
-            phase={10}
-            text="Emergency months and health score arrive with Essentials"
-          />
+          <Suspense fallback={box("h-48")}>
+            <EssentialsCard searchParams={searchParams} />
+          </Suspense>
           <Suspense fallback={box("h-48")}>
             <OpportunityCard searchParams={searchParams} />
           </Suspense>

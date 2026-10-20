@@ -1,7 +1,7 @@
 import "server-only";
 import { Types, type ClientSession } from "mongoose";
 import { businessDateToUtc, utcToBusinessDate } from "@/domain/dates";
-import { fdMaturityValue } from "@/domain/fd";
+import { fdMaturityValue, fdValue } from "@/domain/fd";
 import { isBigChange } from "@/domain/holdings";
 import { PRICE_SCALE, unitsValueMinor } from "@/domain/redemption";
 import { formatMoney, formatPercentBp } from "@/lib/format";
@@ -637,4 +637,52 @@ export async function renewFd(ctx: Ctx, id: string, input: unknown): Promise<Hol
 export function maturityValueOf(holding: HoldingDoc, tz: string): number | null {
   const terms = fdTerms(holding, tz);
   return terms ? fdMaturityValue(terms) : null;
+}
+
+/**
+ * Daily job (docs/04 §9, Phase 10): for every active FD with terms, writes an `fd_calc` valuation on
+ * the 1st of the month and at maturity (history), then refreshes the cached value to today's §9
+ * value. Idempotent: one fd_calc valuation per holding per date.
+ */
+export async function runFdDailyJob(ctx: Ctx, todayKey: string): Promise<{ valuations: number }> {
+  const holdings = await HoldingModel.find({
+    userId: toObjectId(ctx.userId, "User"),
+    status: "active",
+    fd: { $ne: null },
+  }).lean<HoldingDoc[]>();
+  let valuations = 0;
+  for (const h of holdings) {
+    const terms = fdTerms(h, ctx.tz);
+    if (!terms) continue;
+    const dates = new Set<string>();
+    if (todayKey.endsWith("-01") && todayKey > terms.startDate && todayKey < terms.maturityDate) {
+      dates.add(todayKey);
+    }
+    if (todayKey >= terms.maturityDate) dates.add(terms.maturityDate);
+    await withTransaction(async (session) => {
+      for (const date of dates) {
+        const exists = await ValuationModel.exists({
+          userId: h.userId,
+          holdingId: h._id,
+          source: "fd_calc",
+          date: businessDateToUtc(date, ctx.tz),
+        }).session(session);
+        if (exists) continue;
+        await insertValuation(
+          ctx,
+          h,
+          {
+            date,
+            valueMinor: fdValue(terms, date),
+            source: "fd_calc",
+            note: "FD value (daily job)",
+          },
+          session,
+        );
+        valuations += 1;
+      }
+      await recomputeHolding(ctx, h._id, session);
+    });
+  }
+  return { valuations };
 }

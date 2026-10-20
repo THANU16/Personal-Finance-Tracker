@@ -16,7 +16,7 @@
 | 7 Opportunity Fund | ✅ done | 2026-10-18 | `feat(phase-7)` |
 | 8 Debts & receivables | ✅ done | 2026-10-18 | `feat(phase-8)` |
 | 9 Recurring, budgets, goals | ✅ done | 2026-10-18 | `feat(phase-9)` |
-| 10 Essentials, notifications, cron, forecast | ⬜ | | |
+| 10 Essentials, notifications, cron, forecast | ✅ done (e2e spec written; blocked locally, see Known issues) | 2026-10-20 | `feat(phase-10)` |
 | 11 Reports, import/export, attachments | ⬜ | | |
 | 12 Hardening & release | ⬜ | | |
 
@@ -319,6 +319,45 @@ Status values: ⬜ not started · 🟡 in progress · ✅ done
   asset a switch (redeem + invest, groupId, `source.kind = switch`, internal `switchLeg` draft flag lets the legs skip
   the account). The fee is entered manually like an account transfer and leaves the source on top. Switches can't be
   edited; voiding one leg voids both. Invest/Redeem tabs remain for units, price and tax.
+- [10] Health score (docs/04 §13) parts: DTI = Σ monthly EMIs of active loans ÷ average monthly income of the last 3
+  complete months (same as Debts); without income DTI is unknown → 20 points with no loan payments, else 0. Savings rate for
+  the score = last 3 complete months. No health cover target → the health half (12.5) scores 0 with "Set a health cover
+  target"; no income → life target 0 → life half 0. Points shown to one decimal; the total is rounded. The two parts losing
+  the most points are the "reasons" (dashboard chip).
+- [10] Emergency fund: averages over the last 6 complete months come from the budget spend lines (expense + transfer fees +
+  loan interest, base currency); a category is essential if it or its parent is flagged. Current = emergency bucket (§20);
+  "available immediately" = earmarks, emergency accounts and **high**-liquidity emergency holdings; other holdings are
+  "locked". Coverage = current ÷ monthly basis (also when a fixed target overrides).
+- [10] "Use emergency fund" (accounts only; holdings link to Redeem): on an earmarked account the emergency earmark is lowered
+  by the amount first (stored fixed, audited `emergency_use`), then the expense/transfer posts — one DB transaction, so
+  opportunity and free cash are untouched (the dip guard alone would take opportunity first). On an emergency-flagged account
+  the withdrawal is confirmed. Description defaults to "Emergency fund use", tag `emergency-fund`.
+- [10] Insurance policies are in base currency (docs/03 has no currency field) and can be deleted (not ledger records). Life
+  cover = active `life` policies; health cover = active `health` policies (critical illness is listed but not counted).
+- [10] Forecast (docs/04 §17) covers bank, cash, wallet, broker cash and Opportunity Fund accounts, in base currency. Events:
+  recurring occurrences (income +to, expense/loan −from, transfer −from +to), SIPs (generated + projected) from their source,
+  EMIs not covered by a rule, card dues. Accounts have no default payment account, so a card due moves the **total** only.
+  Overdue unposted items land on today. Breach = first day below 0 ("zero") or below `minBalanceWarningMinor` ("minimum").
+- [10] Net worth projection: start = net worth today; contribution = Σ active SIPs at today's stepped amount (weekly × 52/12),
+  future step-ups ignored; new setting `projectionReturnBp` (default 800, Settings → Preferences) ± 2 points (low floored
+  at 0%); one point per year for 10 years. docs/03 settings updated.
+- [10] Insights thresholds where §22 is open: "fees above a threshold" = fees this quarter > 1% of amounts invested this
+  quarter; category spike compares this month so far with the average of the 3 complete months (top-level categories);
+  "missed SIP" = missed executions since the start of last month; savings drop = last complete month vs the one before.
+- [10] Daily job `/api/cron/daily` (Bearer `CRON_SECRET`, constant-time compare; `vercel.json` cron 00:30 UTC = 06:00
+  Colombo, Hobby allows one run a day). Per user, isolated steps: SIP generation + missed marking, FD job (`fd_calc`
+  valuation on the 1st and at maturity, once per date, then the cache refresh), month-end snapshot, notifications, email.
+  `notify.dailyHourLocal` is not used while the cron runs once a day.
+- [10] Notifications: `$setOnInsert` upserts on the unique `{userId, dedupeKey}` → re-running inserts nothing. Overdue SIPs
+  are announced only for the last 30 days (first run doesn't flood); goal off-track fires once per month on the first run of
+  the month; `over_earmarked` is deleted when the account is no longer over-earmarked so a recurrence raises it again.
+  Payout-FD interest dates (last 7 days) raise a `system` notification `fdint:<holdingId>:<date>` (docs/04 §9 reminder;
+  no dedicated type in docs/03). Snooze hides 1/3/7 days and returns it unread.
+- [10] Email digest: one email per run with unread, not-yet-emailed notifications, only when `notify.email` is on and the
+  mailer is Resend (i.e. `RESEND_API_KEY` set); `emailedAt` is set after sending.
+- [10] Dashboard: standing summary shows Debt load (DTI) and a health chip with the two reasons; Essentials mini card
+  replaces the placeholder; Attention shows the first 30-day forecast breach. Essentials averages use one query over 6
+  months (the Phase 4 1-second dashboard budget still holds).
 - [mm] e2e `allocation.spec` raced (`isVisible()` right after navigation); it now waits for the editor first.
 
 ## Deviations from docs
@@ -358,11 +397,17 @@ Status values: ⬜ not started · 🟡 in progress · ✅ done
   never committed.
 
 ## Known issues / tech debt
-- [9] Budget `rollover` is stored but not applied (owner-approved). Budget 80/100% and goal off-track notifications arrive with
-  the Phase 10 job (status badges and Attention now). Recurring reminders show as "Due soon" on /recurring until then.
+- [10] e2e could not run on the dev machine on 2026-10-20: Windows Application Control blocks
+  `@next/swc-win32-x64-msvc`, so `next build` (Turbopack) fails; the `--webpack` fallback builds but base-ui dialogs
+  can't be clicked in it (an inert overlay intercepts pointer events). The last commit before Phase 10 fails the same way, so
+  it is the environment. `tests/e2e/essentials.spec.ts` (essentials → policy → cron twice → read/snooze → forecast) is
+  written but not yet run; run `npm run test:e2e` once the SWC binary is allowed (Smart App Control / reinstall).
+- [10] Forecast and notifications use real "today"; the cron `todayKey` override only drives SIP generation, FD job and
+  snapshots (tests).
+- [9] Budget `rollover` is stored but not applied (owner-approved).
 - [8] Floating rates: change the rate with Edit loan (EMI recalculated over the months left); there is no rate history. Interest is a flat monthly r on the outstanding
   whatever the payment date (docs/04 §10), so early/late payments do not change it. Debt payments are voided, not edited.
-- [7] No in-app notification for a triggered rule until Phase 10 (banner + Attention only). One benchmark per fund; changing its
+- [7] One benchmark per fund; changing its
   name starts from that benchmark's own levels.
 - [mm] Imported transactions keep the business date only (time of day is dropped); same-day order is kept through `createdAt`.
 - [mm] A holding's value after import can differ from Money Manager's balance when Money Manager redeemed more than it held (the
@@ -378,7 +423,6 @@ Status values: ⬜ not started · 🟡 in progress · ✅ done
   run in parallel under 1 s on the in-memory DB); end-to-end page time against Atlas is not measured yet (Phase 12 perf check).
 - [4] The series loads every posted transaction and valuation of the user per request (single pass); fine for thousands, revisit
   with snapshots-as-checkpoints if a user has hundreds of thousands.
-- [mod-2] The `over_earmarked` notification is not raised yet (Phase 10 notification job); MOD-2 shows the badge only.
 - [mod-2] Emergency-flagged holdings in `getBuckets` use the cached value (FDs: today's §9 value); other holdings' values are as
   of their last valuation.
 - [0] Node v25.8.1 (non-LTS) on the dev machine; everything works so far. Consider Node 24 LTS if a tool breaks.
@@ -393,7 +437,7 @@ Status values: ⬜ not started · 🟡 in progress · ✅ done
 - [2] Debt payments will need the loan account found through their debt when recomputing (Phase 8): `recomputeAccount` currently looks only at `fromAccountId`/`toAccountId`.
 - [2] `recomputeAccount` loads all of an account's posted transactions (fine for thousands; Phase 12 perf check with 10k transactions may move it to an aggregation using the same effect rules).
 - [3] Back-filling caveat of the entry-order rule: a buy dated the same day as an existing valuation, entered later, adds on top of it (date it a day earlier or re-enter the valuation after it).
-- [3] FD values shown are live; the stored cache only refreshes on writes until the Phase 10 cron. Anything reading `holdings.currentValueMinor` directly for FDs (e.g. Phase 4 snapshots) must use the §9 formula instead.
+- [3] FD values shown are live; the stored cache refreshes on writes and in the daily job (Phase 10). Anything reading `holdings.currentValueMinor` directly for FDs (e.g. Phase 4 snapshots) must use the §9 formula instead.
 - [3] Portfolio queries replay nothing for list XIRR (they use transaction flows only) but load every holding transaction once; fine for thousands, revisit in the Phase 12 perf check.
 - [3] Fixed during this phase: the shared DatePicker could not navigate past the current year (react-day-picker dropdown captions default to it) — FD maturities were impossible to pick.
 - [2] Recharts tooltip can overlap the y-axis labels near the left edge; cosmetic.
