@@ -1,6 +1,8 @@
 /**
- * Adds ~6 months of realistic demo data (accounts, transactions, holdings, an FD, FX rates,
- * earmarks, month-end snapshots) to ONE existing user, found by email. Other users are untouched.
+ * Adds 18 months of realistic LKR demo data across every module (accounts, transactions, holdings and
+ * values, an FD, SIP periods, target allocation, Opportunity Fund, a lease, recurring rules, budgets,
+ * goals, insurance, earmarks, snapshots, a monthly review, notifications) to ONE existing user, found
+ * by email. Other users are untouched.
  *
  * Usage (PowerShell or any shell):
  *   npm run seed -- test@gmail.com
@@ -55,7 +57,8 @@ async function main() {
     const summary = await seedDemoData(ctx, utcToBusinessDate(new Date(), ctx.tz));
     console.log(
       `Done: ${summary.accounts} accounts, ${summary.transactions} transactions, ` +
-        `${summary.holdings} holdings, ${summary.months} month-end snapshots.`,
+        `${summary.holdings} holdings, ${summary.sipExecutions} SIP periods executed, ${summary.months} month-end snapshots, ` +
+        `${summary.notifications} notifications.`,
     );
   } finally {
     await disconnectDb();

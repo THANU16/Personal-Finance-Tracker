@@ -38,12 +38,10 @@ export function UserMenu({ name, email }: { name: string; email: string }) {
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger
-        render={
-          <Button variant="ghost" size="icon" className="rounded-full" aria-label="Account menu" />
-        }
-      >
-        <Avatar className="size-8">
+      <DropdownMenuTrigger render={<Button variant="ghost" size="icon" className="rounded-full" />}>
+        {/* Named by its content (not aria-label) so the visible initials never contradict the name. */}
+        <span className="sr-only">Account menu</span>
+        <Avatar className="size-8" aria-hidden>
           <AvatarFallback>{initials(name, email)}</AvatarFallback>
         </Avatar>
       </DropdownMenuTrigger>

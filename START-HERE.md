@@ -61,4 +61,4 @@ tell Claude about anything wrong before moving on.
 - Prefer phase-by-phase over one giant prompt; quality stays much higher.
 - If Claude asks a question about the docs, answer it and ask Claude to update the doc too.
 - To change a rule later: edit the doc first, then ask Claude to update code and tests to match.
-- `npm run seed` (after phase 12, or earlier if you ask for it) loads demo data.
+- `npm run seed -- <email>` loads 18 months of demo data. See `README.md` for setup, deploy and Docker.

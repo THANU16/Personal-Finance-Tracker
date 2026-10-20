@@ -14,7 +14,7 @@ async function register(page: Page) {
   await field(page, "Password", true).fill(PASSWORD);
   await field(page, "Confirm password").fill(PASSWORD);
   await page.getByRole("button", { name: "Create account" }).click();
-  await expect(page).toHaveURL(/\/dashboard$/);
+  await expect(page).toHaveURL(/\/onboarding$/);
 }
 
 async function addAccount(page: Page, name: string, opening: string) {

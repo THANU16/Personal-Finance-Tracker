@@ -1,3 +1,7 @@
+# WealthTrack self-host (README "Docker"). `docker compose up -d mongo` alone gives a local replica set
+# for development (MONGODB_URI=mongodb://localhost:27017/wealthtrack?replicaSet=rs0&directConnection=true).
+# `docker compose up -d --build` runs everything: MongoDB (replica set), the app, and the daily job.
+# Secrets come from .env.docker (copy .env.example; never commit it).
 services:
   mongo:
     image: mongo:7
@@ -16,5 +20,37 @@ services:
       retries: 30
       start_period: 10s
 
+  app:
+    build: .
+    container_name: wealthtrack-app
+    profiles: ["app"]
+    depends_on:
+      mongo:
+        condition: service_healthy
+    env_file: .env.docker
+    environment:
+      # directConnection: the replica set member is registered as localhost inside the mongo container.
+      MONGODB_URI: mongodb://mongo:27017/wealthtrack?directConnection=true
+      STORAGE_DRIVER: local
+      STORAGE_LOCAL_DIR: /app/.uploads
+    ports:
+      - "3000:3000"
+    volumes:
+      - uploads:/app/.uploads
+    restart: unless-stopped
+
+  cron:
+    # The daily job (docs/04 §19) at 00:30 UTC (06:00 Colombo), like vercel.json.
+    image: alpine:3.20
+    container_name: wealthtrack-cron
+    profiles: ["app"]
+    depends_on:
+      - app
+    env_file: .env.docker
+    command: >
+      sh -c "echo \"30 0 * * * wget -q -O- --header 'Authorization: Bearer $$CRON_SECRET' http://app:3000/api/cron/daily > /proc/1/fd/1 2>&1\" > /etc/crontabs/root && crond -f -l 8"
+    restart: unless-stopped
+
 volumes:
   mongo-data:
+  uploads:

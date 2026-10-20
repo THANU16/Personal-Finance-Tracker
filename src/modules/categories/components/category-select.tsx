@@ -35,6 +35,7 @@ export function CategorySelect({
   allowAll,
   "aria-invalid": ariaInvalid,
   "aria-describedby": ariaDescribedBy,
+  "aria-label": ariaLabel,
 }: {
   id?: string;
   tree: CategoryNode[];
@@ -46,6 +47,8 @@ export function CategorySelect({
   allowAll?: boolean;
   "aria-invalid"?: boolean;
   "aria-describedby"?: string;
+  /** When there is no visible <label for={id}> (filters). */
+  "aria-label"?: string;
 }) {
   const options = flattenCategories(tree, kind);
   const items = [
@@ -56,6 +59,7 @@ export function CategorySelect({
     <Select value={value} onValueChange={(v) => onChange(String(v ?? ""))} items={items}>
       <SelectTrigger
         id={id}
+        aria-label={ariaLabel}
         className="w-full"
         aria-invalid={ariaInvalid}
         aria-describedby={ariaDescribedBy}

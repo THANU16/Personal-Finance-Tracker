@@ -1,22 +1,42 @@
 import "server-only";
 import type { mongo } from "mongoose";
-import { addDays, addMonths, endOfMonth, format, parse } from "date-fns";
+import { addDays, addMonths, addYears, endOfMonth, format, parse } from "date-fns";
 import { createAccount } from "@/modules/accounts/service";
 import { AccountModel } from "@/modules/accounts/model";
+import { saveTarget } from "@/modules/allocation/service";
 import { AssetClassModel } from "@/modules/asset-classes/model";
+import { setBudget } from "@/modules/budgets/service";
 import { CategoryModel, type CategoryDoc, type CategoryKind } from "@/modules/categories/model";
+import { createCategoryRule } from "@/modules/categories/rules-service";
+import { createDebt, recordPayment } from "@/modules/debts/service";
+import { DebtModel, type DebtDoc } from "@/modules/debts/model";
 import { setEarmark } from "@/modules/earmarks/service";
+import { createPolicy } from "@/modules/essentials/service";
 import { saveFxRate } from "@/modules/fx/service";
+import { createGoal } from "@/modules/goals/service";
+import { HoldingModel, type HoldingDoc } from "@/modules/holdings/model";
 import { createHolding, recordValuation } from "@/modules/holdings/service";
+import {
+  addMarketLevel,
+  recordDeployment,
+  saveFundSettings,
+} from "@/modules/opportunity-fund/service";
+import { createRule } from "@/modules/recurring/service";
+import { ensureMonthlyReview } from "@/modules/reports/service";
+import { SipExecutionModel, type SipExecutionDoc } from "@/modules/sip/model";
+import { createPlan, executeSip, skipSip } from "@/modules/sip/service";
 import { rebuildHistory } from "@/modules/snapshots/service";
 import { createTransaction } from "@/modules/transactions/service";
 import type { TransactionInput } from "@/modules/transactions/schemas";
+import { runNotifications } from "@/server/cron/jobs/daily";
 import type { Ctx } from "@/server/ctx";
 import { toObjectId } from "@/server/db/ids";
 
-// Realistic demo data for ONE existing user (owner request: see the UI with data before Phase 12).
-// Everything goes through the services, so balances, holdings, earmarks and snapshots stay consistent.
+// Realistic demo data for ONE existing user (Phase 12: 18 months across every module). Everything
+// goes through the services, so balances, holdings, earmarks, SIP periods, loans and snapshots stay
+// consistent with the ledger. Deterministic (seeded random numbers).
 
+export const DEMO_MONTHS = 18;
 const KEY = "yyyy-MM-dd";
 const toDate = (k: string) => parse(k, KEY, new Date(2000, 0, 1));
 const key = (d: Date) => format(d, KEY);
@@ -50,13 +70,15 @@ export interface SeedSummary {
   transactions: number;
   holdings: number;
   months: number;
+  sipExecutions: number;
+  notifications: number;
 }
 
-/** Seeds ~6 months of history ending today (business dates in the user's timezone). */
+/** Seeds 18 months of history ending today (business dates in the user's timezone). */
 export async function seedDemoData(ctx: Ctx, todayKey: string): Promise<SeedSummary> {
   const userId = toObjectId(ctx.userId, "User");
   const today = toDate(todayKey);
-  const start = addMonths(new Date(today.getFullYear(), today.getMonth(), 1), -6);
+  const start = addMonths(new Date(today.getFullYear(), today.getMonth(), 1), -DEMO_MONTHS);
   const startKey = key(start);
   const rand = rng(20_261_018);
   const between = (min: number, max: number) => Math.round(min + rand() * (max - min));
@@ -71,11 +93,11 @@ export async function seedDemoData(ctx: Ctx, todayKey: string): Promise<SeedSumm
   const classId = async (name: string) =>
     String((await AssetClassModel.findOne({ userId, name }).lean())!._id);
 
-  // ---- FX: monthly USD → LKR rates from the start
-  for (let m = 0; m <= 6; m++) {
+  // ---- FX: monthly USD → base rates from the start
+  for (let m = 0; m <= DEMO_MONTHS; m++) {
     const d = key(addMonths(start, m));
     if (d > todayKey) break;
-    await saveFxRate(ctx, { date: d, base: "USD", quote: ctx.baseCurrency, rate: 298 + m * 0.85 });
+    await saveFxRate(ctx, { date: d, base: "USD", quote: ctx.baseCurrency, rate: 296 + m * 0.6 });
   }
 
   // ---- Accounts
@@ -86,7 +108,7 @@ export async function seedDemoData(ctx: Ctx, todayKey: string): Promise<SeedSumm
     type: "bank",
     currency: ctx.baseCurrency,
     institution: "Commercial Bank",
-    openingBalanceMinor: 450_000_00,
+    openingBalanceMinor: 1_200_000_00,
   });
   const current = await acct({
     name: "Sampath Current",
@@ -117,11 +139,11 @@ export async function seedDemoData(ctx: Ctx, todayKey: string): Promise<SeedSumm
     openingBalanceMinor: 600_000_00,
     countsTowardEmergencyFund: true,
   });
-  await acct({
+  const opp = await acct({
     name: "Opportunity fund",
     type: "opportunity_fund",
     currency: ctx.baseCurrency,
-    openingBalanceMinor: 300_000_00,
+    openingBalanceMinor: 400_000_00,
   });
   const usd = await acct({
     name: "USD wallet (Wise)",
@@ -137,6 +159,13 @@ export async function seedDemoData(ctx: Ctx, todayKey: string): Promise<SeedSumm
     institution: "CAL",
     openingBalanceMinor: 50_000_00,
   });
+  await acct({
+    name: "Loan to Kasun",
+    type: "receivable",
+    currency: ctx.baseCurrency,
+    counterparty: "Kasun",
+    openingBalanceMinor: 75_000_00,
+  });
 
   const post = async (input: TransactionInput) => {
     if (input.date > todayKey) return;
@@ -145,9 +174,12 @@ export async function seedDemoData(ctx: Ctx, todayKey: string): Promise<SeedSumm
   };
 
   // ---- Holdings (opening values on the start date)
+  const equity = await classId("Equity");
+  const fixedIncome = await classId("Fixed Income");
+  const goldClass = await classId("Gold");
   const fund = await createHolding(ctx, {
     name: "CAL Balanced Fund",
-    assetClassId: await classId("Equity"),
+    assetClassId: equity,
     instrumentType: "unit_trust",
     currency: ctx.baseCurrency,
     platform: "CAL",
@@ -159,7 +191,7 @@ export async function seedDemoData(ctx: Ctx, todayKey: string): Promise<SeedSumm
   const stock = await createHolding(ctx, {
     name: "John Keells Holdings",
     symbol: "JKH.N0000",
-    assetClassId: await classId("Equity"),
+    assetClassId: equity,
     instrumentType: "stock",
     currency: ctx.baseCurrency,
     platform: "CAL",
@@ -167,9 +199,20 @@ export async function seedDemoData(ctx: Ctx, todayKey: string): Promise<SeedSumm
     investedMinor: 180_000_00,
     currentValueMinor: 171_500_00,
   });
+  const moneyMarket = await createHolding(ctx, {
+    name: "CAL Money Market Fund",
+    assetClassId: fixedIncome,
+    instrumentType: "money_market",
+    currency: ctx.baseCurrency,
+    platform: "CAL",
+    liquidity: "high",
+    openingDate: startKey,
+    investedMinor: 200_000_00,
+    currentValueMinor: 200_000_00,
+  });
   const gold = await createHolding(ctx, {
     name: "Gold sovereigns",
-    assetClassId: await classId("Gold"),
+    assetClassId: goldClass,
     instrumentType: "gold",
     currency: ctx.baseCurrency,
     liquidity: "low",
@@ -180,7 +223,7 @@ export async function seedDemoData(ctx: Ctx, todayKey: string): Promise<SeedSumm
   const etf = await createHolding(ctx, {
     name: "Vanguard S&P 500 ETF",
     symbol: "VOO",
-    assetClassId: await classId("Equity"),
+    assetClassId: equity,
     instrumentType: "etf",
     currency: "USD",
     platform: "Interactive Brokers",
@@ -191,36 +234,133 @@ export async function seedDemoData(ctx: Ctx, todayKey: string): Promise<SeedSumm
   });
   await createHolding(ctx, {
     name: "NSB Fixed Deposit",
-    assetClassId: await classId("Fixed Income"),
+    assetClassId: fixedIncome,
     instrumentType: "fd",
     currency: ctx.baseCurrency,
     platform: "NSB",
     fd: {
       principalMinor: 1_000_000_00,
       rateBp: 1_100,
-      startDate: key(addDays(start, 14)),
-      maturityDate: key(addMonths(addDays(start, 14), 12)),
+      startDate: key(addMonths(start, 8)),
+      maturityDate: key(addMonths(start, 20)),
       compounding: "monthly",
       payout: "at_maturity",
     },
   });
 
-  // ---- Six months of everyday money
+  // ---- Target allocation and a monthly SIP that follows it
+  await saveTarget(ctx, {
+    allocation: [
+      {
+        assetClassId: equity,
+        percentBp: 6_000,
+        assets: [
+          { holdingId: fund.id, percentBp: 7_000 },
+          { holdingId: stock.id, percentBp: 3_000 },
+        ],
+      },
+      {
+        assetClassId: fixedIncome,
+        percentBp: 2_500,
+        assets: [{ holdingId: moneyMarket.id, percentBp: 10_000 }],
+      },
+      {
+        assetClassId: goldClass,
+        percentBp: 1_500,
+        assets: [{ holdingId: gold.id, percentBp: 10_000 }],
+      },
+    ],
+    thresholdBp: 500,
+    note: "Starting plan",
+  });
+  const sipStart = key(addDays(start, 9));
+  const { plan } = await createPlan(ctx, {
+    name: "Core monthly SIP",
+    amountMinor: 50_000_00,
+    frequency: "monthly",
+    dayOfMonth: 10,
+    sourceAccountId: bank.id,
+    startDate: sipStart,
+    stepUp: { percentBp: 1_000, everyMonths: 12 },
+    missedPolicy: "skip",
+    graceDays: 7,
+    allocationSource: "target",
+  });
+  const executions = (
+    await SipExecutionModel.find({ userId, planId: toObjectId(plan.id, "Plan") })
+      .sort({ dueDate: 1 })
+      .lean<SipExecutionDoc[]>()
+  ).filter((e) => key(e.dueDate) < todayKey);
+  const skipIndex = 5;
+  const missIndex = 11;
+  let sipDone = 0;
+
+  // ---- Opportunity Fund: ASPI with a mid-period dip
+  await saveFundSettings(ctx, {
+    benchmarkName: "ASPI",
+    targetSizeMinor: 600_000_00,
+    rules: [
+      { drawdownBp: 1_000, deployPercentBp: 2_500 },
+      { drawdownBp: 2_000, deployPercentBp: 5_000 },
+    ],
+    allocationSource: "target",
+    allocation: null,
+    defaultSourceAccountId: opp.id,
+  });
+  const aspi = (m: number) => {
+    // Rises, dips ~13% around month 10, then recovers.
+    const base = 11_000 + m * 180;
+    return m >= 9 && m <= 11 ? base * (m === 10 ? 0.87 : 0.93) : base;
+  };
+
+  // ---- A car lease (tracked from its 7th instalment), paid by a recurring rule's account
+  const { id: debtId } = await createDebt(ctx, {
+    name: "Toyota Aqua lease",
+    kind: "leasing",
+    lender: "LB Finance",
+    principalMinor: 2_500_000_00,
+    annualRateBp: 1_400,
+    tenureMonths: 60,
+    startDate: key(addMonths(start, -6)),
+    paymentDay: 15,
+    paymentAccountId: bank.id,
+    paidBeforeTracking: 6,
+  });
+  const debt = (await DebtModel.findOne({
+    userId,
+    _id: toObjectId(debtId, "Debt"),
+  }).lean<DebtDoc>())!;
+
+  // ---- Monthly everyday money, investing and valuations
   let cardSpendLastMonth = 0;
-  for (let m = 0; m <= 6; m++) {
+  for (let m = 0; m <= DEMO_MONTHS; m++) {
     const monthStart = addMonths(start, m);
     const day = (d: number) => key(new Date(monthStart.getFullYear(), monthStart.getMonth(), d));
     let cardSpend = 0;
+    const onCard = async (input: Omit<TransactionInput & { type: "expense" }, "fromAccountId">) => {
+      await post({ ...input, fromAccountId: card.id } as TransactionInput);
+      if (input.date <= todayKey) cardSpend += input.amountMinor;
+    };
 
     await post({
       type: "income",
       date: day(25),
-      amountMinor: 350_000_00,
+      amountMinor: m >= 12 ? 450_000_00 : 420_000_00,
       toAccountId: bank.id,
       categoryId: cat("Salary", "income"),
       description: "Salary",
       counterparty: "Employer",
     });
+    if (m % 4 === 2) {
+      await post({
+        type: "income",
+        date: day(19),
+        amountMinor: between(40_000_00, 90_000_00),
+        toAccountId: current.id,
+        categoryId: cat("Business", "income"),
+        description: "Freelance design work",
+      });
+    }
     await post({
       type: "expense",
       date: day(3),
@@ -237,6 +377,7 @@ export async function seedDemoData(ctx: Ctx, todayKey: string): Promise<SeedSumm
       fromAccountId: current.id,
       categoryId: cat("Utilities", "expense"),
       description: "Electricity & water",
+      counterparty: "CEB",
     });
     await post({
       type: "expense",
@@ -249,29 +390,36 @@ export async function seedDemoData(ctx: Ctx, todayKey: string): Promise<SeedSumm
     });
     for (const d of [2, 9, 16, 23]) {
       const amount = between(6_000_00, 14_000_00);
-      const onCard = d % 2 === 0;
-      await post({
-        type: "expense",
+      const input = {
+        type: "expense" as const,
         date: day(d),
         amountMinor: amount,
-        fromAccountId: onCard ? card.id : current.id,
         categoryId: cat("Groceries", "expense"),
         description: "Weekly groceries",
         counterparty: "Keells",
-      });
-      if (onCard && day(d) <= todayKey) cardSpend += amount;
+      };
+      if (d % 2 === 0) await onCard(input);
+      else await post({ ...input, fromAccountId: current.id });
     }
     for (const d of [6, 20]) {
-      const amount = between(3_000_00, 9_000_00);
-      await post({
+      await onCard({
         type: "expense",
         date: day(d),
-        amountMinor: amount,
-        fromAccountId: card.id,
+        amountMinor: between(3_000_00, 9_000_00),
         categoryId: cat("Restaurants", "expense"),
         description: "Dinner out",
       });
-      if (day(d) <= todayKey) cardSpend += amount;
+    }
+    // Small cash spending every few days
+    for (const d of [1, 4, 7, 10, 13, 17, 21, 24, 28]) {
+      await post({
+        type: "expense",
+        date: day(d),
+        amountMinor: between(450_00, 1_800_00),
+        fromAccountId: cash.id,
+        categoryId: cat(d % 2 ? "Restaurants" : "Groceries", "expense"),
+        description: d % 2 ? "Lunch" : "Bakery & vegetables",
+      });
     }
     await post({
       type: "expense",
@@ -305,6 +453,7 @@ export async function seedDemoData(ctx: Ctx, todayKey: string): Promise<SeedSumm
           },
         ],
         description: "Odel shopping",
+        tags: ["clothes"],
       });
       if (day(15) <= todayKey) cardSpend += amount;
     }
@@ -326,8 +475,19 @@ export async function seedDemoData(ctx: Ctx, todayKey: string): Promise<SeedSumm
       categoryId: cat("Entertainment", "expense"),
       description: "Movies & streaming",
     });
+    if (m === 7) {
+      await post({
+        type: "expense",
+        date: day(9),
+        amountMinor: 180_000_00,
+        fromAccountId: bank.id,
+        categoryId: cat("Entertainment", "expense"),
+        description: "Family trip to Ella",
+        tags: ["holiday"],
+      });
+    }
 
-    // Pay last month's card bill and top up the current account (a transfer fee once)
+    // Pay last month's card bill and fund the spending accounts
     if (cardSpendLastMonth > 0) {
       await post({
         type: "transfer",
@@ -344,28 +504,61 @@ export async function seedDemoData(ctx: Ctx, todayKey: string): Promise<SeedSumm
       amountMinor: 60_000_00,
       fromAccountId: bank.id,
       toAccountId: current.id,
-      feeMinor: m === 2 ? 50_00 : 0,
+      feeMinor: m % 6 === 2 ? 50_00 : 0,
       description: "Monthly spending money",
     });
     await post({
       type: "transfer",
       date: day(26),
-      amountMinor: 20_000_00,
+      amountMinor: 30_000_00,
       fromAccountId: bank.id,
       toAccountId: cash.id,
       description: "ATM withdrawal",
     });
+    if (m % 3 === 0) {
+      await post({
+        type: "transfer",
+        date: day(27),
+        amountMinor: 30_000_00,
+        fromAccountId: bank.id,
+        toAccountId: opp.id,
+        description: "Top up the opportunity fund",
+      });
+    }
 
-    // Investing: a monthly unit trust buy, quarterly dividends, month-end valuations
-    await post({
-      type: "invest",
-      date: day(10),
-      amountMinor: 25_000_00,
-      feeMinor: 0,
-      fromAccountId: bank.id,
-      holdingId: fund.id,
-      description: "Monthly unit trust",
-    });
+    // Lease instalment
+    if (day(15) <= todayKey) {
+      await recordPayment(ctx, debtId, {
+        date: day(15),
+        amountMinor: debt.emiMinor,
+        fromAccountId: bank.id,
+      });
+      txns += 1;
+    }
+
+    // SIP period of this month: executed on time, except one skipped and one left missed
+    const e = executions[m];
+    if (e) {
+      if (m === skipIndex) {
+        await skipSip(ctx, String(e._id), { reason: "School fees this month" });
+      } else if (m !== missIndex) {
+        const fresh = (await SipExecutionModel.findOne({
+          userId,
+          _id: e._id,
+        }).lean<SipExecutionDoc>())!;
+        await executeSip(ctx, String(e._id), {
+          executedOn: key(fresh.dueDate) > todayKey ? todayKey : format(fresh.dueDate, KEY),
+          lines: fresh.lines.map((l) => ({
+            holdingId: l.holdingId ? String(l.holdingId) : null,
+            actualMinor: l.plannedMinor,
+            feeMinor: 0,
+          })),
+        });
+        sipDone += 1;
+      }
+    }
+
+    // Dividends, ASPI level, opportunity deployment during the dip
     if (m % 3 === 2) {
       await post({
         type: "investment_income",
@@ -379,25 +572,52 @@ export async function seedDemoData(ctx: Ctx, todayKey: string): Promise<SeedSumm
         description: "JKH dividend",
       });
     }
+    if (m % 6 === 5) {
+      await post({
+        type: "investment_income",
+        date: day(28),
+        amountMinor: 6_200_00,
+        taxMinor: 310_00,
+        toAccountId: bank.id,
+        holdingId: moneyMarket.id,
+        incomeKind: "interest",
+        reinvest: true,
+        description: "Money market interest",
+      });
+    }
+    if (day(28) <= todayKey) {
+      await addMarketLevel(ctx, { date: day(28), level: Math.round(aspi(m)) });
+    }
+    if (m === 10 && day(29) <= todayKey) {
+      await recordDeployment(ctx, {
+        date: day(29),
+        sourceAccountId: opp.id,
+        lines: [{ assetClassId: equity, holdingId: fund.id, amountMinor: 120_000_00, feeMinor: 0 }],
+        notes: "ASPI down 13% from the high",
+      });
+      txns += 1;
+    }
+
+    // Month-end values (market holdings); big changes are confirmed (demo data)
     const monthEnd = key(endOfMonth(monthStart));
     if (monthEnd <= todayKey) {
-      const growth = 1 + (rand() - 0.35) * 0.04;
-      await recordValuation(ctx, fund.id, {
-        date: monthEnd,
-        valueMinor: Math.round((412_000_00 + 25_000_00 * (m + 1)) * growth ** (m + 1)),
-      });
-      await recordValuation(ctx, stock.id, {
-        date: monthEnd,
-        valueMinor: Math.round(171_500_00 * (1 + (rand() - 0.4) * 0.12)),
-      });
-      await recordValuation(ctx, gold.id, {
-        date: monthEnd,
-        valueMinor: Math.round(262_000_00 * (1 + 0.012 * (m + 1))),
-      });
-      await recordValuation(ctx, etf.id, {
-        date: monthEnd,
-        valueMinor: Math.round(2_080_00 * (1 + 0.015 * (m + 1))),
-      });
+      const value = async (id: string, factor: number) => {
+        const h = (await HoldingModel.findOne({
+          userId,
+          _id: toObjectId(id, "Holding"),
+        }).lean<HoldingDoc>())!;
+        await recordValuation(ctx, id, {
+          date: monthEnd,
+          valueMinor: Math.max(1, Math.round(h.investedMinor * factor)),
+          confirmBigChange: true,
+        });
+      };
+      const drift = 1 + 0.006 * (m + 1);
+      await value(fund.id, drift * (1 + (rand() - 0.4) * 0.05) * (m >= 9 && m <= 11 ? 0.92 : 1));
+      await value(stock.id, (1 + (rand() - 0.45) * 0.14) * (m >= 9 && m <= 11 ? 0.88 : 1.02));
+      await value(moneyMarket.id, 1 + 0.008 * (m + 1));
+      await value(gold.id, 1.04 + 0.012 * (m + 1));
+      await value(etf.id, 1.04 + 0.014 * (m + 1));
     }
     cardSpendLastMonth = cardSpend;
   }
@@ -412,6 +632,125 @@ export async function seedDemoData(ctx: Ctx, todayKey: string): Promise<SeedSumm
     counterparty: "Udemy",
   });
 
+  // ---- Planning: recurring rules (from next occurrences on), budgets, goals, insurance, rules
+  const nextMonth = addMonths(new Date(today.getFullYear(), today.getMonth(), 1), 1);
+  const nm = (d: number) => key(new Date(nextMonth.getFullYear(), nextMonth.getMonth(), d));
+  await createRule(ctx, {
+    name: "Salary",
+    kind: "income",
+    amountMinor: 450_000_00,
+    toAccountId: bank.id,
+    categoryId: cat("Salary", "income"),
+    frequency: "monthly",
+    dayOfMonth: 25,
+    startDate:
+      key(new Date(today.getFullYear(), today.getMonth(), 25)) > todayKey
+        ? key(new Date(today.getFullYear(), today.getMonth(), 25))
+        : nm(25),
+  });
+  await createRule(ctx, {
+    name: "House rent",
+    kind: "expense",
+    amountMinor: 85_000_00,
+    fromAccountId: bank.id,
+    categoryId: cat("Rent", "expense"),
+    frequency: "monthly",
+    dayOfMonth: 3,
+    startDate: nm(3),
+    reminderDaysBefore: 3,
+  });
+  await createRule(ctx, {
+    name: "Netflix",
+    kind: "expense",
+    amountMinor: 2_990_00,
+    fromAccountId: card.id,
+    categoryId: cat("Entertainment", "expense"),
+    frequency: "monthly",
+    dayOfMonth: 7,
+    startDate: nm(7),
+  });
+  await createRule(ctx, {
+    name: "Lease instalment",
+    kind: "debt_payment",
+    amountMinor: debt.emiMinor,
+    fromAccountId: bank.id,
+    debtId,
+    frequency: "monthly",
+    dayOfMonth: 15,
+    startDate:
+      key(new Date(today.getFullYear(), today.getMonth(), 15)) > todayKey
+        ? key(new Date(today.getFullYear(), today.getMonth(), 15))
+        : nm(15),
+  });
+  for (let back = 0; back <= 2; back++) {
+    const month = format(addMonths(today, -back), "yyyy-MM");
+    await setBudget(ctx, {
+      month,
+      categoryId: cat("Groceries", "expense"),
+      amountMinor: 55_000_00,
+    });
+    await setBudget(ctx, {
+      month,
+      categoryId: cat("Restaurants", "expense"),
+      amountMinor: 18_000_00,
+    });
+    await setBudget(ctx, {
+      month,
+      categoryId: cat("Utilities", "expense"),
+      amountMinor: 20_000_00,
+    });
+  }
+  await createGoal(ctx, {
+    name: "House down payment",
+    targetMinor: 5_000_000_00,
+    targetDate: key(addYears(today, 3)),
+    priority: 1,
+    expectedReturnBp: 800,
+    links: [
+      { kind: "account", refId: bank.id, shareBp: 3_000 },
+      { kind: "holding", refId: fund.id, shareBp: 5_000 },
+    ],
+  });
+  await createGoal(ctx, {
+    name: "Japan trip",
+    targetMinor: 900_000_00,
+    targetDate: key(addMonths(today, 10)),
+    priority: 3,
+    links: [{ kind: "holding", refId: moneyMarket.id, shareBp: 10_000 }],
+  });
+  await createPolicy(ctx, {
+    type: "life",
+    provider: "AIA",
+    policyNumberLast4: "4821",
+    coverMinor: 15_000_000_00,
+    premiumMinor: 12_500_00,
+    premiumFrequency: "monthly",
+    startDate: startKey,
+    renewalDate: key(addDays(today, 21)),
+    nominee: "Spouse",
+  });
+  await createPolicy(ctx, {
+    type: "health",
+    provider: "Ceylinco",
+    coverMinor: 1_500_000_00,
+    premiumMinor: 48_000_00,
+    premiumFrequency: "yearly",
+    startDate: startKey,
+    renewalDate: key(addMonths(today, 5)),
+  });
+  for (const [pattern, name] of [
+    ["keells", "Groceries"],
+    ["pickme", "Taxi & ride"],
+    ["ceb", "Utilities"],
+  ] as const) {
+    await createCategoryRule(ctx, {
+      matchField: "description",
+      operator: "contains",
+      pattern,
+      categoryId: cat(name, "expense"),
+    });
+  }
+
   // ---- Earmarks last (the dip guard would otherwise ask about the spending above)
   await setEarmark(ctx, {
     accountId: bank.id,
@@ -423,14 +762,18 @@ export async function seedDemoData(ctx: Ctx, todayKey: string): Promise<SeedSumm
     accountId: bank.id,
     bucket: "opportunity",
     mode: "percent",
-    percentBp: 2_000,
+    percentBp: 1_000,
   });
 
   const { months } = await rebuildHistory(ctx);
+  await ensureMonthlyReview(ctx, todayKey);
+  const notifications = await runNotifications(ctx, todayKey);
   return {
     accounts: await accountCount(ctx),
     transactions: txns,
-    holdings: 5,
+    holdings: 6,
     months,
+    sipExecutions: sipDone,
+    notifications,
   };
 }

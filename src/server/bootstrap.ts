@@ -1,4 +1,6 @@
 import "server-only";
+import { AccountModel } from "@/modules/accounts/model";
+import { SettingsModel } from "@/modules/settings/model";
 import { migrateAssetClassColors, seedAssetClasses } from "@/modules/asset-classes/service";
 import { mergeDuplicateCategories } from "@/modules/categories/dedupe";
 import { seedCategories } from "@/modules/categories/service";
@@ -8,6 +10,17 @@ import { withTransaction } from "@/server/db/transaction";
 import { HoldingModel } from "@/modules/holdings/model";
 import { recomputeHolding } from "@/server/ledger/recompute";
 import { Types, type ClientSession } from "mongoose";
+
+/** Existing users with data skip the new onboarding flow. */
+async function markOnboardedIfActive(userId: string, session: ClientSession): Promise<void> {
+  const uid = new Types.ObjectId(userId);
+  if (!(await AccountModel.exists({ userId: uid }).session(session))) return;
+  await SettingsModel.updateOne(
+    { userId: uid, onboardingCompletedAt: null },
+    { $set: { onboardingCompletedAt: new Date() } },
+    { session },
+  );
+}
 
 async function recomputeUserHoldings(
   userId: string,
@@ -22,7 +35,7 @@ async function recomputeUserHoldings(
 }
 
 /** Bump when a phase adds new per-user seed data. */
-export const BOOTSTRAP_VERSION = 5;
+export const BOOTSTRAP_VERSION = 6;
 
 /**
  * First-login setup: settings with defaults, then (once, atomically) system + starter categories
@@ -47,6 +60,8 @@ export async function ensureUserSetup(userId: string): Promise<SettingsDTO> {
     // v5: redemptions moved to the cost-recovery method; replay every holding so stored
     // redemption figures (cost removed, realised gain) and caches follow it. Idempotent.
     if (from >= 1 && from < 5) await recomputeUserHoldings(userId, settings.timezone, session);
+    // v6 (Phase 12): onboarding arrived; users who already have accounts never see it.
+    if (from >= 1 && from < 6) await markOnboardedIfActive(userId, session);
   });
   return { ...settings, bootstrapVersion: BOOTSTRAP_VERSION };
 }

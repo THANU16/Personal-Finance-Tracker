@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import { utcToBusinessDate } from "@/domain/dates";
 import type { HoldingEvent } from "@/domain/holdings";
 import type { SeriesInput, SeriesTxn } from "@/domain/series";
@@ -109,3 +110,10 @@ export async function loadSeriesInput(ctx: Ctx): Promise<LoadedSeriesInput> {
     accountDocs,
   };
 }
+
+/**
+ * Request-scoped ledger load (React cache, keyed by the ctx object): every read path of one render
+ * (dashboard widgets, allocation drift, forecast projection) shares a single load. Outside a server
+ * render (cron, scripts, tests) it does not memoise. Write paths use loadSeriesInput directly.
+ */
+export const requestSeriesInput = cache(loadSeriesInput);

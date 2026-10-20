@@ -28,7 +28,7 @@ import { isStale } from "@/domain/holdings";
 import { computeNetWorthSeries, type NetWorthPoint } from "@/domain/series";
 import { AssetClassModel, type AssetClassDoc } from "@/modules/asset-classes/model";
 import { CategoryModel, type CategoryDoc } from "@/modules/categories/model";
-import { loadSeriesInput } from "@/modules/dashboard/series-input";
+import { requestSeriesInput } from "@/modules/dashboard/series-input";
 import { getBucketsInBase } from "@/modules/earmarks/service";
 import { loadToBase } from "@/modules/fx/service";
 import { getSettings } from "@/modules/settings/service";
@@ -42,7 +42,7 @@ import { fdTerms } from "@/server/ledger/holding-events";
 // docs/04 §2, §4, §21, §22 — ready-to-plot, gap-filled, base-currency series. No maths in components.
 
 /** One request reads the ledger once, however many widgets ask (React cache per request). */
-const seriesInput = cache(loadSeriesInput);
+const seriesInput = requestSeriesInput;
 const toBaseOf = cache(loadToBase);
 
 export const todayOf = (ctx: Ctx) => utcToBusinessDate(new Date(), ctx.tz);

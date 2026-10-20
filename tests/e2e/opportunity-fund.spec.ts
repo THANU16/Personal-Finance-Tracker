@@ -13,7 +13,7 @@ async function register(page: Page) {
   await field(page, "Password", true).fill(PASSWORD);
   await field(page, "Confirm password").fill(PASSWORD);
   await page.getByRole("button", { name: "Create account" }).click();
-  await expect(page).toHaveURL(/\/dashboard$/);
+  await expect(page).toHaveURL(/\/onboarding$/);
 }
 
 test("earmark → levels → banner → deploy 50,000 → earmark 150,000 → undo", async ({ page }) => {

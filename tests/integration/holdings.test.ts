@@ -1,3 +1,4 @@
+import { BOOTSTRAP_VERSION } from "@/server/bootstrap";
 import { Types } from "mongoose";
 import { describe, expect, it } from "vitest";
 import { utcToBusinessDate } from "@/domain/dates";
@@ -255,7 +256,9 @@ describe("cost recovery (owner decision, docs/04 §3)", () => {
       investedMinor: 26_000_000,
       realizedGainMinor: 0,
     });
-    expect((await SettingsModel.findOne({ userId }).lean())?.bootstrapVersion).toBe(5);
+    expect((await SettingsModel.findOne({ userId }).lean())?.bootstrapVersion).toBe(
+      BOOTSTRAP_VERSION,
+    );
   });
 });
 

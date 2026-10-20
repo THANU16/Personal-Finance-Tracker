@@ -191,8 +191,9 @@ export function TransactionFilters({ accounts, categories, tags, baseCurrency }:
         ) : null}
 
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <div aria-label="Category">
+          <div>
             <CategorySelect
+              aria-label="Category"
               tree={categories}
               kind={get("types") === "income" ? "income" : "expense"}
               value={get("category")}

@@ -32,7 +32,7 @@ export function VerifyEmailPanel() {
         <p role="status" className="text-sm">
           Your email is confirmed.
         </p>
-        <Button render={<Link href="/dashboard" />}>Continue to WealthTrack</Button>
+        <Button render={<Link href="/onboarding" />}>Continue to WealthTrack</Button>
       </div>
     );
   }

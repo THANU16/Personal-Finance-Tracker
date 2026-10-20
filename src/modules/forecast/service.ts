@@ -20,7 +20,7 @@ import { AccountModel, type AccountDoc } from "@/modules/accounts/model";
 import { getBudgetMonth, spendLines } from "@/modules/budgets/service";
 import { CategoryModel, type CategoryDoc } from "@/modules/categories/model";
 import { completeMonthFlows, getAttention, getUpcoming } from "@/modules/dashboard/queries";
-import { loadSeriesInput } from "@/modules/dashboard/series-input";
+import { requestSeriesInput } from "@/modules/dashboard/series-input";
 import { debtIdsWithRules, recurringUpcoming } from "@/modules/recurring/service";
 import { debtUpcoming } from "@/modules/debts/service";
 import { getBucketsInBase } from "@/modules/earmarks/service";
@@ -160,7 +160,7 @@ export async function getProjection(ctx: Ctx): Promise<ProjectionDTO> {
   await connectDb();
   const today = todayOf(ctx);
   const [input, plans, toBase, settings] = await Promise.all([
-    loadSeriesInput(ctx),
+    requestSeriesInput(ctx),
     SipPlanModel.find({ userId: uid(ctx), status: "active" }).lean<SipPlanDoc[]>(),
     loadToBase(ctx),
     getSettings(ctx),

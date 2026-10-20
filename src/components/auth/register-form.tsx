@@ -42,7 +42,7 @@ export function RegisterForm() {
       return;
     }
     toast.success("Welcome to WealthTrack");
-    router.replace("/dashboard");
+    router.replace("/onboarding");
     router.refresh();
   }
 

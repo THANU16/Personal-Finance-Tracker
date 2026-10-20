@@ -13,7 +13,7 @@ import { computeNetWorthAsOf } from "@/domain/series";
 import type { AllocationTree } from "@/domain/allocation";
 import { getTarget, getTreeOptions, listTargetHistory } from "@/modules/allocation/service";
 import type { TargetDTO, TreeOptions } from "@/modules/allocation/schemas";
-import { loadSeriesInput } from "@/modules/dashboard/series-input";
+import { requestSeriesInput } from "@/modules/dashboard/series-input";
 import {
   SipExecutionModel,
   SipPlanModel,
@@ -49,7 +49,7 @@ interface Loaded {
 async function load(ctx: Ctx): Promise<Loaded> {
   const today = utcToBusinessDate(new Date(), ctx.tz);
   const [input, target, options] = await Promise.all([
-    loadSeriesInput(ctx),
+    requestSeriesInput(ctx),
     getTarget(ctx),
     getTreeOptions(ctx),
   ]);

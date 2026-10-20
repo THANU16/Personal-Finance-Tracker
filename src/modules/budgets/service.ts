@@ -15,7 +15,7 @@ import { businessDateToUtc, utcToBusinessDate } from "@/domain/dates";
 import { BudgetModel, type BudgetDoc } from "@/modules/budgets/model";
 import { CategoryModel, type CategoryDoc } from "@/modules/categories/model";
 import { loadToBase } from "@/modules/fx/service";
-import { TransactionModel, type TransactionDoc } from "@/modules/transactions/model";
+import { TransactionModel } from "@/modules/transactions/model";
 import { parseInput } from "@/server/action-result";
 import type { Ctx } from "@/server/ctx";
 import { connectDb } from "@/server/db/connect";
@@ -93,39 +93,77 @@ export async function spendLinesBetween(
 ): Promise<{ lines: SpendLine[]; fxMissing: number }> {
   const from = businessDateToUtc(`${fromMonth}-01`, ctx.tz);
   const to = businessDateToUtc(`${toMonth}-01`, ctx.tz);
-  const [txns, toBase] = await Promise.all([
-    TransactionModel.find({
-      userId: uid(ctx),
-      status: "posted",
-      date: { $gte: from, $lt: to },
-      $or: [
-        { type: "expense" },
-        { type: "transfer", feeMinor: { $gt: 0 } },
-        { type: "debt_payment", interestMinor: { $gt: 0 } },
-      ],
-    }).lean<TransactionDoc[]>(),
+  // Phase 12 perf: lines summed per (business day, currency, category) in MongoDB — the day key is
+  // computed there in the user's timezone, so only a few hundred rows reach the FX conversion.
+  const [groups, toBase] = await Promise.all([
+    TransactionModel.aggregate<{ _id: { day: string; currency: string; c: unknown }; a: number }>([
+      {
+        $match: {
+          userId: uid(ctx),
+          status: "posted",
+          date: { $gte: from, $lt: to },
+          $or: [
+            { type: "expense" },
+            { type: "transfer", feeMinor: { $gt: 0 } },
+            { type: "debt_payment", interestMinor: { $gt: 0 } },
+          ],
+        },
+      },
+      {
+        $project: {
+          currency: 1,
+          day: { $dateToString: { date: "$date", format: "%Y-%m-%d", timezone: ctx.tz } },
+          lines: {
+            $switch: {
+              branches: [
+                {
+                  case: {
+                    $and: [
+                      { $eq: ["$type", "expense"] },
+                      { $gt: [{ $size: { $ifNull: ["$splits", []] } }, 0] },
+                    ],
+                  },
+                  then: {
+                    $map: {
+                      input: "$splits",
+                      as: "s",
+                      in: { c: "$$s.categoryId", a: "$$s.amountMinor" },
+                    },
+                  },
+                },
+                {
+                  case: { $eq: ["$type", "expense"] },
+                  then: [{ c: "$categoryId", a: "$amountMinor" }],
+                },
+                {
+                  case: { $eq: ["$type", "transfer"] },
+                  then: [{ c: "$categoryId", a: "$feeMinor" }],
+                },
+              ],
+              default: [{ c: "$categoryId", a: { $ifNull: ["$interestMinor", 0] } }],
+            },
+          },
+        },
+      },
+      { $unwind: "$lines" },
+      {
+        $group: {
+          _id: { day: "$day", currency: "$currency", c: "$lines.c" },
+          a: { $sum: "$lines.a" },
+        },
+      },
+    ]),
     loadToBase(ctx),
   ]);
   const lines: SpendLine[] = [];
   let fxMissing = 0;
-  for (const t of txns) {
-    const day = utcToBusinessDate(t.date, ctx.tz);
-    const raw: SpendLine[] =
-      t.type === "expense"
-        ? t.splits.length
-          ? t.splits.map((s) => ({ categoryId: String(s.categoryId), amountMinor: s.amountMinor }))
-          : [{ categoryId: String(t.categoryId), amountMinor: t.amountMinor }]
-        : t.type === "transfer"
-          ? [{ categoryId: String(t.categoryId), amountMinor: t.feeMinor }]
-          : [{ categoryId: String(t.categoryId), amountMinor: t.interestMinor ?? 0 }];
-    for (const l of raw) {
-      const v = toBase(l.amountMinor, t.currency, day);
-      if (v === null) {
-        fxMissing += 1;
-        continue;
-      }
-      lines.push({ categoryId: l.categoryId, amountMinor: v });
+  for (const g of groups) {
+    const v = toBase(g.a, g._id.currency, g._id.day);
+    if (v === null) {
+      fxMissing += 1;
+      continue;
     }
+    lines.push({ categoryId: String(g._id.c), amountMinor: v });
   }
   return { lines, fxMissing };
 }

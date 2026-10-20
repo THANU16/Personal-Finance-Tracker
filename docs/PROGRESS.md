@@ -18,7 +18,7 @@
 | 9 Recurring, budgets, goals | ✅ done | 2026-10-18 | `feat(phase-9)` |
 | 10 Essentials, notifications, cron, forecast | ✅ done | 2026-10-20 | `feat(phase-10)` |
 | 11 Reports, import/export, attachments | ✅ done | 2026-10-20 | `feat(phase-11)` |
-| 12 Hardening & release | ⬜ | | |
+| 12 Hardening & release | ✅ done (Docker image not built on the dev machine — no Docker) | 2026-10-21 | `feat(phase-12)` |
 
 Status values: ⬜ not started · 🟡 in progress · ✅ done
 
@@ -387,6 +387,43 @@ Status values: ⬜ not started · 🟡 in progress · ✅ done
 - [11] Monthly review: the daily job writes last month's review on the first run of a month (idempotent, unique per month;
   skipped without ledger data). Its 3 insights are the top insights at generation time.
 - [11] Transactions → Export CSV keeps every list filter (all pages, ≤ 50,000 rows).
+- [12] Demo seed (`npm run seed -- <email>`, and "Load demo data" on onboarding outside production): 18 months, every
+  module — 500+ transactions, 6 holdings with monthly values, an FD, target allocation + a monthly SIP (one period skipped,
+  one left missed; policy "skip" because a back-dated carry-forward plan would pile every past period onto the next), an
+  ASPI dip with an Opportunity Fund deployment, a car lease with EMIs + a recurring rule, a receivable, budgets, goals,
+  insurance, category rules, earmarks, snapshots, a monthly review and the daily job's notifications. A test checks that
+  every user collection has data, recompute changes nothing and the daily job runs cleanly.
+- [12] Onboarding (docs/05 §18) at `/onboarding`: registration and the email-verified "Continue" land there. Steps:
+  preferences → accounts → holdings → (optional) SIP → done; every step skippable ("Skip setup"). Finishing or skipping
+  sets `onboardingCompletedAt`. No redirect from the dashboard (owner-approved alternative to forcing it: existing users
+  and e2e flows are unaffected). Bootstrap v6 marks existing users who already have accounts as onboarded.
+- [12] Performance (acceptance "dashboard < 1 s with 10k txns"): `tests/perf/perf-10k.test.ts` — 10,000 transactions of
+  mixed types over 18 months, 4 holdings × 18 values; one dashboard request (net worth, cashflow with compare, top
+  categories, allocation, standing incl. health score, safe to spend, attention) measured 613–871 ms on the dev machine
+  (in-memory MongoDB). Found and fixed: (1) expense-by-category lines (budgets, essentials, reports) loaded every document
+  and formatted dates in JS — now one aggregation grouped by day/currency/category with the day computed in MongoDB
+  (22 months: 1,036 → 100 ms); (2) allocation drift and the forecast projection re-loaded the whole ledger inside the same
+  request — `requestSeriesInput` (React cache per request) now shares one load on read paths (write paths keep the
+  uncached loader). `explain()` on the hot queries (ledger by user+date, by account, by holding, valuations by holding,
+  the flows aggregation) shows no COLLSCAN; the existing docs/03 indexes cover them, none added. Perf tests run as their
+  own Vitest project after the others, one file at a time (`sequence.groupOrder`), so CPU contention doesn't distort them.
+- [12] Security review (docs/02 §5): every route handler checks the session (cron: Bearer CRON_SECRET), every server action
+  goes through `requireUser`; queries are userId-guarded; uploads validated by declared type + file signature and served
+  owner-only. Added baseline headers to every response: CSP (self; `'unsafe-inline'` scripts for Next's bootstrap — nonces
+  would force dynamic rendering), `frame-ancestors 'none'`/X-Frame-Options DENY, nosniff, Referrer-Policy,
+  Permissions-Policy, HSTS in production; `poweredByHeader` off. `shadcn` (CLI only) moved to devDependencies: production
+  `npm audit` now reports 0 vulnerabilities (the 7 "high" were all its tooling chain).
+- [12] Accessibility: `tests/e2e/accessibility.spec.ts` runs axe (WCAG 2.1 A/AA) on login, register and 16 app pages and fails
+  on serious/critical findings. Fixed: `--muted-foreground` (light) 0.556 → 0.5 L (tab strips, segmented controls and
+  table headers on `bg-muted` were below 4.5:1); light `--destructive` 0.577 → 0.53 L (destructive badge text); avatar
+  initials on muted now use the foreground colour; the account menu is named by its content (the aria-label contradicted
+  the visible initials); the Category filter's select gets its own label (an aria-label sat on a plain div).
+- [12] PWA: `app/manifest.ts` (standalone, start /dashboard, theme colour), icons drawn in code with ImageResponse and served
+  by route handlers at `/icons/*.png` and `/apple-touch-icon.png` (paths with an extension, so the auth proxy lets them
+  through for logged-out browsers). No service worker / offline cache on purpose (financial data must be live).
+- [12] README (setup on any OS, every env variable, scripts, Vercel + Atlas deploy, Docker, backup/restore, troubleshooting).
+  Docker: `output: "standalone"`, multi-stage Dockerfile (non-root, build-time placeholder env only), docker-compose with
+  `mongo` (always) and `app` + `cron` under the `app` profile (`docker compose --profile app up -d --build`).
 - [mm] e2e `allocation.spec` raced (`isVisible()` right after navigation); it now waits for the editor first.
 
 ## Deviations from docs
@@ -429,6 +466,11 @@ Status values: ⬜ not started · 🟡 in progress · ✅ done
 - [10] On 2026-10-20 Windows Application Control briefly blocked `@next/swc-win32-x64-msvc` (Turbopack build failed; a
   `--webpack` build made base-ui dialogs unclickable in e2e — the same before Phase 10). It cleared later the same day and
   `essentials.spec` passed in Phase 11. If it happens again, e2e needs the native SWC binary.
+- [12] The Docker image and compose stack were written but not built here (no Docker on the dev machine). Try
+  `docker compose --profile app up -d --build` once on a machine with Docker; report anything that fails.
+- [12] The 10k-transaction timing is measured on the dev machine with an in-memory MongoDB (613–871 ms); Atlas adds
+  network latency per query but runs them on a separate server. Re-check on the deployed app if the dashboard feels slow.
+- [12] The CSP allows inline scripts ('unsafe-inline'); a nonce-based CSP would need every page rendered per request.
 - [11] Bank CSV import posts income/expense only (no transfer detection). Backups exclude attachment files. S3 storage is
   verified against AWS's signing test vector and a fake endpoint, not a live bucket — try one upload after configuring S3.
 - [10] Forecast and notifications use real "today"; the cron `todayKey` override only drives SIP generation, FD job and
