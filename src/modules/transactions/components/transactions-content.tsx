@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { format, parse } from "date-fns";
-import { ArrowLeftRight } from "lucide-react";
+import { ArrowLeftRight, Download } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -79,6 +79,9 @@ export async function TransactionsContent({
   const { ctx } = current;
   const params = flatParams(await searchParams);
   const filters = transactionFiltersSchema.parse(params);
+  // Export CSV keeps every filter (all pages).
+  const { page: _page, ...exportParams } = params;
+  void _page;
 
   let page: TransactionsPage;
   try {
@@ -153,9 +156,23 @@ export async function TransactionsContent({
         />
       ) : (
         <>
-          <p className="mb-2 text-sm text-muted-foreground">
-            {page.total} transaction{page.total === 1 ? "" : "s"}
-          </p>
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm text-muted-foreground">
+              {page.total} transaction{page.total === 1 ? "" : "s"}
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              render={
+                <a
+                  href={`/api/export?${new URLSearchParams({ ...exportParams, kind: "transactions" })}`}
+                  download
+                />
+              }
+            >
+              <Download aria-hidden /> Export CSV
+            </Button>
+          </div>
           <TransactionsTable rows={page.rows.map((txn) => ({ txn }))} />
           <Pagination page={page.page} pageCount={page.pageCount} params={params} />
         </>

@@ -33,6 +33,7 @@ import {
 } from "@/modules/sip/model";
 import { generateDueExecutions } from "@/modules/sip/service";
 import { ensureMonthEndSnapshot } from "@/modules/snapshots/service";
+import { ensureMonthlyReview } from "@/modules/reports/service";
 import type { Ctx } from "@/server/ctx";
 import { connectDb } from "@/server/db/connect";
 import { toObjectId } from "@/server/db/ids";
@@ -45,7 +46,7 @@ import { fdTerms } from "@/server/ledger/holding-events";
 // maturity, month-end snapshot, opportunity triggers, every §19 notification, optional email. Every
 // step is idempotent and isolated: one failing step is reported and the others still run.
 
-export type StepName = "sip" | "fd" | "snapshot" | "notifications" | "email";
+export type StepName = "sip" | "fd" | "snapshot" | "review" | "notifications" | "email";
 
 export interface UserRunResult {
   userId: string;
@@ -250,6 +251,7 @@ export async function runDailyForUser(
   await step(result, "sip", () => generateDueExecutions(ctx, today));
   await step(result, "fd", async () => (await runFdDailyJob(ctx, today)).valuations);
   await step(result, "snapshot", async () => ((await ensureMonthEndSnapshot(ctx, today)) ? 1 : 0));
+  await step(result, "review", async () => ((await ensureMonthlyReview(ctx, today)) ? 1 : 0));
   await step(result, "notifications", () => runNotifications(ctx, today));
   await step(result, "email", () => sendDigest(ctx, settings, opts.mailer ?? getMailer()));
   return result;

@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { undoBankImportAction } from "@/modules/imports/bank-actions";
 import { undoValuationImportAction } from "@/modules/imports/valuation-actions";
 import type { ImportHistoryItem } from "@/modules/imports/valuation-service";
 
@@ -17,7 +18,7 @@ const STATUS: Record<ImportHistoryItem["status"], string> = {
   reverted: "Undone",
 };
 
-/** Settings → Data: every import (Money Manager and valuation CSV) with Undo / View. */
+/** Settings → Data: every import (Money Manager, bank statement, valuation CSV) with Undo / View. */
 export function ImportHistoryList({ items }: { items: ImportHistoryItem[] }) {
   const router = useRouter();
   if (!items.length) return <p className="text-sm text-muted-foreground">No imports yet.</p>;
@@ -29,7 +30,9 @@ export function ImportHistoryList({ items }: { items: ImportHistoryItem[] }) {
             <p className="truncate font-medium">
               {b.kind === "valuations"
                 ? `Values · ${b.holding?.name ?? "holding"}`
-                : "Money Manager"}{" "}
+                : b.source === "bank_csv"
+                  ? "Bank statement"
+                  : "Money Manager"}{" "}
               · {b.files.join(", ")}
             </p>
             <p className="text-xs text-muted-foreground">
@@ -39,7 +42,7 @@ export function ImportHistoryList({ items }: { items: ImportHistoryItem[] }) {
           <Badge variant={b.status === "imported" ? "default" : "secondary"}>
             {STATUS[b.status]}
           </Badge>
-          {b.kind === "valuations" && b.status === "imported" ? (
+          {(b.kind === "valuations" || b.source === "bank_csv") && b.status === "imported" ? (
             <ConfirmDialog
               trigger={
                 <Button size="sm" variant="outline">
@@ -47,11 +50,18 @@ export function ImportHistoryList({ items }: { items: ImportHistoryItem[] }) {
                 </Button>
               }
               title="Undo this import?"
-              description="Removes its imported values and voids its deposits and withdrawals, then recalculates the holding and the funding account."
+              description={
+                b.source === "bank_csv"
+                  ? "Voids the transactions this file posted and restores the account balance. The same file can be imported again."
+                  : "Removes its imported values and voids its deposits and withdrawals, then recalculates the holding and the funding account."
+              }
               confirmLabel="Undo import"
               destructive
               onConfirm={async () => {
-                const res = await undoValuationImportAction(b.id);
+                const res =
+                  b.source === "bank_csv"
+                    ? await undoBankImportAction(b.id)
+                    : await undoValuationImportAction(b.id);
                 if (!res.ok) {
                   toast.error(res.error.message);
                   return false;

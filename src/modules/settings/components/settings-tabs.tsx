@@ -9,6 +9,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AssetClassesManager } from "@/modules/asset-classes/components/asset-classes-manager";
 import type { AssetClassDTO } from "@/modules/asset-classes/schemas";
 import { CategoriesManager } from "@/modules/categories/components/categories-manager";
+import { CategoryRulesManager } from "@/modules/categories/components/category-rules-manager";
+import type { RuleDTO } from "@/modules/categories/rules-service";
+import { DataPanel } from "@/modules/backup/components/data-panel";
 import type { CategoryNode } from "@/modules/categories/schemas";
 import type { SettingsDTO } from "@/modules/settings/schemas";
 import { PreferencesForm } from "@/modules/settings/components/preferences-form";
@@ -18,7 +21,7 @@ import type { SecurityDTO } from "@/modules/settings/security";
 import { FxRatesManager } from "@/modules/fx/components/fx-rates-manager";
 import type { FxRateDTO } from "@/modules/fx/schemas";
 
-// docs/05 §17 — Data tab: imports today; export and backups arrive with Phase 11.
+// docs/05 §17 — Data tab: backup/restore, CSV export, maintenance and imports (Phase 11).
 export function SettingsTabs({
   user,
   settings,
@@ -29,6 +32,8 @@ export function SettingsTabs({
   fxRates,
   todayKey,
   imports,
+  rules,
+  accountEmpty,
 }: {
   user: { name: string; email: string };
   settings: SettingsDTO;
@@ -39,7 +44,19 @@ export function SettingsTabs({
   fxRates: FxRateDTO[];
   todayKey: string;
   imports: ImportHistoryItem[];
+  rules: RuleDTO[];
+  accountEmpty: boolean;
 }) {
+  const ruleCategories = categories.flatMap((c) =>
+    c.archived || (c.kind !== "income" && c.kind !== "expense")
+      ? []
+      : [
+          { id: c.id, label: c.name, kind: c.kind },
+          ...c.children
+            .filter((k) => !k.archived)
+            .map((k) => ({ id: k.id, label: `${c.name} › ${k.name}`, kind: c.kind })),
+        ],
+  );
   return (
     <Tabs defaultValue="preferences">
       <TabsList className="max-w-full overflow-x-auto">
@@ -58,7 +75,10 @@ export function SettingsTabs({
         <PreferencesForm settings={settings} timezones={timezones} />
       </TabsContent>
       <TabsContent value="categories" className="pt-4">
-        <CategoriesManager tree={categories} />
+        <div className="space-y-8">
+          <CategoriesManager tree={categories} />
+          <CategoryRulesManager rules={rules} categories={ruleCategories} />
+        </div>
       </TabsContent>
       <TabsContent value="asset-classes" className="pt-4">
         <AssetClassesManager classes={assetClasses} />
@@ -70,11 +90,12 @@ export function SettingsTabs({
         <SecurityTab security={security} locale={settings.locale} timeZone={settings.timezone} />
       </TabsContent>
       <TabsContent value="data" className="space-y-3 pt-4">
+        <DataPanel accountEmpty={accountEmpty} />
         <div className="max-w-xl rounded-lg border p-4">
-          <h2 className="font-medium">Import from Money Manager</h2>
+          <h2 className="font-medium">Import transactions</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Upload the Excel export of the Money Manager app, map its accounts and categories,
-            preview the balances and import everything in one step. Every import can be undone.
+            A bank statement (CSV) or the Excel export of the Money Manager app: map it, preview it
+            and import it in one step. Every import can be undone.
           </p>
           <Button className="mt-3" variant="outline" render={<Link href="/transactions/import" />}>
             <Upload aria-hidden /> Import data

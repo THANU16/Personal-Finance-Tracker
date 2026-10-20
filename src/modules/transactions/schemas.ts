@@ -303,6 +303,8 @@ export interface TransactionDTO {
   source: SourceKind;
   groupId: string | null;
   voidReason: string | null;
+  /** Receipts on this transaction (Phase 11). */
+  attachmentCount: number;
   /** True when edit/void must go through the owner (SIP execution, deployment). */
   ownerManaged: boolean;
   editable: boolean;

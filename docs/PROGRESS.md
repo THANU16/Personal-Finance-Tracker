@@ -16,8 +16,8 @@
 | 7 Opportunity Fund | ✅ done | 2026-10-18 | `feat(phase-7)` |
 | 8 Debts & receivables | ✅ done | 2026-10-18 | `feat(phase-8)` |
 | 9 Recurring, budgets, goals | ✅ done | 2026-10-18 | `feat(phase-9)` |
-| 10 Essentials, notifications, cron, forecast | ✅ done (e2e spec written; blocked locally, see Known issues) | 2026-10-20 | `feat(phase-10)` |
-| 11 Reports, import/export, attachments | ⬜ | | |
+| 10 Essentials, notifications, cron, forecast | ✅ done | 2026-10-20 | `feat(phase-10)` |
+| 11 Reports, import/export, attachments | ✅ done | 2026-10-20 | `feat(phase-11)` |
 | 12 Hardening & release | ⬜ | | |
 
 Status values: ⬜ not started · 🟡 in progress · ✅ done
@@ -358,6 +358,35 @@ Status values: ⬜ not started · 🟡 in progress · ✅ done
 - [10] Dashboard: standing summary shows Debt load (DTI) and a health chip with the two reasons; Essentials mini card
   replaces the placeholder; Attention shows the first 30-day forecast breach. Essentials averages use one query over 6
   months (the Phase 4 1-second dashboard budget still holds).
+- [11] Bank statement CSV import (`/transactions/import`): rows are income (money in) or expense (money out) only; transfers
+  between own accounts are not detected (untick them in the preview). Dates in 8 formats; amounts as one signed column or
+  debit/credit columns (separators, currency codes, Rs., (x), trailing −, DR/CR; "spending is positive" flips the sign). The
+  date format guess is the one reading the most sample rows. The server re-parses the file on every step (≤ 900 KB, sent
+  as a server action); the browser only sends the mapping and per-line skip/category. Unmatched rows → the "Uncategorised"
+  system category of the right kind. Commit uses the import ledger path (no dip guard, historical data) in one DB
+  transaction; undo voids and suffixes the hashes, like the other imports. Dates before the account's opening are refused.
+- [11] Category rules (Settings → Categories): first match by priority (then creation order); a rule only applies to rows
+  going its category's way (income/expense). Invalid or > 200-char regexes are refused on save and never match.
+- [11] JSON backup = relaxed EJSON of every user-scoped collection (31, incl. earmarks, targetAllocationHistory, monthly
+  reviews, rules, attachments metadata, imports, audit log); a test fails if a new user collection is not listed.
+  Restore: only into an empty account (no accounts, holdings or transactions), one DB transaction: wipe the account's
+  seeded data, insert with **every id re-issued** (references follow, userId = the signed-in user), then recompute all
+  caches. So a backup can be restored into a second account on the same database. Attachment files are not in the backup;
+  restored records keep pointing at the same storage keys (work on the same deployment). Restore goes through
+  `POST /api/import` (≤ 50 MB) because server actions are limited to 1 MB.
+- [11] Storage: `StorageProvider` (local disk under STORAGE_LOCAL_DIR, or S3-compatible over REST with SigV4 — no SDK; checked
+  against AWS's published "GET Object" signature). Keys `<userId>/<random>`; path-style URLs on a custom S3_ENDPOINT (R2,
+  MinIO), virtual-hosted on AWS. Download `/api/files/[id]` is owner-only (others get 404), `nosniff`, sandbox CSP; images
+  inline, PDFs always download. An edit (void + repost) moves the attachments to the replacement.
+- [11] Reports (`/reports?tab=…`): Monthly summary = the monthly review (stored one if the daily job wrote it, else computed
+  now); Income vs expense = last 12 complete months; Categories = expense by top-level category with children, any month
+  range vs the same-length period before; Investment performance = the Assets portfolio incl. closed holdings; Realised gains
+  and Investment income & tax per calendar year; Net worth history = month-end closing values computed from the ledger
+  (not the snapshot cache). All in base currency at each date's FX rate. Export CSV = plain decimals, CRLF, UTF-8 BOM,
+  formula-injection guard (cells starting = + - @ get a leading ').
+- [11] Monthly review: the daily job writes last month's review on the first run of a month (idempotent, unique per month;
+  skipped without ledger data). Its 3 insights are the top insights at generation time.
+- [11] Transactions → Export CSV keeps every list filter (all pages, ≤ 50,000 rows).
 - [mm] e2e `allocation.spec` raced (`isVisible()` right after navigation); it now waits for the editor first.
 
 ## Deviations from docs
@@ -397,11 +426,11 @@ Status values: ⬜ not started · 🟡 in progress · ✅ done
   never committed.
 
 ## Known issues / tech debt
-- [10] e2e could not run on the dev machine on 2026-10-20: Windows Application Control blocks
-  `@next/swc-win32-x64-msvc`, so `next build` (Turbopack) fails; the `--webpack` fallback builds but base-ui dialogs
-  can't be clicked in it (an inert overlay intercepts pointer events). The last commit before Phase 10 fails the same way, so
-  it is the environment. `tests/e2e/essentials.spec.ts` (essentials → policy → cron twice → read/snooze → forecast) is
-  written but not yet run; run `npm run test:e2e` once the SWC binary is allowed (Smart App Control / reinstall).
+- [10] On 2026-10-20 Windows Application Control briefly blocked `@next/swc-win32-x64-msvc` (Turbopack build failed; a
+  `--webpack` build made base-ui dialogs unclickable in e2e — the same before Phase 10). It cleared later the same day and
+  `essentials.spec` passed in Phase 11. If it happens again, e2e needs the native SWC binary.
+- [11] Bank CSV import posts income/expense only (no transfer detection). Backups exclude attachment files. S3 storage is
+  verified against AWS's signing test vector and a fake endpoint, not a live bucket — try one upload after configuring S3.
 - [10] Forecast and notifications use real "today"; the cron `todayKey` override only drives SIP generation, FD job and
   snapshots (tests).
 - [9] Budget `rollover` is stored but not applied (owner-approved).

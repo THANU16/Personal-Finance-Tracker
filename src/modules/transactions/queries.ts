@@ -1,5 +1,7 @@
 import "server-only";
 import type { PipelineStage, Types } from "mongoose";
+import { minorToCsv, toCsv } from "@/domain/csv";
+import { minorUnitDigits } from "@/domain/money";
 import { nextDayKey, resolveDateRange, type DateKeyRange } from "@/domain/date-range";
 import { businessDateToUtc, utcToBusinessDate } from "@/domain/dates";
 import { AccountModel, type AccountDoc } from "@/modules/accounts/model";
@@ -92,6 +94,7 @@ export function toTransactionDTO(doc: TransactionDoc, refs: RefMaps, tz: string)
     counterparty: doc.counterparty ?? null,
     notes: doc.notes ?? null,
     tags: doc.tags ?? [],
+    attachmentCount: doc.attachmentIds?.length ?? 0,
     source: doc.source.kind,
     groupId: doc.groupId ? String(doc.groupId) : null,
     voidReason: doc.voidReason ?? null,
@@ -250,4 +253,65 @@ export async function listTags(ctx: Ctx): Promise<string[]> {
   await connectDb();
   const tags = await TransactionModel.distinct("tags", { userId: toObjectId(ctx.userId, "User") });
   return (tags as string[]).sort();
+}
+
+export const MAX_EXPORT_ROWS = 50_000;
+
+/** Transactions CSV (Phase 11): the same filters as the list, every page, oldest first. */
+export async function exportTransactionsCsv(
+  ctx: Ctx,
+  filters: TransactionFilters,
+  todayKey = utcToBusinessDate(new Date(), ctx.tz),
+): Promise<{ fileName: string; csv: string; rows: number }> {
+  await connectDb();
+  const userId = toObjectId(ctx.userId, "User");
+  const range = resolveDateRange(filters.preset, todayKey, { from: filters.from, to: filters.to });
+  const [docs, refs] = await Promise.all([
+    TransactionModel.find(await buildFilter(ctx, filters, range))
+      .sort({ date: 1, createdAt: 1 })
+      .limit(MAX_EXPORT_ROWS)
+      .lean<TransactionDoc[]>(),
+    loadRefMaps(userId),
+  ]);
+  const rows = docs.map((d) => toTransactionDTO(d, refs, ctx.tz));
+  const money = (v: number | null | undefined, ccy: string) =>
+    v === null || v === undefined ? "" : minorToCsv(v, minorUnitDigits(ccy));
+  const csv = toCsv(rows, [
+    { header: "Date", value: (r) => r.date },
+    { header: "Type", value: (r) => r.type },
+    { header: "Status", value: (r) => r.status },
+    { header: "Amount", value: (r) => money(r.amountMinor, r.currency) },
+    { header: "Currency", value: (r) => r.currency },
+    { header: "From account", value: (r) => r.fromAccount?.name },
+    { header: "To account", value: (r) => r.toAccount?.name },
+    {
+      header: "To amount",
+      value: (r) => money(r.toAmountMinor, r.toAccount?.currency ?? r.currency),
+    },
+    {
+      header: "Category",
+      value: (r) =>
+        r.splits.length
+          ? r.splits
+              .map((s) => `${s.category.name}: ${money(s.amountMinor, r.currency)}`)
+              .join("; ")
+          : r.category?.name,
+    },
+    { header: "Holding", value: (r) => r.holding?.name },
+    { header: "Fee", value: (r) => money(r.feeMinor, r.currency) },
+    { header: "Tax", value: (r) => money(r.taxMinor, r.currency) },
+    { header: "Units", value: (r) => (r.units === null ? "" : String(r.units)) },
+    { header: "Realised gain", value: (r) => money(r.redemption?.realizedGainMinor, r.currency) },
+    { header: "Description", value: (r) => r.description },
+    { header: "Counterparty", value: (r) => r.counterparty },
+    { header: "Notes", value: (r) => r.notes },
+    { header: "Tags", value: (r) => r.tags.join(" ") },
+    { header: "Source", value: (r) => r.source },
+    { header: "Id", value: (r) => r.id },
+  ]);
+  return {
+    fileName: `transactions-${range.from ?? "all"}-${range.to ?? todayKey}.csv`,
+    csv,
+    rows: rows.length,
+  };
 }

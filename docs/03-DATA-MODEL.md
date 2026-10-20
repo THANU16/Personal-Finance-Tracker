@@ -61,6 +61,7 @@ System categories (seeded, `isSystem`): "Loan interest", "Bank fees", "Investmen
 ## categoryRules (CSV import auto-categorisation)
 ```
 matchField: description|counterparty, operator: contains|equals|regex, pattern, categoryId, priority
+idx: {userId, priority}   # lower priority runs first; regex ≤ 200 chars, case-insensitive (Phase 11)
 ```
 
 ## assetClasses
@@ -278,6 +279,15 @@ idx: {userId, base, quote, date:-1} unique (one rate per pair per day; saving ag
 ## attachments
 ```
 storageKey, fileName, mimeType, sizeBytes, transactionId?
+idx: {userId, transactionId}
+# storageKey = <userId>/<random>; types jpeg|png|webp|pdf (signature checked), ≤ 10 MB, ≤ 10 per transaction (Phase 11)
+```
+
+## monthlyReviews (Phase 11)
+```
+month (YYYY-MM), generatedAt, data (income, expense, savings rate, top categories vs previous month, budgets,
+net worth change, SIPs done/missed, realised gains, fees, 3 insights)
+idx: {userId, month} unique   # written once by the daily job for the previous month; a cache of the ledger
 ```
 
 ## importBatches
@@ -294,7 +304,10 @@ importedAt?, revertedAt?
 summary (valuations): { rows, imported, duplicates, errors, deposits, withdrawals, depositMinor, withdrawalMinor }
 idx: {userId, createdAt:-1}
 ```
-Bank CSV import (Phase 11) adds its own mapping (date/description/amount columns, dateFormat, accountId) in `mapping`.
+Bank CSV import (Phase 11) adds its own mapping in `mapping`: `{ accountId, columns: { hasHeader, dateColumn, dateFormat,
+descriptionColumn, counterpartyColumn?, amountMode: signed|debit_credit, amountColumn?, debitColumn?, creditColumn?, negate },
+headersKey }` (the last mapping for the same headers is offered again). Bank row hash =
+sha256(userId|bank|accountId|date|amountMinor|normalised description|n), n = identical rows earlier in the file.
 Transactions of a batch carry `source: { kind: "import", refId: batchId }` and an `importHash`; undo voids them and suffixes
 the hash (`:undone:<batchId>`) so the same rows can be imported again.
 

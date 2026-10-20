@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Ban, Copy, MoreHorizontal, Pencil } from "lucide-react";
+import { Ban, Copy, MoreHorizontal, Paperclip, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -24,6 +24,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { FormField } from "@/components/shared/form-field";
 import { formatMoney } from "@/lib/format";
+import { AttachmentsDialog } from "@/modules/attachments/components/attachments-dialog";
 import { voidTransactionAction } from "@/modules/transactions/actions";
 import { useQuickAdd } from "@/modules/transactions/components/quick-add-context";
 import type { TransactionDTO } from "@/modules/transactions/schemas";
@@ -59,6 +60,7 @@ export function TransactionRowActions({ txn }: { txn: TransactionDTO }) {
   const [reason, setReason] = React.useState("Entered by mistake");
   const [error, setError] = React.useState<string>();
   const [pending, setPending] = React.useState(false);
+  const [filesOpen, setFilesOpen] = React.useState(false);
 
   if (txn.status === "void") return null;
   const duplicable = txn.type === "income" || txn.type === "expense" || txn.type === "transfer";
@@ -78,6 +80,17 @@ export function TransactionRowActions({ txn }: { txn: TransactionDTO }) {
 
   return (
     <>
+      {txn.attachmentCount > 0 ? (
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label={`${txn.attachmentCount} attachment${txn.attachmentCount === 1 ? "" : "s"}`}
+          title="Attachments"
+          onClick={() => setFilesOpen(true)}
+        >
+          <Paperclip aria-hidden />
+        </Button>
+      ) : null}
       <DropdownMenu>
         <DropdownMenuTrigger
           render={<Button variant="ghost" size="icon" aria-label="Transaction actions" />}
@@ -90,6 +103,10 @@ export function TransactionRowActions({ txn }: { txn: TransactionDTO }) {
               <Pencil aria-hidden /> Edit
             </DropdownMenuItem>
           ) : null}
+          <DropdownMenuItem onClick={() => setFilesOpen(true)}>
+            <Paperclip aria-hidden /> Attachments
+            {txn.attachmentCount ? ` (${txn.attachmentCount})` : ""}
+          </DropdownMenuItem>
           {duplicable ? (
             <DropdownMenuItem onClick={() => open({ mode: "create", duplicateOf: txn })}>
               <Copy aria-hidden /> Duplicate
@@ -107,6 +124,14 @@ export function TransactionRowActions({ txn }: { txn: TransactionDTO }) {
           ) : null}
         </DropdownMenuContent>
       </DropdownMenu>
+
+      {filesOpen ? (
+        <AttachmentsDialog
+          transactionId={txn.id}
+          title={txn.description ?? txn.category?.name ?? "This transaction"}
+          onClose={() => setFilesOpen(false)}
+        />
+      ) : null}
 
       <AlertDialog open={voidOpen} onOpenChange={(o) => !pending && setVoidOpen(o)}>
         <AlertDialogContent>

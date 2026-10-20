@@ -12,13 +12,18 @@ export async function SettingsContent() {
   const current = await getCurrentUser();
   if (!current) redirect("/login");
   const { listImportHistory } = await import("@/modules/imports/valuation-service");
-  const [categories, assetClasses, security, fxRates, imports] = await Promise.all([
-    getCategoryTree(current.ctx, { includeArchived: true }),
-    listAssetClasses(current.ctx),
-    getSecurityOverview(),
-    listFxRates(current.ctx),
-    listImportHistory(current.ctx),
-  ]);
+  const { listCategoryRules } = await import("@/modules/categories/rules-service");
+  const { isAccountEmpty } = await import("@/modules/backup/service");
+  const [categories, assetClasses, security, fxRates, imports, rules, accountEmpty] =
+    await Promise.all([
+      getCategoryTree(current.ctx, { includeArchived: true }),
+      listAssetClasses(current.ctx),
+      getSecurityOverview(),
+      listFxRates(current.ctx),
+      listImportHistory(current.ctx),
+      listCategoryRules(current.ctx),
+      isAccountEmpty(current.ctx),
+    ]);
   return (
     <SettingsTabs
       user={{ name: current.user.name, email: current.user.email }}
@@ -30,6 +35,8 @@ export async function SettingsContent() {
       fxRates={fxRates}
       todayKey={utcToBusinessDate(new Date(), current.ctx.tz)}
       imports={imports}
+      rules={rules}
+      accountEmpty={accountEmpty}
     />
   );
 }

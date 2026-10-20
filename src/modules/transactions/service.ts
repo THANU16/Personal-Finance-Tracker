@@ -1,6 +1,7 @@
 import "server-only";
 import { Types, type ClientSession } from "mongoose";
 import { businessDateToUtc } from "@/domain/dates";
+import { AttachmentModel } from "@/modules/attachments/model";
 import { HoldingModel, type HoldingDoc } from "@/modules/holdings/model";
 import {
   OWNER_MANAGED_SOURCES,
@@ -255,6 +256,19 @@ export async function updateTransaction(
       { $set: { replacedById: replacement._id } },
       { session },
     );
+    // Receipts follow the edit (Phase 11): the replacement owns the attachments now.
+    if (old.attachmentIds?.length) {
+      await TransactionModel.updateOne(
+        { _id: replacement._id, userId },
+        { $set: { attachmentIds: old.attachmentIds } },
+        { session },
+      );
+      await AttachmentModel.updateMany(
+        { userId, _id: { $in: old.attachmentIds } },
+        { $set: { transactionId: replacement._id } },
+        { session },
+      );
+    }
     return { id: String(replacement._id) };
   });
 }

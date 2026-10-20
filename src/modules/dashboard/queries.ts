@@ -264,7 +264,11 @@ export async function cashflowSeries(ctx: Ctx, view: RangeView): Promise<Cashflo
 }
 
 /** Flow totals for an arbitrary range (standing summary, this month). */
-async function flowTotalsFor(ctx: Ctx, range: KeyRange, buckets?: Bucket[]): Promise<FlowPoint[]> {
+export async function flowTotalsFor(
+  ctx: Ctx,
+  range: KeyRange,
+  buckets?: Bucket[],
+): Promise<FlowPoint[]> {
   const { days } = await dailyFlows(ctx, range, await toBaseOf(ctx));
   return bucketFlows(days, buckets ?? [{ key: range.from, start: range.from, end: range.to }]);
 }
