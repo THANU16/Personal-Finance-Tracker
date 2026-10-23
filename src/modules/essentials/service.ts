@@ -283,11 +283,12 @@ export async function getEmergency(ctx: Ctx): Promise<EmergencyDTO> {
     sources.push({
       kind: dedicatedBucket(a) === "emergency" ? "account" : "earmark",
       id: String(a._id),
-      name: a.name,
+      name: a.type === "receivable" ? `${a.name} (lent out)` : a.name,
       currency: a.currency,
       valueMinor: b.emergencyMinor,
       baseMinor: toBase(b.emergencyMinor, a.currency, today),
-      available: true,
+      // Lent emergency money is still yours but cannot be used until it is repaid.
+      available: a.type !== "receivable",
       href: `/accounts/${String(a._id)}`,
     });
   }

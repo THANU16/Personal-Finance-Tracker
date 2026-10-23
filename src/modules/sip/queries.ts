@@ -1,6 +1,6 @@
 import "server-only";
 import { Types } from "mongoose";
-import { isEarmarkable } from "@/domain/earmarks";
+import { isSpendableCash } from "@/domain/earmarks";
 import { utcToBusinessDate } from "@/domain/dates";
 import { cashflowSplit } from "@/domain/rebalance";
 import { xirrBp } from "@/domain/returns";
@@ -386,7 +386,7 @@ export async function sipUpcoming(
   const out = [];
   for (const p of plans) {
     const account = accounts.find((a) => String(a._id) === String(p.sourceAccountId));
-    const earmarkable = account ? isEarmarkable(account) : false;
+    const earmarkable = account ? isSpendableCash(account) : false;
     const mine = executions.filter((e) => String(e.planId) === String(p._id));
     const known = new Set(mine.map((e) => e.periodKey));
     for (const e of mine) {

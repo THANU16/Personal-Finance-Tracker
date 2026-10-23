@@ -3,6 +3,7 @@ import type { ClientSession, Types } from "mongoose";
 import { utcToBusinessDate } from "@/domain/dates";
 import {
   BUCKETS,
+  LENT_OUT_TYPES,
   canCarryEarmarks,
   dedicatedBucket,
   effectiveEarmarks,
@@ -79,6 +80,7 @@ function toBucketsDTO(account: AccountDoc, earmarks: EarmarkDoc[]): AccountBucke
         canCarryEarmarks(account) &&
         earmarks.some((e) => rawEarmark(B, e) > 0)),
     accountId: String(account._id),
+    accountType: account.type,
     currency: account.currency,
     balanceMinor: B,
     earmarkable,
@@ -197,7 +199,7 @@ function assertCanCarry(account: AccountDoc) {
   if (!canCarryEarmarks(account)) {
     throw new AppError(
       "VALIDATION",
-      "Only bank, cash, wallet and broker cash accounts can be earmarked",
+      "Only bank, cash, wallet, broker cash and receivable accounts can be earmarked",
     );
   }
   if (account.archivedAt) throw new AppError("CONFLICT", `"${account.name}" is archived`);
@@ -351,7 +353,8 @@ export async function getBuckets(ctx: Ctx): Promise<BucketTotalsDTO[]> {
     const t = row(b.currency);
     t.emergencyMinor += b.emergencyMinor;
     t.opportunityMinor += b.opportunityMinor;
-    t.freeMinor += b.freeMinor;
+    // A receivable's free part is owed to you, not cash you can spend.
+    if (!LENT_OUT_TYPES.includes(b.accountType)) t.freeMinor += b.freeMinor;
   }
   for (const h of holdings) row(h.currency).emergencyMinor += holdingValueToday(h, ctx.tz);
   // Holding earmarks (owner request): emergency / opportunity money kept inside an asset.

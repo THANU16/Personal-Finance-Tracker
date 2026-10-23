@@ -48,11 +48,25 @@ export function dedicatedBucket(
   return null;
 }
 
+/**
+ * Receivables (owner request) can carry earmarks too: money lent out of the emergency or
+ * opportunity fund stays that money while it is owed. They are never spendable cash.
+ */
+export const LENT_OUT_TYPES: readonly AccountType[] = ["receivable"];
+
 /** Can this account type carry explicit earmarks at all (ignoring its balance)? */
 export function canCarryEarmarks(
   account: Pick<AccountLike, "type" | "countsTowardEmergencyFund">,
 ): boolean {
-  return EARMARKABLE_TYPES.includes(account.type) && dedicatedBucket(account) === null;
+  return (
+    (EARMARKABLE_TYPES.includes(account.type) || LENT_OUT_TYPES.includes(account.type)) &&
+    dedicatedBucket(account) === null
+  );
+}
+
+/** Spendable cash with earmarks (free cash, safe to spend, upcoming outflows): not a receivable. */
+export function isSpendableCash(account: AccountLike): boolean {
+  return isEarmarkable(account) && !LENT_OUT_TYPES.includes(account.type);
 }
 
 /** Earmarkable now: right type, not dedicated, not archived, balance above zero. */

@@ -10,6 +10,7 @@ import {
   earmarksAfterBucketSpend,
   earmarksAfterDip,
   isEarmarkable,
+  LENT_OUT_TYPES,
   type Bucket,
 } from "@/domain/earmarks";
 import { effectiveEarmarksOf, storeBucketAmounts } from "@/modules/earmarks/service";
@@ -168,6 +169,18 @@ async function guardOutflow(
   const effective = await effectiveEarmarksOf(from, session);
   const dip = dipCheck(outflowMinor, effective);
   if (!dip.needsConfirm) return;
+  if (LENT_OUT_TYPES.includes(from.type)) {
+    // Owner request: money coming back from a receivable is not spending — no question; the
+    // earmarks shrink so they never exceed what is still owed (tag the repayment to keep it).
+    await storeBucketAmounts(
+      ctx,
+      from,
+      earmarksAfterDip(effective, dip),
+      "earmark_repaid",
+      session,
+    );
+    return;
+  }
   const opportunityOk = dip.dipsOpportunityMinor === 0 || draft.confirmOpportunity === true;
   const emergencyOk = dip.dipsEmergencyMinor === 0 || draft.confirmEmergency === true;
   if (!opportunityOk || !emergencyOk) {
@@ -195,7 +208,7 @@ function bucketAccount(account: AccountDoc, bucket: Bucket, field: string): void
   if (!canCarryEarmarks(account)) {
     fail(
       field,
-      `"${account.name}" cannot hold ${bucket} money (bank, cash, wallet or broker cash only)`,
+      `"${account.name}" cannot hold ${bucket} money (bank, cash, wallet, broker cash or receivable only)`,
     );
   }
 }

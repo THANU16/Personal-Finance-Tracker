@@ -342,6 +342,13 @@ Email sent only if enabled and `RESEND_API_KEY` is configured.
   Opportunity deployment may come from a holding's opportunity part: one sale from it (switch leg) + the buys, in one DB
   transaction; the holding's opportunity earmark drops by amounts + fees; undo restores it.
 
+- **Receivable earmarks** (owner request): money lent out of the emergency or opportunity fund stays that money while it is
+  owed. A receivable can carry earmarks (set directly, or by tagging the loan transfer "Take from" bank emergency → "Put into"
+  receivable emergency). Counting: its earmarks count in the emergency / opportunity totals; its free part is never free cash
+  and it is never safe-to-spend cash. Essentials lists it as "<name> (lent out)", not available now. It is not an
+  Opportunity Fund deployment source. Repayments never ask: an untagged repayment shrinks the receivable's earmarks to what is
+  still owed (opportunity first, reason `earmark_repaid`); a tagged repayment moves the money back into the destination's bucket.
+
 ## 21. Safe to spend
 `safeToSpend = freeCash − Σ outflowMinor of upcoming items due on or before the end of the current month (user tz) that are not yet
 posted` (recurring expenses, EMIs, card dues, planned SIPs paid from earmarkable accounts). May be negative → show a warning.

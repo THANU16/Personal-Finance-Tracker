@@ -173,7 +173,7 @@ async function sourceAccounts(
   const out: { doc: AccountDoc; dto: SourceAccountDTO }[] = [];
   for (const a of accounts) {
     const dedicated = dedicatedBucket(a);
-    if (dedicated === "emergency") continue;
+    if (dedicated === "emergency" || a.type === "receivable") continue;
     let opportunityMinor = 0;
     if (dedicated === "opportunity") opportunityMinor = Math.max(0, a.balanceMinor);
     else

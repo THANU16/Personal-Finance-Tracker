@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { AccountType } from "@/domain/accounts";
 import {
   BUCKETS,
   BUCKET_SLOTS,
@@ -70,6 +71,7 @@ export interface EarmarkDTO {
 /** Buckets of one account. Dedicated accounts are one whole bucket and carry no earmarks. */
 export interface AccountBucketsDTO extends EffectiveEarmarks {
   accountId: string;
+  accountType: AccountType;
   currency: string;
   balanceMinor: number;
   earmarkable: boolean;

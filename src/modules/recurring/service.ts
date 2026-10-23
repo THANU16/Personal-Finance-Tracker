@@ -1,7 +1,7 @@
 import "server-only";
 import { Types, type ClientSession } from "mongoose";
 import { businessDateToUtc, utcToBusinessDate } from "@/domain/dates";
-import { isEarmarkable } from "@/domain/earmarks";
+import { isSpendableCash } from "@/domain/earmarks";
 import { firstDue, nextAfter, occurrences, reminderDate, type Schedule } from "@/domain/recurring";
 import { AccountModel, type AccountDoc } from "@/modules/accounts/model";
 import { CategoryModel, type CategoryDoc } from "@/modules/categories/model";
@@ -421,7 +421,7 @@ export async function recurringUpcoming(
   const byId = new Map(accounts.map((a) => [String(a._id), a]));
   return rules.flatMap((r) => {
     const from = r.template.fromAccountId ? byId.get(String(r.template.fromAccountId)) : undefined;
-    const outflow = r.kind !== "income" && from && isEarmarkable(from);
+    const outflow = r.kind !== "income" && from && isSpendableCash(from);
     return occurrences(scheduleOf(r), r.nextDueDate!, until, 24).map((due, i) => ({
       id: `rec-${String(r._id)}-${i}`,
       title: r.name,

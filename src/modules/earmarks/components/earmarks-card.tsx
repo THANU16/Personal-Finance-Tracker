@@ -75,7 +75,9 @@ export function EarmarksCard({
           <CardDescription>
             {holding
               ? "Emergency or opportunity money kept in this asset (it stays invested). Selling beyond the free part asks you first."
-              : "Money set aside inside this account. Spending beyond free cash asks you first."}
+              : buckets.accountType === "receivable"
+                ? 'Which part of this money you lent came from your emergency or opportunity fund. Record the repayment with "Take from" to put it back in the same bucket.'
+                : "Money set aside inside this account. Spending beyond free cash asks you first."}
           </CardDescription>
         </div>
         {earmarkable ? (

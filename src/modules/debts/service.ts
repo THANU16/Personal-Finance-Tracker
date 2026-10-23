@@ -1,7 +1,7 @@
 import "server-only";
 import { Types, type ClientSession } from "mongoose";
 import { businessDateToUtc, utcToBusinessDate } from "@/domain/dates";
-import { isEarmarkable } from "@/domain/earmarks";
+import { isSpendableCash } from "@/domain/earmarks";
 import {
   amortisation,
   applyPrepayment,
@@ -766,7 +766,7 @@ export async function debtUpcoming(
   for (const d of debts) {
     const loan = byId.get(String(d.accountId));
     const payFrom = d.paymentAccountId ? byId.get(String(d.paymentAccountId)) : undefined;
-    const earmarkable = payFrom ? isEarmarkable(payFrom) : false;
+    const earmarkable = payFrom ? isSpendableCash(payFrom) : false;
     let left = d.outstandingMinor;
     for (let i = 1; left > 0 && i <= 24; i++) {
       const due = dueDate(d.startDate, d.paymentDay, d.paymentsCount + i);

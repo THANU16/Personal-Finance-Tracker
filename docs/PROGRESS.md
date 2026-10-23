@@ -439,6 +439,9 @@ Status values: ⬜ not started · 🟡 in progress · ✅ done
 - [donut] Dashboard Allocation card = investments only (owner request): holdings that count toward the emergency fund as a
   whole and the earmarked (emergency + opportunity) part of other holdings are left out and shown as "Not shown: …". Earmarks
   have no history, so a past range end uses today's reserved share of each holding. Net worth and Assets are unchanged.
+- [receivable-earmarks] Receivables can carry emergency / opportunity earmarks (owner request; docs/04 §20). Lent money is
+  counted in its bucket but never as free / spendable cash or a deployment source; repayments are not dip-guarded (untagged
+  ones shrink the earmark, tagged ones return it to the bucket).
 - [mm] e2e `allocation.spec` raced (`isVisible()` right after navigation); it now waits for the editor first.
 
 ## Deviations from docs
