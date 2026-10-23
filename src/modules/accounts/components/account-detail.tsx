@@ -16,6 +16,8 @@ import { ACCOUNT_TYPE_META } from "@/modules/accounts/components/account-meta";
 import { UtilisationBar } from "@/modules/accounts/components/accounts-overview";
 import { BalanceHistoryChart } from "@/modules/accounts/components/balance-history-chart";
 import { getAccountDetail, type AccountDetail as Detail } from "@/modules/accounts/queries";
+import { LoanCostCards } from "@/modules/debts/components/loan-cost-cards";
+import { getDebtForAccount } from "@/modules/debts/service";
 import { EarmarksCard } from "@/modules/earmarks/components/earmarks-card";
 import { getAccountBuckets } from "@/modules/earmarks/queries";
 import { QuickAddButton } from "@/modules/transactions/components/quick-add-context";
@@ -49,7 +51,10 @@ export async function AccountDetail({
     throw err;
   }
   const { account, rows, history } = detail;
-  const buckets = await getAccountBuckets(ctx, account.id);
+  const [buckets, loan] = await Promise.all([
+    getAccountBuckets(ctx, account.id),
+    getDebtForAccount(ctx, account.id),
+  ]);
   const showBuckets = !account.archived && (buckets.canCarryEarmarks || buckets.dedicated !== null);
   const meta = ACCOUNT_TYPE_META[account.type];
   const todayKey = utcToBusinessDate(new Date(), ctx.tz);
@@ -138,6 +143,7 @@ export async function AccountDetail({
           value={<Money valueMinor={account.openingBalanceMinor} currency={account.currency} />}
           hint={`on ${longDate(account.openingDate)}`}
         />
+        {loan ? <LoanCostCards debt={loan} loanHref={`/debts/${loan.id}`} /> : null}
       </div>
 
       {showBuckets ? (

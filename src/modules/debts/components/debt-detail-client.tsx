@@ -20,6 +20,7 @@ import { FormField } from "@/components/shared/form-field";
 import { Money } from "@/components/shared/money";
 import { MoneyInput } from "@/components/shared/money-input";
 import { StatCard } from "@/components/shared/stat-card";
+import { LoanCostCards } from "@/modules/debts/components/loan-cost-cards";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -473,7 +474,7 @@ export function DebtDetailClient({ d, today }: { d: DebtDetailDTO; today: string
           Edit loan
         </Button>
       </div>
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <StatCard
           label="Outstanding"
           value={<Money valueMinor={d.outstandingMinor} currency={d.currency} />}
@@ -484,26 +485,9 @@ export function DebtDetailClient({ d, today }: { d: DebtDetailDTO; today: string
           value={<Money valueMinor={d.emiMinor} currency={d.currency} />}
           hint={`${formatPercentBp(d.annualRateBp)} a year · day ${d.paymentDay}`}
         />
-        <StatCard
-          label="Next due"
-          value={active ? fmtDate(d.nextDueDate) : "Repaid"}
-          hint={
-            active ? (
-              <>
-                Interest <Money valueMinor={d.nextInterestMinor} currency={d.currency} /> of it
-              </>
-            ) : null
-          }
-        />
-        <StatCard
-          label="Payoff"
-          value={fmtDate(d.projectedPayoffDate)}
-          hint={
-            <>
-              Interest paid so far <Money valueMinor={d.interestPaidMinor} currency={d.currency} />
-            </>
-          }
-        />
+        <StatCard label="Next due" value={active ? fmtDate(d.nextDueDate) : "Repaid"} />
+        <StatCard label="Payoff" value={fmtDate(d.projectedPayoffDate)} />
+        <LoanCostCards debt={d} />
       </div>
 
       <Card>

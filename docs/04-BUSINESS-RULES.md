@@ -205,6 +205,10 @@ Crypto 10% → A 20,000; B 10,000; MF 20,000; UT 30,000; Gold 10,000; BTC 10,000
   interest, all interest, warn). Excess over scheduled EMI is a prepayment of principal.
 - **Prepayment:** `reduce_tenure` keeps EMI and recomputes n; `reduce_emi` keeps n and recomputes EMI.
 - Caches: outstanding = −(loan account balance); principalPaid, interestPaid, nextDueDate, projected payoff.
+- **Loan cost** (owner request): total paid = scheduled EMIs of the instalments paid before tracking + recorded payments
+  (instalments and prepayments). **Total interest of the loan = total paid + remaining schedule − principal**, so it holds
+  whatever interest scheme the lender uses; prepayments lower it. Not shown ("—") when the EMI no longer covers the interest.
+  The interest-paid split is not shown in the UI (lenders split it differently).
 - Debt-to-income = Σ EMIs ÷ average monthly income (last 3 months).
 
 ## 11. Recurring rules

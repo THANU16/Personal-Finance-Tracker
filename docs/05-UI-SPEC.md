@@ -131,6 +131,10 @@ Detail: amortisation schedule table (paid rows ticked), principal vs interest ch
 (pre-filled EMI with split preview), Prepayment (mode choice with before/after payoff comparison).
 Receivables/payables section with Settle action (transfer).
 
+Loan page and the loan account page (owner request): "Total paid so far" and "Total interest of this loan" cards (docs/04
+§10); the account page links to the loan. In a loan account's transactions, a payment shows the amount paid with "Loan
+reduced by <principal>" under it (the running balance moves by the principal).
+
 ## 10. Recurring `/recurring`
 Table: name, kind, amount, account, frequency, next due, status; Confirm (dialog with editable amount),
 Skip, Pause, Edit. Calendar view of the month optional tab.

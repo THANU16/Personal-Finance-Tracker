@@ -11,6 +11,7 @@ import {
   monthlyRate,
   outstandingAfter,
   splitPayment,
+  loanCost,
 } from "@/domain/loan";
 import { roundHalfAwayFromZero } from "@/domain/money";
 import { AccountModel, type AccountDoc } from "@/modules/accounts/model";
@@ -603,6 +604,7 @@ export async function getDebt(ctx: Ctx, id: string): Promise<DebtDetailDTO> {
     });
     schedule.push(...original.map((r) => ({ ...r, state: "before_tracking" as const })));
   }
+  let projected = d.outstandingMinor === 0;
   if (d.outstandingMinor > 0) {
     try {
       const rows = amortisation({
@@ -615,6 +617,7 @@ export async function getDebt(ctx: Ctx, id: string): Promise<DebtDetailDTO> {
         startNo: d.paymentsCount + 1,
       });
       schedule.push(...rows.map((r) => ({ ...r, state: "projected" as const })));
+      projected = true;
     } catch {
       // EMI no longer covers the interest: no projection
     }
@@ -630,8 +633,22 @@ export async function getDebt(ctx: Ctx, id: string): Promise<DebtDetailDTO> {
     status: t.status,
   }));
   const currency = account?.currency ?? ctx.baseCurrency;
+  const sumEmi = (state: ScheduleRowDTO["state"]) =>
+    schedule.filter((r) => r.state === state).reduce((s, r) => s + r.emiMinor, 0);
+  const paidBeforeTrackingMinor = sumEmi("before_tracking");
+  const cost = loanCost({
+    principalMinor: d.principalMinor,
+    paidBeforeTrackingMinor,
+    recordedPaidMinor: txns
+      .filter((t) => t.status === "posted")
+      .reduce((s, t) => s + t.amountMinor, 0),
+    remainingMinor: projected ? sumEmi("projected") : null,
+  });
   return {
     ...summary(d, currency),
+    totalPaidMinor: cost.paidMinor,
+    paidBeforeTrackingMinor,
+    totalInterestMinor: cost.totalInterestMinor,
     tenureMonths: d.tenureMonths,
     startDate: d.startDate,
     paymentDay: d.paymentDay,
@@ -655,6 +672,19 @@ export async function getDebt(ctx: Ctx, id: string): Promise<DebtDetailDTO> {
         balanceMinor: a.balanceMinor,
       })),
   };
+}
+
+/** The loan behind a loan account (its page shows the loan's stats), or null. */
+export async function getDebtForAccount(
+  ctx: Ctx,
+  accountId: string,
+): Promise<DebtDetailDTO | null> {
+  await connectDb();
+  const d = await DebtModel.findOne({
+    userId: uid(ctx),
+    accountId: toObjectId(accountId, "Account"),
+  }).lean<DebtDoc>();
+  return d ? getDebt(ctx, String(d._id)) : null;
 }
 
 /** Average monthly income (income + paid-out investment income) of the last 3 complete months, base currency. */

@@ -5,6 +5,7 @@ import {
   dtiBp,
   dueDate,
   emiMinor,
+  loanCost,
   monthsToRepay,
   outstandingAfter,
   splitPayment,
@@ -175,5 +176,49 @@ describe("existing loans and DTI", () => {
   it("DTI is EMIs over average monthly income", () => {
     expect(dtiBp(3_000_000, 10_000_000)).toBe(3000);
     expect(dtiBp(1, 0)).toBeNull();
+  });
+});
+
+describe("loanCost", () => {
+  const rows = amortisation({
+    outstandingMinor: P,
+    annualRateBp: RATE,
+    emiMinor: 8_884_879,
+    months: 12,
+    startDate: "2026-01-01",
+    paymentDay: 1,
+  });
+  const sum = (r: typeof rows) => r.reduce((s, x) => s + x.emiMinor, 0);
+
+  it("total interest = everything paid over the life − principal (known schedule: 66,185.45)", () => {
+    // 3 instalments before tracking, 4 recorded, 5 still to come
+    const c = loanCost({
+      principalMinor: P,
+      paidBeforeTrackingMinor: sum(rows.slice(0, 3)),
+      recordedPaidMinor: sum(rows.slice(3, 7)),
+      remainingMinor: sum(rows.slice(7)),
+    });
+    expect(c.totalInterestMinor).toBe(6_618_545);
+    expect(c.paidMinor).toBe(7 * 8_884_879);
+  });
+
+  it("does not depend on how the lender splits interest; repaid loan; no projection", () => {
+    // Flat scheme: 12 equal payments of 92,000 on 1,000,000 → 104,000 interest
+    expect(
+      loanCost({
+        principalMinor: P,
+        paidBeforeTrackingMinor: 0,
+        recordedPaidMinor: 110_400_000,
+        remainingMinor: 0,
+      }),
+    ).toEqual({ paidMinor: 110_400_000, totalInterestMinor: 10_400_000 });
+    expect(
+      loanCost({
+        principalMinor: P,
+        paidBeforeTrackingMinor: 0,
+        recordedPaidMinor: 5_000,
+        remainingMinor: null,
+      }),
+    ).toEqual({ paidMinor: 5_000, totalInterestMinor: null });
   });
 });

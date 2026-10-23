@@ -171,3 +171,25 @@ export function dtiBp(totalEmiMinor: number, avgMonthlyIncomeMinor: number): num
   if (avgMonthlyIncomeMinor <= 0) return null;
   return Math.round((totalEmiMinor * 10_000) / avgMonthlyIncomeMinor);
 }
+
+/**
+ * What a loan costs (owner request). Total interest = everything paid over the loan's life − the
+ * amount borrowed, so it holds whatever interest scheme the lender uses (front-loaded, flat or
+ * reducing). Paid = instalments before tracking (scheduled amounts) + recorded payments; the rest is
+ * the remaining schedule. `remainingMinor` null (EMI no longer covers the interest) → interest null.
+ */
+export function loanCost(input: {
+  principalMinor: number;
+  paidBeforeTrackingMinor: number;
+  recordedPaidMinor: number;
+  remainingMinor: number | null;
+}): { paidMinor: number; totalInterestMinor: number | null } {
+  const paidMinor = input.paidBeforeTrackingMinor + input.recordedPaidMinor;
+  return {
+    paidMinor,
+    totalInterestMinor:
+      input.remainingMinor === null
+        ? null
+        : paidMinor + input.remainingMinor - input.principalMinor,
+  };
+}

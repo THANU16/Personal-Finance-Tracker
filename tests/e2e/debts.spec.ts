@@ -16,6 +16,9 @@ async function register(page: Page) {
   await expect(page).toHaveURL(/\/onboarding$/);
 }
 
+const statCard = (page: Page, label: string) =>
+  page.locator("[data-slot=card]").filter({ hasText: label });
+
 async function choose(page: Page, label: string, option: string | RegExp) {
   await field(page, label, true).click();
   await page.getByRole("option", { name: option }).click();
@@ -60,6 +63,11 @@ test("add loan → EMI preview → pay → schedule ticks → prepay (finish soo
   await expect(page.getByText("Payment recorded")).toBeVisible();
   await expect(page.locator('tr[data-state="paid"]')).toHaveCount(1);
   await expect(page.getByText("LKR 921,151.21").first()).toBeVisible();
+  // Owner request: total paid so far and what the loan costs in interest over its whole life.
+  await expect(statCard(page, "Total paid so far")).toContainText("LKR 88,848.79");
+  await expect(statCard(page, "Total interest of this loan")).toContainText("LKR 66,185.45");
+  if (process.env.E2E_SHOTS)
+    await page.screenshot({ path: `${process.env.E2E_SHOTS}/loan.png`, fullPage: true });
 
   await page.getByRole("button", { name: "Prepayment" }).click();
   const pre = page.getByRole("dialog", { name: "Prepayment" });
@@ -87,4 +95,14 @@ test("add loan → EMI preview → pay → schedule ticks → prepay (finish soo
   await expect(page.getByRole("link", { name: "Car loan (NSB)" })).toBeVisible();
   await page.goto("/transactions");
   await expect(page.getByText("Loan payment").first()).toBeVisible();
+
+  // The loan account page shows the same cards; a payment row shows what was paid.
+  await page.goto("/accounts");
+  await page.getByRole("link", { name: "Car loan (NSB)" }).first().click();
+  await expect(page.getByText("Total interest of this loan")).toBeVisible();
+  await expect(statCard(page, "Total paid so far")).toContainText("LKR 388,848.79");
+  await expect(page.getByText(/Loan reduced by/).first()).toBeVisible();
+  await expect(page.getByRole("link", { name: "Open loan" })).toBeVisible();
+  if (process.env.E2E_SHOTS)
+    await page.screenshot({ path: `${process.env.E2E_SHOTS}/loan-account.png`, fullPage: true });
 });

@@ -186,6 +186,12 @@ export interface DebtDetailDTO extends DebtSummaryDTO {
   disbursedInto: string | null;
   /** Interest of the next instalment on the current outstanding. */
   nextInterestMinor: number;
+  /** Everything paid so far: scheduled instalments before tracking + recorded payments. */
+  totalPaidMinor: number;
+  /** The before-tracking part of totalPaidMinor (from the original schedule). */
+  paidBeforeTrackingMinor: number;
+  /** Paid + remaining schedule − principal (docs/04 §10); null when it can't be projected. */
+  totalInterestMinor: number | null;
   schedule: ScheduleRowDTO[];
   payments: DebtPaymentDTO[];
   accounts: { id: string; name: string; currency: string; balanceMinor: number }[];

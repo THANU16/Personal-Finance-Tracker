@@ -66,6 +66,19 @@ function Title({ txn }: { txn: TransactionDTO }) {
 
 function Amount({ row }: { row: LedgerRow }) {
   if (row.deltaMinor === undefined) return <TransactionAmount txn={row.txn} />;
+  if (row.txn.type === "debt_payment" && row.deltaMinor > 0) {
+    // Loan account (owner request): show what was paid; only the principal part reduces the loan,
+    // which is what the running balance moves by.
+    const ccy = row.currency ?? row.txn.currency;
+    return (
+      <span className="inline-flex flex-col items-end">
+        <Money valueMinor={row.txn.amountMinor} currency={ccy} />
+        <span className="text-xs text-muted-foreground">
+          Loan reduced by <Money valueMinor={row.deltaMinor} currency={ccy} />
+        </span>
+      </span>
+    );
+  }
   return (
     <Money
       valueMinor={row.deltaMinor}

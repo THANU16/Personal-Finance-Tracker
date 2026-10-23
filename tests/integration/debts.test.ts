@@ -8,6 +8,7 @@ import {
   createDebt,
   debtUpcoming,
   getDebt,
+  getDebtForAccount,
   listDebts,
   previewPrepayment,
   recordPayment,
@@ -230,6 +231,40 @@ describe("loans", () => {
     expect(detail.schedule.filter((r) => r.state === "before_tracking")).toHaveLength(3);
     expect(detail.schedule.reduce((s, r) => s + r.principalMinor, 0)).toBe(P);
     expect(detail.schedule[3]!.no).toBe(4);
+  });
+
+  it("total paid and total interest of the loan (owner request), on the loan and its account", async () => {
+    const { ctx, bank, id, loanId } = await setup({
+      startDate: "2025-12-10",
+      paidBeforeTracking: 3,
+      receivedIntoAccountId: undefined,
+    });
+    const paid = await pay(ctx, id, bank.id, EMI, "2026-04-10");
+    let d = await getDebt(ctx, id);
+    // Known schedule: 1,000,000 at 12% over 12 months costs 66,185.45 in interest.
+    expect(d).toMatchObject({
+      totalPaidMinor: 4 * EMI,
+      paidBeforeTrackingMinor: 3 * EMI,
+      totalInterestMinor: 6_618_545,
+    });
+    expect((await getDebtForAccount(ctx, loanId))?.id).toBe(id);
+    expect(await getDebtForAccount(ctx, bank.id)).toBeNull();
+
+    // A prepayment lowers the interest still to come, so the loan costs less.
+    await recordPrepayment(ctx, id, {
+      date: "2026-04-20",
+      amountMinor: 30_000_000,
+      fromAccountId: bank.id,
+      mode: "reduce_tenure",
+      confirmOpportunity: true,
+      confirmEmergency: true,
+    });
+    d = await getDebt(ctx, id);
+    expect(d.totalPaidMinor).toBe(4 * EMI + 30_000_000);
+    expect(d.totalInterestMinor).toBeLessThan(6_618_545);
+
+    await voidTransaction(ctx, paid.transactionId, { reason: "test" });
+    expect(await getDebt(ctx, id)).toMatchObject({ totalPaidMinor: 3 * EMI + 30_000_000 });
   });
 
   it("EMIs show in upcoming (outflow from an earmarkable account) and in the overview with DTI", async () => {

@@ -446,6 +446,10 @@ Status values: ⬜ not started · 🟡 in progress · ✅ done
   "Show all", a donut per side (top 5 + Other). Income rows = `income` by category + paid-out investment income as one
   "Investment income" row, so they sum to the Income figure. Reviews saved before this held only `topCategories`; they get
   both lists from the ledger when opened (the rest of the saved review is unchanged). CSV lists "Income: …" and "Expense: …".
+- [loan-cost] Loans: "Total paid so far" + "Total interest of this loan" on the loan page and the loan account page (owner
+  request; docs/04 §10, docs/05 §9). Interest = total paid + remaining schedule − principal (scheme-independent); the
+  "interest paid so far" and next-instalment interest hints were removed. Instalments before tracking use their scheduled
+  EMI. A loan account payment row shows the amount paid + "Loan reduced by" the principal.
 - [mm] e2e `allocation.spec` raced (`isVisible()` right after navigation); it now waits for the editor first.
 
 ## Deviations from docs
