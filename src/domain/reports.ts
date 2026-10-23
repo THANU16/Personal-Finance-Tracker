@@ -163,6 +163,141 @@ export function incomeByHolding(lines: readonly IncomeLine[]): IncomeRow[] {
 
 // ------------------------------------------------------------------------------ monthly review
 
+// ------------------------------------------------------------------------- monthly investing
+
+/** A holding transaction of the month, amounts in base currency. */
+export interface InvestFlow {
+  holdingId: string;
+  type: "invest" | "redeem" | "investment_income" | "opening_balance";
+  amountMinor: number;
+  feeMinor: number;
+  taxMinor: number;
+  reinvest: boolean;
+}
+
+export interface InvestingHoldingRow {
+  holdingId: string;
+  name: string;
+  boughtMinor: number;
+  soldMinor: number;
+  /** Gross investment income (paid out + reinvested). */
+  incomeMinor: number;
+  feesMinor: number;
+  endValueMinor: number;
+}
+
+/** The month's investing (owner request): money in and out, income, and how the value moved. */
+export interface InvestingMonth {
+  /** Buy amounts (excluding fees). */
+  boughtMinor: number;
+  /** Sale amounts (gross, before fees and tax). */
+  soldMinor: number;
+  netInvestedMinor: number;
+  /** Buy and sale fees. */
+  feesMinor: number;
+  income: {
+    receivedMinor: number;
+    paidOutMinor: number;
+    reinvestedMinor: number;
+    taxMinor: number;
+  };
+  /**
+   * start + added (opening balances of new holdings) + net invested + reinvested (net of tax)
+   * + change = end; change is market movement, FD interest and FX — the remainder.
+   */
+  portfolio: {
+    startMinor: number;
+    addedMinor: number;
+    netInvestedMinor: number;
+    reinvestedMinor: number;
+    changeMinor: number;
+    endMinor: number;
+  };
+  /** Holdings with activity this month or a value at month end, largest value first. */
+  holdings: InvestingHoldingRow[];
+  /** Holdings whose value is out of date (their change shows as 0). */
+  staleCount: number;
+}
+
+export function buildInvestingMonth(input: {
+  flows: readonly InvestFlow[];
+  startByHolding: Readonly<Record<string, number>>;
+  endByHolding: Readonly<Record<string, number>>;
+  names: ReadonlyMap<string, string>;
+  staleCount: number;
+}): InvestingMonth {
+  const rows = new Map<string, InvestingHoldingRow>();
+  const row = (id: string) => {
+    let r = rows.get(id);
+    if (!r) {
+      r = {
+        holdingId: id,
+        name: input.names.get(id) ?? "Holding",
+        boughtMinor: 0,
+        soldMinor: 0,
+        incomeMinor: 0,
+        feesMinor: 0,
+        endValueMinor: input.endByHolding[id] ?? 0,
+      };
+      rows.set(id, r);
+    }
+    return r;
+  };
+  let added = 0;
+  let paidOut = 0;
+  let reinvested = 0;
+  let reinvestedNet = 0;
+  let tax = 0;
+  for (const f of input.flows) {
+    const r = row(f.holdingId);
+    if (f.type === "invest") {
+      r.boughtMinor += f.amountMinor;
+      r.feesMinor += f.feeMinor;
+    } else if (f.type === "redeem") {
+      r.soldMinor += f.amountMinor;
+      r.feesMinor += f.feeMinor;
+    } else if (f.type === "investment_income") {
+      r.incomeMinor += f.amountMinor;
+      tax += f.taxMinor;
+      if (f.reinvest) {
+        reinvested += f.amountMinor;
+        reinvestedNet += f.amountMinor - f.taxMinor;
+      } else paidOut += f.amountMinor;
+    } else added += f.amountMinor;
+  }
+  for (const [id, v] of Object.entries(input.endByHolding)) if (v > 0) row(id);
+  const holdings = [...rows.values()].sort(
+    (a, b) => b.endValueMinor - a.endValueMinor || b.boughtMinor - a.boughtMinor,
+  );
+  const sum = (f: (r: InvestingHoldingRow) => number) => holdings.reduce((s, r) => s + f(r), 0);
+  const bought = sum((r) => r.boughtMinor);
+  const sold = sum((r) => r.soldMinor);
+  const start = Object.values(input.startByHolding).reduce((s, v) => s + v, 0);
+  const end = Object.values(input.endByHolding).reduce((s, v) => s + v, 0);
+  return {
+    boughtMinor: bought,
+    soldMinor: sold,
+    netInvestedMinor: bought - sold,
+    feesMinor: sum((r) => r.feesMinor),
+    income: {
+      receivedMinor: paidOut + reinvested,
+      paidOutMinor: paidOut,
+      reinvestedMinor: reinvested,
+      taxMinor: tax,
+    },
+    portfolio: {
+      startMinor: start,
+      addedMinor: added,
+      netInvestedMinor: bought - sold,
+      reinvestedMinor: reinvestedNet,
+      changeMinor: end - start - added - (bought - sold) - reinvestedNet,
+      endMinor: end,
+    },
+    holdings,
+    staleCount: input.staleCount,
+  };
+}
+
 /** One category of a month's income or expense (top-level, largest first). */
 export interface ReviewCategory {
   categoryId: string;
@@ -199,6 +334,8 @@ export interface MonthlyReview {
   expenseCategories: ReviewCategory[];
   /** Every income category of the month, largest first; investment payouts are one row. */
   incomeCategories: ReviewCategory[];
+  /** Owner request: the month's investing in full (older saved reviews get it from the ledger). */
+  investing: InvestingMonth;
   budgets: {
     categoryId: string;
     name: string;
@@ -220,6 +357,7 @@ export function buildMonthlyReview(input: {
   previousFlows: { incomeMinor: number; expenseMinor: number };
   categories: CategoryRow[];
   incomeCategories: CategoryRow[];
+  investing: InvestingMonth;
   budgets: MonthlyReview["budgets"];
   netWorthStartMinor: number;
   netWorthEndMinor: number;
@@ -242,6 +380,7 @@ export function buildMonthlyReview(input: {
     expenseChangeBp: changeBp(input.flows.expenseMinor, input.previousFlows.expenseMinor),
     expenseCategories: reviewCategories(input.categories),
     incomeCategories: reviewCategories(input.incomeCategories),
+    investing: input.investing,
     budgets: input.budgets,
     netWorth: {
       startMinor: input.netWorthStartMinor,

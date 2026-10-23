@@ -294,7 +294,7 @@ idx: {userId, transactionId}
 
 ## monthlyReviews (Phase 11)
 ```
-month (YYYY-MM), generatedAt, data (income, expense, savings rate, every expense and income category vs previous month, budgets,
+month (YYYY-MM), generatedAt, data (income, expense, savings rate, every expense and income category vs previous month, investing section, budgets,
 net worth change, SIPs done/missed, realised gains, fees, 3 insights)
 idx: {userId, month} unique   # written once by the daily job for the previous month; a cache of the ledger
 ```

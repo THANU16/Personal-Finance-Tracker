@@ -7,19 +7,22 @@ import {
   categoryBreakdown,
   incomeByHolding,
   realisedTotals,
-  reviewCategories,
+  buildInvestingMonth,
+  type InvestFlow,
   type CategoryRow,
   type IncomeRow,
   type MonthlyReview,
   type RedemptionLine,
   type Totals,
 } from "@/domain/reports";
+import { isStale } from "@/domain/holdings";
 import { computeNetWorthSeries } from "@/domain/series";
 import { getBudgetMonth, spendLinesBetween } from "@/modules/budgets/service";
 import { CategoryModel, type CategoryDoc } from "@/modules/categories/model";
 import { completeMonthFlows, flowTotalsFor } from "@/modules/dashboard/queries";
 import { loadSeriesInput } from "@/modules/dashboard/series-input";
 import { loadToBase } from "@/modules/fx/service";
+import { getSettings } from "@/modules/settings/service";
 import { HoldingModel, type HoldingDoc } from "@/modules/holdings/model";
 import { MonthlyReviewModel, type MonthlyReviewDoc } from "@/modules/reports/model";
 import { SipExecutionModel, type SipExecutionDoc } from "@/modules/sip/model";
@@ -146,31 +149,66 @@ export async function computeMonthlyReview(ctx: Ctx, month: string): Promise<Mon
   await connectDb();
   const prev = shiftMonth(month, -1);
   const next = shiftMonth(month, 1);
-  const [flows, prevFlows, categories, budget, input, sips, txns, toBase] = await Promise.all([
-    flowTotalsFor(ctx, { from: `${month}-01`, to: monthEnd(month) }),
-    flowTotalsFor(ctx, { from: `${prev}-01`, to: monthEnd(prev) }),
-    monthCategoryRows(ctx, month),
-    getBudgetMonth(ctx, month),
-    loadSeriesInput(ctx),
-    SipExecutionModel.find({
-      userId: uid(ctx),
-      dueDate: {
-        $gte: businessDateToUtc(`${month}-01`, ctx.tz),
-        $lt: businessDateToUtc(`${next}-01`, ctx.tz),
-      },
-    }).lean<SipExecutionDoc[]>(),
-    txnsBetween(ctx, `${month}-01`, `${next}-01`, ["redeem", "invest", "transfer"]),
-    loadToBase(ctx),
-  ]);
+  const [flows, prevFlows, categories, budget, input, sips, txns, toBase, settings] =
+    await Promise.all([
+      flowTotalsFor(ctx, { from: `${month}-01`, to: monthEnd(month) }),
+      flowTotalsFor(ctx, { from: `${prev}-01`, to: monthEnd(prev) }),
+      monthCategoryRows(ctx, month),
+      getBudgetMonth(ctx, month),
+      loadSeriesInput(ctx),
+      SipExecutionModel.find({
+        userId: uid(ctx),
+        dueDate: {
+          $gte: businessDateToUtc(`${month}-01`, ctx.tz),
+          $lt: businessDateToUtc(`${next}-01`, ctx.tz),
+        },
+      }).lean<SipExecutionDoc[]>(),
+      txnsBetween(ctx, `${month}-01`, `${next}-01`, [
+        "redeem",
+        "invest",
+        "transfer",
+        "investment_income",
+        "opening_balance",
+      ]),
+      loadToBase(ctx),
+      getSettings(ctx),
+    ]);
   const [start, end] = computeNetWorthSeries(input, [monthEnd(prev), monthEnd(month)]);
   let realised = 0;
   let fees = 0;
+  const investFlows: InvestFlow[] = [];
   for (const t of txns) {
     const day = utcToBusinessDate(t.date, ctx.tz);
-    fees += toBase(t.feeMinor ?? 0, t.currency, day) ?? 0;
-    if (t.type === "redeem")
-      realised += toBase(t.redemption?.realizedGainMinor ?? 0, t.currency, day) ?? 0;
+    const base = (v: number | null | undefined) => toBase(v ?? 0, t.currency, day) ?? 0;
+    fees += base(t.feeMinor);
+    if (t.type === "redeem") realised += base(t.redemption?.realizedGainMinor);
+    if (t.holdingId && t.type !== "transfer")
+      investFlows.push({
+        holdingId: String(t.holdingId),
+        type: t.type as InvestFlow["type"],
+        amountMinor: base(t.amountMinor),
+        feeMinor: base(t.feeMinor),
+        taxMinor: base(t.taxMinor),
+        reinvest: Boolean(t.reinvest),
+      });
   }
+  const today = todayOf(ctx);
+  const investing = buildInvestingMonth({
+    flows: investFlows,
+    startByHolding: start!.byHolding,
+    endByHolding: end!.byHolding,
+    names: new Map(input.holdingDocs.map((h) => [String(h._id), h.name])),
+    staleCount: input.holdingDocs.filter((h) =>
+      isStale({
+        active: h.status === "active",
+        isFd: Boolean(h.fd),
+        currentValueMinor: h.currentValueMinor,
+        lastValuedAt: h.lastValuedAt ? utcToBusinessDate(h.lastValuedAt, ctx.tz) : null,
+        today,
+        staleDays: settings.staleDays,
+      }),
+    ).length,
+  });
   const count = (s: string) => sips.filter((e) => e.status === s).length;
   const { getInsights } = await import("@/modules/forecast/service");
   return buildMonthlyReview({
@@ -183,6 +221,7 @@ export async function computeMonthlyReview(ctx: Ctx, month: string): Promise<Mon
     },
     categories: categories.expense,
     incomeCategories: categories.income,
+    investing,
     budgets: budget.rows.map((r) => ({
       categoryId: r.categoryId,
       name: r.name,
@@ -223,25 +262,27 @@ export async function getMonthlySummary(ctx: Ctx, month: string): Promise<Monthl
   const months = Array.from({ length: 24 }, (_, i) => shiftMonth(current, -i));
   if (!stored) return { review: await computeMonthlyReview(ctx, month), generatedAt: null, months };
   return {
-    review: await withCategoryLists(ctx, stored.data),
+    review: await withLiveExtras(ctx, stored.data),
     generatedAt: stored.generatedAt.toISOString(),
     months,
   };
 }
 
 /**
- * Reviews saved before the full category lists existed only hold the top 5 expense categories
- * (`topCategories`); fill both lists from the ledger so every review shows them.
+ * Reviews saved before a section existed (full category lists held only `topCategories`; no
+ * investing section) get the missing sections from the ledger as it is now; the rest stays saved.
  */
-async function withCategoryLists(ctx: Ctx, data: MonthlyReview): Promise<MonthlyReview> {
-  if (Array.isArray(data.expenseCategories) && Array.isArray(data.incomeCategories)) return data;
+async function withLiveExtras(ctx: Ctx, data: MonthlyReview): Promise<MonthlyReview> {
+  const partial: Partial<MonthlyReview> & { topCategories?: unknown } = data;
+  if (partial.expenseCategories && partial.incomeCategories && partial.investing) return data;
+  const live = await computeMonthlyReview(ctx, data.month);
   const rest: MonthlyReview & { topCategories?: unknown } = { ...data };
   delete rest.topCategories;
-  const rows = await monthCategoryRows(ctx, data.month);
   return {
     ...rest,
-    expenseCategories: reviewCategories(rows.expense),
-    incomeCategories: reviewCategories(rows.income),
+    expenseCategories: live.expenseCategories,
+    incomeCategories: live.incomeCategories,
+    investing: live.investing,
   };
 }
 

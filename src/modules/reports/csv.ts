@@ -59,6 +59,28 @@ export async function reportCsv(
           "",
         ],
         ["SIP amount invested", m(r.sips.investedMinor), ""],
+        ["Investing: bought", m(r.investing.boughtMinor), ""],
+        ["Investing: sold", m(r.investing.soldMinor), ""],
+        ["Investing: net invested", m(r.investing.netInvestedMinor), ""],
+        ["Investing: buy & sell fees", m(r.investing.feesMinor), ""],
+        ["Investment income received", m(r.investing.income.receivedMinor), ""],
+        ["Investment income paid out", m(r.investing.income.paidOutMinor), ""],
+        ["Investment income reinvested", m(r.investing.income.reinvestedMinor), ""],
+        ["Investment income tax withheld", m(r.investing.income.taxMinor), ""],
+        [
+          "Portfolio value at month end",
+          m(r.investing.portfolio.endMinor),
+          m(r.investing.portfolio.startMinor),
+        ],
+        ["Portfolio market, interest & FX change", m(r.investing.portfolio.changeMinor), ""],
+        ...r.investing.holdings.map(
+          (h) =>
+            [
+              `Holding: ${h.name} (bought / sold / income / fees)`,
+              m(h.endValueMinor),
+              `${m(h.boughtMinor)} / ${m(h.soldMinor)} / ${m(h.incomeMinor)} / ${m(h.feesMinor)}`,
+            ] as [string, string, string],
+        ),
         ...r.incomeCategories.map(
           (c) =>
             [`Income: ${c.name}`, m(c.amountMinor), m(c.previousMinor)] as [string, string, string],

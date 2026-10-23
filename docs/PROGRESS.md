@@ -450,6 +450,10 @@ Status values: ⬜ not started · 🟡 in progress · ✅ done
   request; docs/04 §10, docs/05 §9). Interest = total paid + remaining schedule − principal (scheme-independent); the
   "interest paid so far" and next-instalment interest hints were removed. Instalments before tracking use their scheduled
   EMI. A loan account payment row shows the amount paid + "Loan reduced by" the principal.
+- [monthly-investing] Monthly summary Investing section (owner request; docs/04 §4, docs/05 §15): money in & out, investment
+  income paid out vs reinvested (reinvested stays out of Income and the savings rate), a portfolio value bridge and a
+  by-holding table. New holdings enter the bridge at cost (opening_balance), so a gain recorded at opening shows as market
+  change. The stale note uses today's staleness. Saved reviews without the section get it from the ledger when opened.
 - [mm] e2e `allocation.spec` raced (`isVisible()` right after navigation); it now waits for the editor first.
 
 ## Deviations from docs

@@ -163,6 +163,10 @@ Tabs: Monthly summary · Income vs expense (12m) · Categories · Investment per
 Monthly summary (owner request): "Expenses by category" and "Income by category" cards, each a donut (top 5 + Other,
 total in the centre) over a table (category, amount, share, vs previous) showing the top 5 with "Show all N categories".
 vs previous reads "New" when last month was 0 and ">+999%" above that. Paid-out investment income is one income row.
+Investing section (owner request): Money in & out (bought, sold, net invested, buy & sell fees, realised gains) ·
+Investment income (received = paid out + reinvested, tax withheld) · Portfolio value (start + new holdings at cost + net
+invested + income reinvested net of tax + market, interest & FX = end) · a by-holding table (top 5, Show all) · SIPs line;
+a note when holdings have stale values (their market change shows as 0).
 
 ## 16. Notifications `/notifications`
 List grouped Today / This week / Earlier; mark read, snooze 1d/3d/7d; link to action.

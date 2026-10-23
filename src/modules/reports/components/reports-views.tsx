@@ -37,6 +37,7 @@ import {
 } from "@/components/ui/select";
 import type { FlowPoint } from "@/domain/analytics";
 import { CategoryBreakdownCard } from "@/modules/reports/components/category-breakdown-card";
+import { InvestingSection } from "@/modules/reports/components/investing-section";
 import { formatPercentBp } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { Portfolio } from "@/modules/holdings/queries";
@@ -195,7 +196,8 @@ export function MonthlyView({ data }: { data: MonthlySummaryDTO }) {
           empty="No income this month."
         />
       </div>
-      <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
+      <InvestingSection review={r} />
+      <div className="grid gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader>
             <CardTitle>Budgets</CardTitle>
@@ -227,35 +229,6 @@ export function MonthlyView({ data }: { data: MonthlySummaryDTO }) {
                 ))}
               </ul>
             )}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>Investing</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-              <dt className="text-muted-foreground">SIPs done / partial</dt>
-              <dd className="text-right tabular-nums">
-                {r.sips.done} / {r.sips.partial}
-              </dd>
-              <dt className="text-muted-foreground">SIPs missed / skipped</dt>
-              <dd className="text-right tabular-nums">
-                {r.sips.missed} / {r.sips.skipped}
-              </dd>
-              <dt className="text-muted-foreground">Invested by SIPs</dt>
-              <dd className="text-right">
-                <Money valueMinor={r.sips.investedMinor} currency={ccy} />
-              </dd>
-              <dt className="text-muted-foreground">Realised gains</dt>
-              <dd className="text-right">
-                <Money valueMinor={r.realizedGainMinor} currency={ccy} signed />
-              </dd>
-              <dt className="text-muted-foreground">Fees paid</dt>
-              <dd className="text-right">
-                <Money valueMinor={r.feesMinor} currency={ccy} />
-              </dd>
-            </dl>
           </CardContent>
         </Card>
         <Card>

@@ -108,6 +108,9 @@ invested 0, value 15,000.
 - Excluded: transfer amounts (only their fee counts), invest, redeem, principal portion of debt_payment, adjustment, opening_balance.
 - **Savings** = income − expense; **Savings rate** = savings ÷ income (— if income = 0).
 - Investment fees are part of investment return, not expenses. Card spend counts on the spend date.
+- Reinvested investment income is not Income (it never reaches an account); the monthly summary shows it under Investing
+  (owner request). Monthly portfolio bridge: change = end − start − new holdings (opening cost) − (bought − sold) −
+  reinvested income net of tax (market movement, FD interest and FX).
 
 ## 5. Returns — XIRR
 Cashflows (investor perspective) per holding:

@@ -82,6 +82,23 @@ test("add holding → buy → redeem (docs/04 example) → big value change need
   // Bank received the redemption cash: 100,000 − 10,000 + 19,900
   await page.goto("/accounts");
   await expect(page.getByText("LKR 109,900.00").first()).toBeVisible();
+
+  // Monthly summary → Investing (owner request): bought, sold, fees and the holding's month.
+  const month = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Colombo" })
+    .format(new Date())
+    .slice(0, 7);
+  await page.goto(`/reports?tab=monthly&month=${month}`);
+  const money = page.locator("section").filter({ hasText: "Money in & out" });
+  await expect(money).toContainText("LKR 10,000.00");
+  await expect(money).toContainText("LKR 20,000.00");
+  await expect(money).toContainText("LKR 100.00");
+  await expect(
+    page.getByRole("table", { name: "Investing by holding" }).getByRole("link", {
+      name: "Ceylon Equity Fund",
+    }),
+  ).toBeVisible();
+  if (process.env.E2E_SHOTS)
+    await page.screenshot({ path: `${process.env.E2E_SHOTS}/investing.png`, fullPage: true });
 });
 
 test("fixed deposit wizard computes the maturity value", async ({ page }) => {

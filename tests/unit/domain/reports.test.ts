@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildInvestingMonth,
   buildMonthlyReview,
   categoryBreakdown,
   incomeByHolding,
@@ -113,6 +114,13 @@ describe("buildMonthlyReview", () => {
         cats,
       ),
       incomeCategories: categoryBreakdown([{ categoryId: "salary", amountMinor: 1_000 }], cats),
+      investing: buildInvestingMonth({
+        flows: [],
+        startByHolding: {},
+        endByHolding: {},
+        names: new Map(),
+        staleCount: 0,
+      }),
       budgets: [],
       netWorthStartMinor: 10_000,
       netWorthEndMinor: 10_500,
@@ -142,6 +150,65 @@ describe("buildMonthlyReview", () => {
     expect(r.expenseCategories.reduce((s, c) => s + c.amountMinor, 0)).toBe(721);
     expect(r.incomeCategories).toEqual([
       expect.objectContaining({ categoryId: "salary", amountMinor: 1_000, shareBp: 10_000 }),
+    ]);
+  });
+});
+
+describe("buildInvestingMonth", () => {
+  const f = (
+    holdingId: string,
+    type: "invest" | "redeem" | "investment_income" | "opening_balance",
+    amountMinor: number,
+    extra: { feeMinor?: number; taxMinor?: number; reinvest?: boolean } = {},
+  ) => ({ holdingId, type, amountMinor, feeMinor: 0, taxMinor: 0, reinvest: false, ...extra });
+
+  it("money in and out, income split, and a value bridge that adds up to the month end", () => {
+    const m = buildInvestingMonth({
+      flows: [
+        f("mm", "invest", 190_000, { feeMinor: 100 }),
+        f("mm", "redeem", 179_500, { feeMinor: 75 }),
+        f("mm", "investment_income", 17_400, { reinvest: true, taxMinor: 400 }),
+        f("eq", "investment_income", 5_000, { taxMinor: 500 }), // paid out
+        f("fd", "opening_balance", 50_000),
+      ],
+      startByHolding: { mm: 70_000, eq: 200_000 },
+      endByHolding: { mm: 97_500, eq: 210_000, fd: 50_400, gone: 0 },
+      names: new Map([
+        ["mm", "Money market"],
+        ["eq", "Equity fund"],
+        ["fd", "FD"],
+      ]),
+      staleCount: 1,
+    });
+    expect(m).toMatchObject({
+      boughtMinor: 190_000,
+      soldMinor: 179_500,
+      netInvestedMinor: 10_500,
+      feesMinor: 175,
+      income: {
+        receivedMinor: 22_400,
+        paidOutMinor: 5_000,
+        reinvestedMinor: 17_400,
+        taxMinor: 900,
+      },
+      staleCount: 1,
+    });
+    const p = m.portfolio;
+    expect(p).toMatchObject({
+      startMinor: 270_000,
+      addedMinor: 50_000,
+      reinvestedMinor: 17_000,
+      endMinor: 357_900,
+    });
+    expect(
+      p.startMinor + p.addedMinor + p.netInvestedMinor + p.reinvestedMinor + p.changeMinor,
+    ).toBe(p.endMinor);
+    expect(p.changeMinor).toBe(10_400);
+    // Largest value first; a holding with no value and no activity is left out.
+    expect(m.holdings.map((h) => [h.name, h.incomeMinor, h.feesMinor])).toEqual([
+      ["Equity fund", 5_000, 0],
+      ["Money market", 17_400, 175],
+      ["FD", 0, 0],
     ]);
   });
 });
