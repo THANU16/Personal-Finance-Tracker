@@ -156,6 +156,9 @@ date · upcoming events list.
 ## 15. Reports `/reports`
 Tabs: Monthly summary · Income vs expense (12m) · Categories · Investment performance · Realised gains
 (year) · Investment income & tax (year) · Net worth history. Each with Export CSV.
+Monthly summary (owner request): "Expenses by category" and "Income by category" cards, each a donut (top 5 + Other,
+total in the centre) over a table (category, amount, share, vs previous) showing the top 5 with "Show all N categories".
+vs previous reads "New" when last month was 0 and ">+999%" above that. Paid-out investment income is one income row.
 
 ## 16. Notifications `/notifications`
 List grouped Today / This week / Earlier; mark read, snooze 1d/3d/7d; link to action.

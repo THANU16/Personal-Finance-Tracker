@@ -163,6 +163,28 @@ export function incomeByHolding(lines: readonly IncomeLine[]): IncomeRow[] {
 
 // ------------------------------------------------------------------------------ monthly review
 
+/** One category of a month's income or expense (top-level, largest first). */
+export interface ReviewCategory {
+  categoryId: string;
+  name: string;
+  amountMinor: number;
+  previousMinor: number;
+  changeBp: number | null;
+  /** Share of the month's total for this side, in bp. */
+  shareBp: number | null;
+}
+
+/** Category rows → review rows (children dropped; the summary lists top-level categories). */
+export const reviewCategories = (rows: readonly CategoryRow[]): ReviewCategory[] =>
+  rows.map((c) => ({
+    categoryId: c.categoryId,
+    name: c.name,
+    amountMinor: c.amountMinor,
+    previousMinor: c.previousMinor,
+    changeBp: c.changeBp,
+    shareBp: c.shareBp,
+  }));
+
 export interface MonthlyReview {
   month: string;
   currency: string;
@@ -173,13 +195,10 @@ export interface MonthlyReview {
   previous: { incomeMinor: number; expenseMinor: number; savingsRateBp: number | null };
   incomeChangeBp: number | null;
   expenseChangeBp: number | null;
-  topCategories: {
-    categoryId: string;
-    name: string;
-    amountMinor: number;
-    previousMinor: number;
-    changeBp: number | null;
-  }[];
+  /** Every expense category of the month, largest first (owner request: not only the top 5). */
+  expenseCategories: ReviewCategory[];
+  /** Every income category of the month, largest first; investment payouts are one row. */
+  incomeCategories: ReviewCategory[];
   budgets: {
     categoryId: string;
     name: string;
@@ -200,6 +219,7 @@ export function buildMonthlyReview(input: {
   flows: { incomeMinor: number; expenseMinor: number };
   previousFlows: { incomeMinor: number; expenseMinor: number };
   categories: CategoryRow[];
+  incomeCategories: CategoryRow[];
   budgets: MonthlyReview["budgets"];
   netWorthStartMinor: number;
   netWorthEndMinor: number;
@@ -220,13 +240,8 @@ export function buildMonthlyReview(input: {
     previous: { ...input.previousFlows, savingsRateBp: rate(input.previousFlows) },
     incomeChangeBp: changeBp(input.flows.incomeMinor, input.previousFlows.incomeMinor),
     expenseChangeBp: changeBp(input.flows.expenseMinor, input.previousFlows.expenseMinor),
-    topCategories: input.categories.slice(0, 5).map((c) => ({
-      categoryId: c.categoryId,
-      name: c.name,
-      amountMinor: c.amountMinor,
-      previousMinor: c.previousMinor,
-      changeBp: c.changeBp,
-    })),
+    expenseCategories: reviewCategories(input.categories),
+    incomeCategories: reviewCategories(input.incomeCategories),
     budgets: input.budgets,
     netWorth: {
       startMinor: input.netWorthStartMinor,

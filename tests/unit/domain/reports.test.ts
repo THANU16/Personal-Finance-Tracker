@@ -102,13 +102,17 @@ describe("realised and income", () => {
 });
 
 describe("buildMonthlyReview", () => {
-  it("rates, changes, top 5 and 3 insights", () => {
+  it("rates, changes, every income / expense category and 3 insights", () => {
     const r = buildMonthlyReview({
       month: "2026-09",
       currency: "LKR",
       flows: { incomeMinor: 1_000, expenseMinor: 600 },
       previousFlows: { incomeMinor: 800, expenseMinor: 800 },
-      categories: categoryBreakdown([{ categoryId: "rent", amountMinor: 600 }], cats),
+      categories: categoryBreakdown(
+        Array.from({ length: 7 }, (_, i) => ({ categoryId: `c${i}`, amountMinor: 100 + i })),
+        cats,
+      ),
+      incomeCategories: categoryBreakdown([{ categoryId: "salary", amountMinor: 1_000 }], cats),
       budgets: [],
       netWorthStartMinor: 10_000,
       netWorthEndMinor: 10_500,
@@ -132,6 +136,12 @@ describe("buildMonthlyReview", () => {
       netWorth: { changeMinor: 500, changeBp: 500 },
     });
     expect(r.insights).toHaveLength(3);
-    expect(r.topCategories[0]).toMatchObject({ categoryId: "rent", amountMinor: 600 });
+    // Owner request: all categories, not only the top 5; largest first, with shares.
+    expect(r.expenseCategories).toHaveLength(7);
+    expect(r.expenseCategories[0]).toMatchObject({ categoryId: "c6", amountMinor: 106 });
+    expect(r.expenseCategories.reduce((s, c) => s + c.amountMinor, 0)).toBe(721);
+    expect(r.incomeCategories).toEqual([
+      expect.objectContaining({ categoryId: "salary", amountMinor: 1_000, shareBp: 10_000 }),
+    ]);
   });
 });

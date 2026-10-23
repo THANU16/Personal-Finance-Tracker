@@ -442,6 +442,10 @@ Status values: ⬜ not started · 🟡 in progress · ✅ done
 - [receivable-earmarks] Receivables can carry emergency / opportunity earmarks (owner request; docs/04 §20). Lent money is
   counted in its bucket but never as free / spendable cash or a deployment source; repayments are not dip-guarded (untagged
   ones shrink the earmark, tagged ones return it to the bucket).
+- [monthly-categories] Monthly summary lists every expense AND income category (owner request; docs/05 §15): top 5 shown,
+  "Show all", a donut per side (top 5 + Other). Income rows = `income` by category + paid-out investment income as one
+  "Investment income" row, so they sum to the Income figure. Reviews saved before this held only `topCategories`; they get
+  both lists from the ledger when opened (the rest of the saved review is unchanged). CSV lists "Income: …" and "Expense: …".
 - [mm] e2e `allocation.spec` raced (`isVisible()` right after navigation); it now waits for the editor first.
 
 ## Deviations from docs

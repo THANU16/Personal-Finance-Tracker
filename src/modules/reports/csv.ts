@@ -59,9 +59,13 @@ export async function reportCsv(
           "",
         ],
         ["SIP amount invested", m(r.sips.investedMinor), ""],
-        ...r.topCategories.map(
+        ...r.incomeCategories.map(
           (c) =>
-            [`Category: ${c.name}`, m(c.amountMinor), m(c.previousMinor)] as [
+            [`Income: ${c.name}`, m(c.amountMinor), m(c.previousMinor)] as [string, string, string],
+        ),
+        ...r.expenseCategories.map(
+          (c) =>
+            [`Expense: ${c.name}`, m(c.amountMinor), m(c.previousMinor)] as [
               string,
               string,
               string,

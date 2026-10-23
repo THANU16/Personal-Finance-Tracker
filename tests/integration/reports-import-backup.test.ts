@@ -414,7 +414,7 @@ describe("reports", () => {
     expect(aug.generatedAt).toBeNull();
     expect(aug.review).toMatchObject({
       expenseMinor: 300_000,
-      topCategories: [{ name: "Food & Dining" }],
+      expenseCategories: [{ name: "Food & Dining" }],
     });
 
     const csv = await reportCsv(ctx, "realised", { year: "2025" });

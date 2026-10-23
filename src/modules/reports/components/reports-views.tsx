@@ -36,6 +36,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { FlowPoint } from "@/domain/analytics";
+import { CategoryBreakdownCard } from "@/modules/reports/components/category-breakdown-card";
 import { formatPercentBp } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { Portfolio } from "@/modules/holdings/queries";
@@ -179,43 +180,22 @@ export function MonthlyView({ data }: { data: MonthlySummaryDTO }) {
         />
       </div>
       <div className="grid gap-4 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Top categories</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {r.topCategories.length === 0 ? (
-              <NoData>No spending this month.</NoData>
-            ) : (
-              <Table
-                caption="Top categories"
-                head={
-                  <tr>
-                    <th scope="col" className={cn(TH, "text-left")}>
-                      Category
-                    </th>
-                    <th scope="col" className={cn(TH, "text-right")}>
-                      Spent
-                    </th>
-                    <th scope="col" className={cn(TH, "text-right")}>
-                      vs previous
-                    </th>
-                  </tr>
-                }
-              >
-                {r.topCategories.map((c) => (
-                  <tr key={c.categoryId} className="border-t">
-                    <td className={TD}>{c.name}</td>
-                    <td className={NUM}>
-                      <Money valueMinor={c.amountMinor} currency={ccy} />
-                    </td>
-                    <td className={NUM}>{c.changeBp === null ? "new" : signedPct(c.changeBp)}</td>
-                  </tr>
-                ))}
-              </Table>
-            )}
-          </CardContent>
-        </Card>
+        <CategoryBreakdownCard
+          title="Expenses by category"
+          amountLabel="Spent"
+          rows={r.expenseCategories}
+          currency={ccy}
+          empty="No spending this month."
+        />
+        <CategoryBreakdownCard
+          title="Income by category"
+          amountLabel="Received"
+          rows={r.incomeCategories}
+          currency={ccy}
+          empty="No income this month."
+        />
+      </div>
+      <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
         <Card>
           <CardHeader>
             <CardTitle>Budgets</CardTitle>

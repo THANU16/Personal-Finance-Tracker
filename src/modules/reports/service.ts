@@ -7,6 +7,7 @@ import {
   categoryBreakdown,
   incomeByHolding,
   realisedTotals,
+  reviewCategories,
   type CategoryRow,
   type IncomeRow,
   type MonthlyReview,
@@ -77,30 +78,90 @@ async function txnsBetween(
 
 // ---------------------------------------------------------------------------- monthly review
 
+/** Category id of investment payouts in the income breakdown (they have no category). */
+export const INVESTMENT_INCOME_ID = "investment_income";
+
+/**
+ * Income lines from month `fromMonth` up to (not including) `toMonth`, base currency (docs/04 §4:
+ * `income` by category + paid-out `investment_income` as one line), so they sum to the Income total.
+ */
+async function incomeLinesBetween(ctx: Ctx, fromMonth: string, toMonth: string) {
+  const [groups, toBase] = await Promise.all([
+    TransactionModel.aggregate<{ _id: { day: string; currency: string; c: unknown }; a: number }>([
+      {
+        $match: {
+          userId: uid(ctx),
+          status: "posted",
+          date: {
+            $gte: businessDateToUtc(`${fromMonth}-01`, ctx.tz),
+            $lt: businessDateToUtc(`${toMonth}-01`, ctx.tz),
+          },
+          $or: [{ type: "income" }, { type: "investment_income", reinvest: { $ne: true } }],
+        },
+      },
+      {
+        $group: {
+          _id: {
+            day: { $dateToString: { date: "$date", format: "%Y-%m-%d", timezone: ctx.tz } },
+            currency: "$currency",
+            c: { $cond: [{ $eq: ["$type", "income"] }, "$categoryId", INVESTMENT_INCOME_ID] },
+          },
+          a: { $sum: "$amountMinor" },
+        },
+      },
+    ]),
+    loadToBase(ctx),
+  ]);
+  const lines: { categoryId: string; amountMinor: number }[] = [];
+  for (const g of groups) {
+    const v = toBase(g.a, g._id.currency, g._id.day);
+    if (v !== null) lines.push({ categoryId: String(g._id.c), amountMinor: v });
+  }
+  return lines;
+}
+
+/** The month's expense and income categories (with the previous month's amounts). */
+async function monthCategoryRows(ctx: Ctx, month: string) {
+  const prev = shiftMonth(month, -1);
+  const next = shiftMonth(month, 1);
+  const [lines, prevLines, income, prevIncome, cats] = await Promise.all([
+    spendLinesBetween(ctx, month, next),
+    spendLinesBetween(ctx, prev, month),
+    incomeLinesBetween(ctx, month, next),
+    incomeLinesBetween(ctx, prev, month),
+    categoryInfo(ctx),
+  ]);
+  const withPayouts = [
+    ...cats,
+    { id: INVESTMENT_INCOME_ID, name: "Investment income", parentId: null },
+  ];
+  return {
+    expense: categoryBreakdown(lines.lines, cats, prevLines.lines),
+    income: categoryBreakdown(income, withPayouts, prevIncome),
+  };
+}
+
 /** Builds the review of `month` from the ledger as it is now. */
 export async function computeMonthlyReview(ctx: Ctx, month: string): Promise<MonthlyReview> {
   await connectDb();
   const prev = shiftMonth(month, -1);
   const next = shiftMonth(month, 1);
-  const [flows, prevFlows, lines, prevLines, cats, budget, input, sips, txns, toBase] =
-    await Promise.all([
-      flowTotalsFor(ctx, { from: `${month}-01`, to: monthEnd(month) }),
-      flowTotalsFor(ctx, { from: `${prev}-01`, to: monthEnd(prev) }),
-      spendLinesBetween(ctx, month, next),
-      spendLinesBetween(ctx, prev, month),
-      categoryInfo(ctx),
-      getBudgetMonth(ctx, month),
-      loadSeriesInput(ctx),
-      SipExecutionModel.find({
-        userId: uid(ctx),
-        dueDate: {
-          $gte: businessDateToUtc(`${month}-01`, ctx.tz),
-          $lt: businessDateToUtc(`${next}-01`, ctx.tz),
-        },
-      }).lean<SipExecutionDoc[]>(),
-      txnsBetween(ctx, `${month}-01`, `${next}-01`, ["redeem", "invest", "transfer"]),
-      loadToBase(ctx),
-    ]);
+  const [flows, prevFlows, categories, budget, input, sips, txns, toBase] = await Promise.all([
+    flowTotalsFor(ctx, { from: `${month}-01`, to: monthEnd(month) }),
+    flowTotalsFor(ctx, { from: `${prev}-01`, to: monthEnd(prev) }),
+    monthCategoryRows(ctx, month),
+    getBudgetMonth(ctx, month),
+    loadSeriesInput(ctx),
+    SipExecutionModel.find({
+      userId: uid(ctx),
+      dueDate: {
+        $gte: businessDateToUtc(`${month}-01`, ctx.tz),
+        $lt: businessDateToUtc(`${next}-01`, ctx.tz),
+      },
+    }).lean<SipExecutionDoc[]>(),
+    txnsBetween(ctx, `${month}-01`, `${next}-01`, ["redeem", "invest", "transfer"]),
+    loadToBase(ctx),
+  ]);
   const [start, end] = computeNetWorthSeries(input, [monthEnd(prev), monthEnd(month)]);
   let realised = 0;
   let fees = 0;
@@ -120,7 +181,8 @@ export async function computeMonthlyReview(ctx: Ctx, month: string): Promise<Mon
       incomeMinor: prevFlows[0]!.incomeMinor,
       expenseMinor: prevFlows[0]!.expenseMinor,
     },
-    categories: categoryBreakdown(lines.lines, cats, prevLines.lines),
+    categories: categories.expense,
+    incomeCategories: categories.income,
     budgets: budget.rows.map((r) => ({
       categoryId: r.categoryId,
       name: r.name,
@@ -159,9 +221,28 @@ export async function getMonthlySummary(ctx: Ctx, month: string): Promise<Monthl
   }).lean<MonthlyReviewDoc>();
   const current = todayOf(ctx).slice(0, 7);
   const months = Array.from({ length: 24 }, (_, i) => shiftMonth(current, -i));
-  return stored
-    ? { review: stored.data, generatedAt: stored.generatedAt.toISOString(), months }
-    : { review: await computeMonthlyReview(ctx, month), generatedAt: null, months };
+  if (!stored) return { review: await computeMonthlyReview(ctx, month), generatedAt: null, months };
+  return {
+    review: await withCategoryLists(ctx, stored.data),
+    generatedAt: stored.generatedAt.toISOString(),
+    months,
+  };
+}
+
+/**
+ * Reviews saved before the full category lists existed only hold the top 5 expense categories
+ * (`topCategories`); fill both lists from the ledger so every review shows them.
+ */
+async function withCategoryLists(ctx: Ctx, data: MonthlyReview): Promise<MonthlyReview> {
+  if (Array.isArray(data.expenseCategories) && Array.isArray(data.incomeCategories)) return data;
+  const rest: MonthlyReview & { topCategories?: unknown } = { ...data };
+  delete rest.topCategories;
+  const rows = await monthCategoryRows(ctx, data.month);
+  return {
+    ...rest,
+    expenseCategories: reviewCategories(rows.expense),
+    incomeCategories: reviewCategories(rows.income),
+  };
 }
 
 /**

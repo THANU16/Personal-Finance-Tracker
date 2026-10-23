@@ -73,6 +73,16 @@ test("bank CSV import → re-import adds 0 → reports and exports", async ({ pa
   const backup = await page.request.get("/api/export?kind=backup");
   expect(JSON.parse(await backup.text())).toMatchObject({ format: "wealthtrack-backup" });
 
+  // Monthly summary (owner request): income and expense categories, each with a donut.
+  await page.goto(`/reports?tab=monthly&month=${MONTH}`);
+  const expenses = page.getByRole("table", { name: "Expenses by category" });
+  const income = page.getByRole("table", { name: "Income by category" });
+  await expect(expenses.getByText("Uncategorised")).toBeVisible();
+  await expect(income.getByText("Uncategorised")).toBeVisible();
+  await expect(page.getByRole("figure", { name: /^Income by category/ })).toBeVisible();
+  if (process.env.E2E_SHOTS)
+    await page.screenshot({ path: `${process.env.E2E_SHOTS}/monthly.png`, fullPage: true });
+
   await page.goto("/reports?tab=net-worth");
   await expect(page.getByRole("link", { name: "Export CSV" })).toBeVisible();
 });
