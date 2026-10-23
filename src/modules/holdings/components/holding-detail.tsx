@@ -22,6 +22,8 @@ import {
   type HoldingDetail as Detail,
 } from "@/modules/holdings/queries";
 import { getCurrentUser } from "@/server/auth/require-user";
+import { getHoldingBuckets } from "@/modules/earmarks/holding-service";
+import { EarmarksCard } from "@/modules/earmarks/components/earmarks-card";
 import { AppError } from "@/server/errors";
 
 const longDate = (key: string) =>
@@ -42,9 +44,10 @@ export async function HoldingDetailView({ params }: { params: Promise<{ id: stri
   }
   const { holding: h, transactions, valuations, timeline } = detail;
   const todayKey = utcToBusinessDate(new Date(), ctx.tz);
-  const [classes, accounts] = await Promise.all([
+  const [classes, accounts, buckets] = await Promise.all([
     listActiveClasses(ctx),
     h.fd ? listAccounts(ctx) : Promise.resolve([]),
+    getHoldingBuckets(ctx, id),
   ]);
   const fd = h.fd;
 
@@ -176,6 +179,12 @@ export async function HoldingDetailView({ params }: { params: Promise<{ id: stri
           <ValueChart points={timeline} currency={h.currency} />
         </CardContent>
       </Card>
+
+      {buckets.active ? (
+        <div className="mb-4">
+          <EarmarksCard accountName={h.name} buckets={buckets} />
+        </div>
+      ) : null}
 
       <HoldingTabs
         holding={h}

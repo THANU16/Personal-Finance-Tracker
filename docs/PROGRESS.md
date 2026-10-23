@@ -430,6 +430,15 @@ Status values: ⬜ not started · 🟡 in progress · ✅ done
   transfer: "Put into" grows the destination's earmark (capped at free cash). Transfers can tag both sides. Void reverses,
   edit follows. Not offered for cards/loans, dedicated accounts or asset sides; Investing with opportunity money stays
   Record deployment (cycle tracking). "Use emergency fund" on Essentials is unchanged.
+- [holding-earmarks] Emergency / opportunity money inside assets (owner request; docs/04 §20, docs/03, docs/05 updated). Owner
+  answers taken as recommended: fixed or % (of value); value drops cut opportunity first; reserved parts left out of the
+  allocation by default (toggle includes them locked, now labelled "Emergency & opportunity money"); sell guard on; all three
+  steps (earmarks, buy/sell/switch tags, deploying from a holding). Own collection `holdingEarmarks` (in backups); the
+  account earmark unique index could not hold them. The Assets "hide emergency" toggle still hides only holdings flagged as
+  a whole; partial earmarks show as badges. The demo seed earmarks 40% of the money market fund as emergency money.
+- [donut] Dashboard Allocation card = investments only (owner request): holdings that count toward the emergency fund as a
+  whole and the earmarked (emergency + opportunity) part of other holdings are left out and shown as "Not shown: …". Earmarks
+  have no history, so a past range end uses today's reserved share of each holding. Net worth and Assets are unchanged.
 - [mm] e2e `allocation.spec` raced (`isVisible()` right after navigation); it now waits for the editor first.
 
 ## Deviations from docs

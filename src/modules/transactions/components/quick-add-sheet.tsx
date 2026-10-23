@@ -242,8 +242,8 @@ function toInput(v: FormValues) {
       ...(toHolding ? { toHoldingId: toHolding } : { toAccountId: v.toAccountId }),
       toAmountMinor: fromHolding || toHolding ? null : v.toAmountMinor,
       feeMinor: v.feeMinor ?? 0,
-      fromBucket: fromHolding ? null : v.fromBucket || null,
-      toBucket: toHolding ? null : v.toBucket || null,
+      fromBucket: v.fromBucket || null,
+      toBucket: v.toBucket || null,
     };
   }
   if (v.type === "invest") {
@@ -255,6 +255,8 @@ function toInput(v: FormValues) {
       feeMinor: v.feeMinor ?? 0,
       units: v.units,
       priceMinorE4: v.priceMinorE4,
+      fromBucket: v.fromBucket || null,
+      toBucket: v.toBucket || null,
     };
   }
   if (v.type === "redeem") {
@@ -269,6 +271,8 @@ function toInput(v: FormValues) {
       taxMinor: v.taxMinor ?? 0,
       units: byUnits ? (v.units ?? Number.NaN) : null,
       priceMinorE4: byUnits ? v.priceMinorE4 : null,
+      fromBucket: v.fromBucket || null,
+      toBucket: v.toBucket || null,
     };
   }
   if (v.type === "investment_income") {
@@ -302,6 +306,15 @@ function toInput(v: FormValues) {
       };
 }
 
+/** An account or holding that can carry earmarks (bucket choice in Quick add). */
+type BucketSide = {
+  name: string;
+  currency: string;
+  bucketable: boolean;
+  emergencyMinor: number;
+  opportunityMinor: number;
+};
+
 const BUCKET_CHOICES = [
   { value: "", label: "Normal" },
   { value: "emergency", label: "Emergency" },
@@ -325,7 +338,7 @@ function BucketChoice({
   label: string;
   control: ReturnType<typeof useForm<FormValues>>["control"];
   name: "fromBucket" | "toBucket";
-  account: QuickAddOptions["accounts"][number];
+  account: BucketSide;
   error?: string;
   direction: "in" | "out";
 }) {
@@ -365,8 +378,8 @@ function BucketChoice({
             {error ??
               (field.value === ""
                 ? direction === "out"
-                  ? "Paid from free cash (earmarks stay as they are)."
-                  : "Arrives as free cash."
+                  ? "From the free part (earmarks stay as they are)."
+                  : "Arrives as free money."
                 : direction === "out"
                   ? `Lowers the ${field.value} money on ${account.name} (now ${formatMoney(field.value === "emergency" ? account.emergencyMinor : account.opportunityMinor, account.currency)}).`
                   : `Adds to the ${field.value} money on ${account.name} (now ${formatMoney(field.value === "emergency" ? account.emergencyMinor : account.opportunityMinor, account.currency)}).`)}
@@ -510,12 +523,25 @@ function QuickAddForm({
     type === "transfer" ||
     type === "redeem" ||
     (type === "investment_income" && !reinvest);
-  // Optional bucket choice (owner request): only for accounts that can hold earmarks.
-  const fromAccount = holdingRef(fromId) ? undefined : account(fromId);
-  const toAccount = holdingRef(toId) ? undefined : account(toId);
-  const showFromBucket =
-    (type === "expense" || type === "transfer") && Boolean(fromAccount?.bucketable);
-  const showToBucket = (type === "income" || type === "transfer") && Boolean(toAccount?.bucketable);
+  // Optional bucket choice (owner request): each side is an account or a holding that can hold
+  // earmarks. A buy puts into the holding's bucket; a sale takes from it.
+  const holdingSide = (id: string | null) =>
+    id ? options.holdings.find((x) => x.id === id) : undefined;
+  const endpointSide = (id: string) => (holdingRef(id) ? holdingSide(holdingRef(id)) : account(id));
+  const fromSide: BucketSide | undefined =
+    type === "redeem"
+      ? holdingSide(holdingId)
+      : type === "expense" || type === "transfer" || type === "invest"
+        ? endpointSide(fromId)
+        : undefined;
+  const toSide: BucketSide | undefined =
+    type === "invest"
+      ? holdingSide(holdingId)
+      : type === "income" || type === "transfer" || type === "redeem"
+        ? endpointSide(toId)
+        : undefined;
+  const showFromBucket = Boolean(fromSide?.bucketable);
+  const showToBucket = Boolean(toSide?.bucketable);
   // A hidden choice goes back to Normal, so a stale bucket is never sent for another account/type.
   React.useEffect(() => {
     if (!showFromBucket && getValues("fromBucket")) setValue("fromBucket", "");
@@ -764,6 +790,28 @@ function QuickAddForm({
             err={err}
           />
         ) : null}
+        {type === "invest" && showToBucket ? (
+          <BucketChoice
+            id="qa-holding-to-bucket"
+            label="Put into (optional)"
+            control={control}
+            name="toBucket"
+            account={toSide!}
+            error={err("toBucket")}
+            direction="in"
+          />
+        ) : null}
+        {type === "redeem" && showFromBucket ? (
+          <BucketChoice
+            id="qa-holding-from-bucket"
+            label="Sell from (optional)"
+            control={control}
+            name="fromBucket"
+            account={fromSide!}
+            error={err("fromBucket")}
+            direction="out"
+          />
+        ) : null}
         {preview ? (
           <div className="grid gap-1 rounded-lg bg-muted px-3 py-2 text-sm" aria-live="polite">
             <span className="flex justify-between">
@@ -808,13 +856,13 @@ function QuickAddForm({
             />
           </FormField>
         ) : null}
-        {showFromBucket ? (
+        {showFromBucket && type !== "redeem" ? (
           <BucketChoice
             id="qa-from-bucket"
             label={type === "transfer" ? "Take from (optional)" : "Pay from (optional)"}
             control={control}
             name="fromBucket"
-            account={fromAccount!}
+            account={fromSide!}
             error={err("fromBucket")}
             direction="out"
           />
@@ -841,13 +889,13 @@ function QuickAddForm({
             />
           </FormField>
         ) : null}
-        {showToBucket ? (
+        {showToBucket && type !== "invest" ? (
           <BucketChoice
             id="qa-to-bucket"
             label="Put into (optional)"
             control={control}
             name="toBucket"
-            account={toAccount!}
+            account={toSide!}
             error={err("toBucket")}
             direction="in"
           />

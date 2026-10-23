@@ -411,29 +411,59 @@ export interface Allocation {
   totalMinor: number;
   classes: AllocationClass[];
   fxMissing: number;
+  /** Emergency / opportunity money held in assets, left out of the investment allocation. */
+  reservedMinor: number;
 }
 
-/** Holding values by class as of `end` (closing value), with the class → holdings drill-down. */
+/**
+ * The investment allocation by class as of `end` (closing values), with the class → holdings
+ * drill-down. Owner request: emergency and opportunity money is not an investment — holdings that
+ * count toward the emergency fund as a whole, and the earmarked part of other holdings (today's
+ * share of their value), are left out and reported as `reservedMinor`.
+ */
 export async function allocationAsOf(ctx: Ctx, end: string): Promise<Allocation> {
   const input = await seriesInput(ctx);
   const [point] = computeNetWorthSeries(input, [end]);
-  const classes = await AssetClassModel.find({ userId: toObjectId(ctx.userId, "User") })
-    .sort({ sortOrder: 1, name: 1 })
-    .lean<AssetClassDoc[]>();
+  const { listHoldingBuckets } = await import("@/modules/earmarks/holding-service");
+  const [classes, buckets] = await Promise.all([
+    AssetClassModel.find({ userId: toObjectId(ctx.userId, "User") })
+      .sort({ sortOrder: 1, name: 1 })
+      .lean<AssetClassDoc[]>(),
+    listHoldingBuckets(ctx),
+  ]);
   const holdingName = new Map(input.holdingDocs.map((h) => [String(h._id), h]));
-  const total = point!.holdingsValueMinor;
+  let reservedMinor = 0;
+  const invested: Record<string, number> = {};
+  for (const [hid, v] of Object.entries(point!.byHolding)) {
+    const doc = holdingName.get(hid);
+    const hb = buckets.get(hid);
+    const reserved = doc?.countsTowardEmergencyFund
+      ? v
+      : hb?.canCarryEarmarks && hb.balanceMinor > 0
+        ? Math.min(v, Math.round((v * (hb.emergencyMinor + hb.opportunityMinor)) / hb.balanceMinor))
+        : 0;
+    reservedMinor += reserved;
+    invested[hid] = v - reserved;
+  }
+  const byClass: Record<string, number> = {};
+  for (const [hid, v] of Object.entries(invested)) {
+    const cls = String(holdingName.get(hid)?.assetClassId);
+    byClass[cls] = (byClass[cls] ?? 0) + v;
+  }
+  const total = Object.values(invested).reduce((s, v) => s + v, 0);
   const share = (v: number, of: number) => (of > 0 ? Math.round((v * 10_000) / of) : 0);
   return {
     currency: ctx.baseCurrency,
     asOf: end,
     totalMinor: total,
     fxMissing: point!.fxMissing,
+    reservedMinor,
     classes: classes
       .map((cls) => {
         const id = String(cls._id);
-        const value = point!.byClass[id] ?? 0;
-        const holdings = Object.entries(point!.byHolding)
-          .filter(([hid]) => String(holdingName.get(hid)?.assetClassId) === id)
+        const value = byClass[id] ?? 0;
+        const holdings = Object.entries(invested)
+          .filter(([hid, v]) => v > 0 && String(holdingName.get(hid)?.assetClassId) === id)
           .map(([hid, v]) => ({
             id: hid,
             name: holdingName.get(hid)?.name ?? "Holding",

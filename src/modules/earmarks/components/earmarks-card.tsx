@@ -11,26 +11,34 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import type { Bucket } from "@/domain/earmarks";
 import { formatPercentBp } from "@/lib/format";
-import { removeEarmarkAction } from "@/modules/earmarks/actions";
-import { EarmarkDialog } from "@/modules/earmarks/components/earmark-dialog";
-import type { AccountBucketsDTO } from "@/modules/earmarks/schemas";
+import { removeEarmarkAction, removeHoldingEarmarkAction } from "@/modules/earmarks/actions";
+import { EarmarkDialog, type BucketsView } from "@/modules/earmarks/components/earmark-dialog";
 
 const LABEL: Record<Bucket, string> = { emergency: "Emergency", opportunity: "Opportunity" };
 
-/** Account detail: buckets and the earmarks behind them (docs/05 §3). */
+/** Account or holding detail: buckets and the earmarks behind them (docs/05 §3). */
 export function EarmarksCard({
   accountName,
   buckets,
 }: {
   accountName: string;
-  buckets: AccountBucketsDTO;
+  buckets: BucketsView;
 }) {
+  const holding = "holdingId" in buckets;
+  // Earmarkable now: accounts as computed on the server; holdings when they can carry and have value.
+  const earmarkable =
+    "holdingId" in buckets
+      ? buckets.canCarryEarmarks && buckets.balanceMinor > 0
+      : buckets.earmarkable;
   const router = useRouter();
   const [dialog, setDialog] = useState<{ bucket?: Bucket } | null>(null);
   const ccy = buckets.currency;
 
   async function remove(bucket: Bucket) {
-    const result = await removeEarmarkAction({ accountId: buckets.accountId, bucket });
+    const result =
+      "holdingId" in buckets
+        ? await removeHoldingEarmarkAction({ holdingId: buckets.holdingId, bucket })
+        : await removeEarmarkAction({ accountId: buckets.accountId, bucket });
     if (!result.ok) {
       toast.error(result.error.message);
       return false;
@@ -45,9 +53,11 @@ export function EarmarksCard({
         <CardHeader>
           <CardTitle>{LABEL[buckets.dedicated]} money</CardTitle>
           <CardDescription>
-            {buckets.dedicated === "emergency"
-              ? "This account counts toward your emergency fund as a whole. Taking money out asks you first."
-              : "This is an Opportunity Fund account: all of it is opportunity money. Taking money out asks you first."}
+            {holding
+              ? "This holding counts toward your emergency fund as a whole. To keep only part of it as emergency money, turn that off and add an earmark instead."
+              : buckets.dedicated === "emergency"
+                ? "This account counts toward your emergency fund as a whole. Taking money out asks you first."
+                : "This is an Opportunity Fund account: all of it is opportunity money. Taking money out asks you first."}
           </CardDescription>
         </CardHeader>
       </Card>
@@ -63,10 +73,12 @@ export function EarmarksCard({
             {buckets.overEarmarked ? <Badge variant="destructive">Over-earmarked</Badge> : null}
           </CardTitle>
           <CardDescription>
-            Money set aside inside this account. Spending beyond free cash asks you first.
+            {holding
+              ? "Emergency or opportunity money kept in this asset (it stays invested). Selling beyond the free part asks you first."
+              : "Money set aside inside this account. Spending beyond free cash asks you first."}
           </CardDescription>
         </div>
-        {buckets.earmarkable ? (
+        {earmarkable ? (
           <Button variant="outline" onClick={() => setDialog({})}>
             Earmark / move
           </Button>
@@ -81,12 +93,15 @@ export function EarmarksCard({
         />
         {buckets.overEarmarked ? (
           <p className="text-sm text-muted-foreground">
-            The earmarks add up to more than the balance, so opportunity (then emergency) is shown
-            reduced. Lower an earmark or add money to fix it.
+            The earmarks add up to more than the {holding ? "value" : "balance"}, so opportunity
+            (then emergency) is shown reduced. Lower an earmark{holding ? "" : " or add money"} to
+            fix it.
           </p>
         ) : null}
-        {!buckets.earmarkable && buckets.earmarks.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Earmarks need a balance above zero.</p>
+        {!earmarkable && buckets.earmarks.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            Earmarks need a {holding ? "value" : "balance"} above zero.
+          </p>
         ) : null}
         {buckets.earmarks.length > 0 ? (
           <ul className="divide-y rounded-lg border" aria-label="Earmarks">
@@ -97,7 +112,7 @@ export function EarmarksCard({
                   <span className="text-xs text-muted-foreground">
                     {e.mode === "percent" ? (
                       <>
-                        {formatPercentBp(e.percentBp ?? 0)} of balance ·{" "}
+                        {formatPercentBp(e.percentBp ?? 0)} of {holding ? "value" : "balance"} ·{" "}
                         <Money valueMinor={e.rawMinor} currency={ccy} />
                       </>
                     ) : (
@@ -108,7 +123,7 @@ export function EarmarksCard({
                   </span>
                 </div>
                 <div className="flex gap-2">
-                  {buckets.earmarkable ? (
+                  {earmarkable ? (
                     <Button
                       variant="outline"
                       size="sm"
@@ -124,7 +139,11 @@ export function EarmarksCard({
                       </Button>
                     }
                     title={`Remove the ${LABEL[e.bucket].toLowerCase()} earmark?`}
-                    description="The money stays in the account and becomes free cash. No transaction is recorded."
+                    description={
+                      holding
+                        ? "The value stays invested and becomes free. Nothing is sold."
+                        : "The money stays in the account and becomes free cash. No transaction is recorded."
+                    }
                     confirmLabel="Remove"
                     onConfirm={() => remove(e.bucket)}
                   />

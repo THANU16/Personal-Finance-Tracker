@@ -11,6 +11,7 @@ import { createCategoryRule } from "@/modules/categories/rules-service";
 import { createDebt, recordPayment } from "@/modules/debts/service";
 import { DebtModel, type DebtDoc } from "@/modules/debts/model";
 import { setEarmark } from "@/modules/earmarks/service";
+import { setHoldingEarmark } from "@/modules/earmarks/holding-service";
 import { createPolicy } from "@/modules/essentials/service";
 import { saveFxRate } from "@/modules/fx/service";
 import { createGoal } from "@/modules/goals/service";
@@ -763,6 +764,14 @@ export async function seedDemoData(ctx: Ctx, todayKey: string): Promise<SeedSumm
     bucket: "opportunity",
     mode: "percent",
     percentBp: 1_000,
+  });
+
+  // Part of the money market fund is emergency money that keeps earning (holding earmark).
+  await setHoldingEarmark(ctx, {
+    holdingId: moneyMarket.id,
+    bucket: "emergency",
+    mode: "percent",
+    percentBp: 4_000,
   });
 
   const { months } = await rebuildHistory(ctx);

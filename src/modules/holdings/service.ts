@@ -260,6 +260,14 @@ export async function updateHolding(ctx: Ctx, id: string, input: unknown): Promi
   const data = parseInput(updateHoldingSchema, input);
   return withTransaction(async (session) => {
     const current = await loadOwned(ctx, id, session);
+    if (data.countsTowardEmergencyFund === true && !current.countsTowardEmergencyFund) {
+      const { hasHoldingEarmarks } = await import("@/modules/earmarks/holding-service");
+      if (await hasHoldingEarmarks(current.userId, current._id, session)) {
+        // A holding that counts toward the emergency fund is emergency money as a whole.
+        const message = "Remove this holding's earmarks first";
+        throw new AppError("CONFLICT", message, { countsTowardEmergencyFund: [message] });
+      }
+    }
     const $set: Record<string, unknown> = { ...data };
     delete $set.fd;
     if (data.assetClassId)

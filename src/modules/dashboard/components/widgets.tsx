@@ -258,12 +258,19 @@ export async function AllocationCard({ searchParams }: { searchParams: SearchPar
         title="Allocation"
         description={
           <span className="flex flex-wrap items-center gap-2">
-            By asset class on {a.asOf} · <Money valueMinor={a.totalMinor} currency={a.currency} />
+            Investments by asset class on {a.asOf} ·{" "}
+            <Money valueMinor={a.totalMinor} currency={a.currency} />
             <FxBadge count={a.fxMissing} />
           </span>
         }
       >
         <AllocationDonut allocation={a} />
+        {a.reservedMinor > 0 ? (
+          <p className="mt-2 text-xs text-muted-foreground">
+            Not shown: <Money valueMinor={a.reservedMinor} currency={a.currency} /> of emergency
+            &amp; opportunity money held in assets.
+          </p>
+        ) : null}
       </Widget>
     );
   });

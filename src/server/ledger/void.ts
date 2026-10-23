@@ -15,7 +15,13 @@ import { canCarryEarmarks, earmarksAfterBucketUndo, type Bucket } from "@/domain
 import { AccountModel, type AccountDoc } from "@/modules/accounts/model";
 import { effectiveEarmarksOf, storeBucketAmounts } from "@/modules/earmarks/service";
 import type { Types } from "mongoose";
-import { guardedOutflow } from "@/server/ledger/post";
+import { bucketInflow, guardedOutflow } from "@/server/ledger/post";
+import { HoldingModel, type HoldingDoc } from "@/modules/holdings/model";
+import {
+  canCarryHoldingEarmarks,
+  effectiveHoldingEarmarksOf,
+  storeHoldingBucketAmounts,
+} from "@/modules/earmarks/holding-service";
 
 /**
  * Voids a posted transaction (never deleted) and recomputes the accounts it touched.
@@ -44,8 +50,8 @@ export async function voidTransaction(
     );
   }
 
-  // Bucket tags: undo the earmark change while the balances are still the posted ones.
-  const undo = async (
+  // Bucket tags: undo the earmark change while balances and values are still the posted ones.
+  const undoAccount = async (
     accountId: Types.ObjectId | null,
     bucket: Bucket | null,
     kind: "spend" | "receive",
@@ -65,13 +71,25 @@ export async function voidTransaction(
       session,
     );
   };
-  await undo(txn.fromAccountId, txn.fromBucket ?? null, "spend", guardedOutflow(txn));
-  await undo(
-    txn.toAccountId,
-    txn.toBucket ?? null,
-    "receive",
-    txn.toAmountMinor ?? txn.amountMinor,
-  );
+  const undoHolding = async (bucket: Bucket | null, kind: "spend" | "receive", amount: number) => {
+    if (!txn.holdingId || !bucket || amount <= 0) return;
+    const holding = await HoldingModel.findOne({ _id: txn.holdingId, userId })
+      .session(session)
+      .lean<HoldingDoc>();
+    if (!holding || !canCarryHoldingEarmarks(holding)) return;
+    const effective = await effectiveHoldingEarmarksOf(holding, ctx.tz, session);
+    await storeHoldingBucketAmounts(
+      ctx,
+      holding,
+      earmarksAfterBucketUndo(effective, bucket, kind, amount),
+      "earmark_bucket_undo",
+      session,
+    );
+  };
+  if (txn.type === "redeem") await undoHolding(txn.fromBucket ?? null, "spend", txn.amountMinor);
+  else await undoAccount(txn.fromAccountId, txn.fromBucket ?? null, "spend", guardedOutflow(txn));
+  if (txn.type === "invest") await undoHolding(txn.toBucket ?? null, "receive", txn.amountMinor);
+  else await undoAccount(txn.toAccountId, txn.toBucket ?? null, "receive", bucketInflow(txn));
 
   const voidedAt = new Date();
   await TransactionModel.updateOne(

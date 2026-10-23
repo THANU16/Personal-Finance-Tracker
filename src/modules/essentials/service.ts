@@ -305,6 +305,20 @@ export async function getEmergency(ctx: Ctx): Promise<EmergencyDTO> {
       href: `/assets/${String(h._id)}`,
     });
   }
+  const { listHoldingBuckets } = await import("@/modules/earmarks/holding-service");
+  for (const hb of (await listHoldingBuckets(ctx)).values()) {
+    if (!hb.canCarryEarmarks || hb.emergencyMinor <= 0) continue;
+    sources.push({
+      kind: "holding",
+      id: hb.holdingId,
+      name: `${hb.name} (emergency part)`,
+      currency: hb.currency,
+      valueMinor: hb.emergencyMinor,
+      baseMinor: toBase(hb.emergencyMinor, hb.currency, today),
+      available: hb.liquidity === "high",
+      href: `/assets/${hb.holdingId}`,
+    });
+  }
   sources.sort((a, b) => (b.baseMinor ?? 0) - (a.baseMinor ?? 0));
   const available = sources.filter((s) => s.available).reduce((s, x) => s + (x.baseMinor ?? 0), 0);
   const locked = sources.filter((s) => !s.available).reduce((s, x) => s + (x.baseMinor ?? 0), 0);

@@ -77,6 +77,8 @@ export interface PortfolioHolding extends HoldingDTO {
   valueBaseMinor: number | null;
   /** Share of its class value in bp. */
   classWeightBp: number | null;
+  /** Holding earmarks (owner request), in the holding's currency; null when none. */
+  reserved: { emergencyMinor: number; opportunityMinor: number } | null;
 }
 
 export interface PortfolioClass {
@@ -197,14 +199,22 @@ export async function getPortfolio(
   for (const h of counted)
     classValue.set(h.assetClass.id, (classValue.get(h.assetClass.id) ?? 0) + fig(h)!.value);
 
+  const { listHoldingBuckets } = await import("@/modules/earmarks/holding-service");
+  const holdingBuckets = await listHoldingBuckets(ctx);
   const withWeights: PortfolioHolding[] = visible.map((h) => {
     const f = fig(h);
+    const hb = holdingBuckets.get(h.id);
+    const reserved =
+      hb?.canCarryEarmarks && hb.emergencyMinor + hb.opportunityMinor > 0
+        ? { emergencyMinor: hb.emergencyMinor, opportunityMinor: hb.opportunityMinor }
+        : null;
     const live = h.status === "active" && f !== null;
     return {
       ...h,
       valueBaseMinor: f?.value ?? null,
       weightBp: live ? share(f.value, totalValue) : null,
       classWeightBp: live ? share(f.value, classValue.get(h.assetClass.id) ?? 0) : null,
+      reserved,
     };
   });
 

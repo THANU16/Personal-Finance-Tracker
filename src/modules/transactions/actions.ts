@@ -67,7 +67,12 @@ export interface QuickAddOptions {
     opportunityMinor: number;
   }[];
   categories: CategoryNode[];
-  holdings: HoldingOption[];
+  /** + holding earmarks (owner request): bucket tags on buy / sell / switch. */
+  holdings: (HoldingOption & {
+    bucketable: boolean;
+    emergencyMinor: number;
+    opportunityMinor: number;
+  })[];
   tags: string[];
   /** Recurring rules usable as templates (Phase 9). */
   templates: TemplateDTO[];
@@ -79,6 +84,8 @@ export async function getQuickAddOptionsAction(): Promise<ActionResult<QuickAddO
     const ctx = await requireUser();
     const { listTemplates } = await import("@/modules/recurring/service");
     const { listAccountBuckets } = await import("@/modules/earmarks/service");
+    const { listHoldingBuckets } = await import("@/modules/earmarks/holding-service");
+    const holdingBuckets = await listHoldingBuckets(ctx);
     const [accounts, categories, tags, holdings, templates, buckets] = await Promise.all([
       listAccounts(ctx),
       getCategoryTree(ctx),
@@ -101,7 +108,15 @@ export async function getQuickAddOptionsAction(): Promise<ActionResult<QuickAddO
         opportunityMinor: buckets.get(a.id)?.opportunityMinor ?? 0,
       })),
       categories,
-      holdings,
+      holdings: holdings.map((h) => {
+        const hb = holdingBuckets.get(h.id);
+        return {
+          ...h,
+          bucketable: Boolean(hb?.canCarryEarmarks),
+          emergencyMinor: hb?.emergencyMinor ?? 0,
+          opportunityMinor: hb?.opportunityMinor ?? 0,
+        };
+      }),
       tags,
       templates,
     };

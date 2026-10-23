@@ -10,6 +10,7 @@ import {
   type TradeLine,
 } from "@/domain/drift";
 import { computeNetWorthAsOf } from "@/domain/series";
+import { mulDivRound } from "@/domain/money";
 import type { AllocationTree } from "@/domain/allocation";
 import { getTarget, getTreeOptions, listTargetHistory } from "@/modules/allocation/service";
 import type { TargetDTO, TreeOptions } from "@/modules/allocation/schemas";
@@ -27,6 +28,9 @@ import { toObjectId } from "@/server/db/ids";
 import { AppError } from "@/server/errors";
 
 // docs/04 §8, docs/05 §7 — drift, full and cashflow rebalance on base-currency values today.
+
+/** Synthetic id of a holding's earmarked (reserved) part in the drift universe. */
+export const reservedId = (holdingId: string) => `${holdingId}~reserved`;
 
 export interface HoldingRef {
   id: string;
@@ -54,26 +58,50 @@ async function load(ctx: Ctx): Promise<Loaded> {
     getTreeOptions(ctx),
   ]);
   const point = computeNetWorthAsOf(input, today);
-  const holdings: DriftHolding[] = input.holdingDocs.map((h) => ({
-    id: String(h._id),
-    assetClassId: String(h.assetClassId),
-    valueMinor: point.byHolding[String(h._id)] ?? 0,
-    active: h.status === "active",
-    countsTowardEmergencyFund: h.countsTowardEmergencyFund,
-    isFd: Boolean(h.fd),
-  }));
-  const refs = new Map(
-    input.holdingDocs.map((h) => [
-      String(h._id),
-      {
-        id: String(h._id),
-        name: h.name,
-        assetClassId: String(h.assetClassId),
-        currency: h.currency,
-        isFd: Boolean(h.fd),
-      },
-    ]),
-  );
+  const { listHoldingBuckets } = await import("@/modules/earmarks/holding-service");
+  const buckets = await listHoldingBuckets(ctx);
+  const holdings: DriftHolding[] = [];
+  const refs = new Map<string, HoldingRef>();
+  for (const h of input.holdingDocs) {
+    const id = String(h._id);
+    const valueMinor = point.byHolding[id] ?? 0;
+    const ref = {
+      id,
+      name: h.name,
+      assetClassId: String(h.assetClassId),
+      currency: h.currency,
+      isFd: Boolean(h.fd),
+    };
+    refs.set(id, ref);
+    // Holding earmarks (owner request): the reserved (emergency + opportunity) part is its own
+    // entry treated like an emergency-fund holding — left out by default, locked when included.
+    const hb = buckets.get(id);
+    const reservedLocal = hb?.canCarryEarmarks ? hb.emergencyMinor + hb.opportunityMinor : 0;
+    const reserved =
+      reservedLocal > 0 && hb!.balanceMinor > 0
+        ? Math.min(valueMinor, mulDivRound(valueMinor, reservedLocal, hb!.balanceMinor))
+        : 0;
+    holdings.push({
+      id,
+      assetClassId: ref.assetClassId,
+      valueMinor: valueMinor - reserved,
+      active: h.status === "active",
+      countsTowardEmergencyFund: h.countsTowardEmergencyFund,
+      isFd: ref.isFd,
+    });
+    if (reserved > 0) {
+      const rid = reservedId(id);
+      refs.set(rid, { ...ref, id: rid, name: `${h.name} (reserved)` });
+      holdings.push({
+        id: rid,
+        assetClassId: ref.assetClassId,
+        valueMinor: reserved,
+        active: h.status === "active",
+        countsTowardEmergencyFund: true,
+        isFd: ref.isFd,
+      });
+    }
+  }
   return { target, options, holdings, refs, fxMissing: point.fxMissing, today };
 }
 

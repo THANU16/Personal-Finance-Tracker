@@ -13,6 +13,11 @@ import {
   type Bucket,
 } from "@/domain/earmarks";
 import { effectiveEarmarksOf, storeBucketAmounts } from "@/modules/earmarks/service";
+import {
+  canCarryHoldingEarmarks,
+  effectiveHoldingEarmarksOf,
+  storeHoldingBucketAmounts,
+} from "@/modules/earmarks/holding-service";
 import { utcToBusinessDate } from "@/domain/dates";
 import { validateSplits } from "@/domain/ledger";
 import { PRICE_SCALE, redeemByAmount, redeemByUnits, roundUnits } from "@/domain/redemption";
@@ -193,6 +198,74 @@ function bucketAccount(account: AccountDoc, bucket: Bucket, field: string): void
       `"${account.name}" cannot hold ${bucket} money (bank, cash, wallet or broker cash only)`,
     );
   }
+}
+
+/** A bucket tag on a holding needs one that can carry earmarks (not flagged as emergency as a whole). */
+function bucketHolding(holding: HoldingDoc, bucket: Bucket, field: string): void {
+  if (holding.countsTowardEmergencyFund) {
+    fail(field, `"${holding.name}" is all emergency money already; leave the bucket empty`);
+  }
+  if (!canCarryHoldingEarmarks(holding))
+    fail(field, `"${holding.name}" cannot hold ${bucket} money`);
+}
+
+/** What arrived in the destination account: transfer → toAmount ?? amount; sale → net cash. */
+export function bucketInflow(t: {
+  type: string;
+  amountMinor: number;
+  toAmountMinor?: number | null;
+  feeMinor?: number | null;
+  taxMinor?: number | null;
+}): number {
+  if (t.type === "redeem") return t.amountMinor - (t.feeMinor ?? 0) - (t.taxMinor ?? 0);
+  if (t.type === "transfer") return t.toAmountMinor ?? t.amountMinor;
+  return t.amountMinor;
+}
+
+/**
+ * Sell guard (owner request, holding earmarks): selling more than a holding's free part dips into
+ * its opportunity, then emergency money — like the dip guard on accounts. Confirmed, those
+ * earmarks are reduced in this same DB transaction.
+ */
+async function guardHoldingSale(
+  ctx: Ctx,
+  holding: HoldingDoc,
+  amountMinor: number,
+  draft: LedgerDraft,
+  session: ClientSession,
+): Promise<void> {
+  if (!canCarryHoldingEarmarks(holding)) return;
+  const effective = await effectiveHoldingEarmarksOf(holding, ctx.tz, session);
+  const dip = dipCheck(amountMinor, effective);
+  if (!dip.needsConfirm) return;
+  const opportunityOk = dip.dipsOpportunityMinor === 0 || draft.confirmOpportunity === true;
+  const emergencyOk = dip.dipsEmergencyMinor === 0 || draft.confirmEmergency === true;
+  if (!opportunityOk || !emergencyOk) {
+    const warn = (code: ActionWarning["code"], amount: number): ActionWarning => ({
+      code,
+      amountMinor: amount,
+      currency: holding.currency,
+      accountName: holding.name,
+    });
+    const warnings: ActionWarning[] = [];
+    if (dip.dipsOpportunityMinor > 0)
+      warnings.push(warn("DIPS_INTO_OPPORTUNITY", dip.dipsOpportunityMinor));
+    if (dip.dipsEmergencyMinor > 0)
+      warnings.push(warn("DIPS_INTO_EMERGENCY", dip.dipsEmergencyMinor));
+    throw new AppError(
+      "NEEDS_CONFIRMATION",
+      `This sells more than the free part of "${holding.name}" and uses earmarked money. Confirm to continue.`,
+      undefined,
+      { warnings },
+    );
+  }
+  await storeHoldingBucketAmounts(
+    ctx,
+    holding,
+    earmarksAfterDip(effective, dip),
+    "earmark_dip",
+    session,
+  );
 }
 
 const SPLIT_MESSAGES = {
@@ -486,35 +559,64 @@ export async function postTransaction(
     categoryId = await getSystemCategoryId(ctx, SYSTEM_CATEGORY.bankFees, "expense", session);
   }
 
-  // Bucket tags (owner request): validate, then pay a tagged outflow from its earmark BEFORE the
-  // dip guard (the earmark becomes free cash, so the guard passes without touching other buckets).
+  // Bucket tags (owner request): which side each tag applies to. Accounts: expense / transfer /
+  // loan payment / buy pay FROM an account; income / transfer / sale proceeds arrive TO one.
+  // Holdings (owner request, holding earmarks): a sale takes FROM the holding; a buy goes TO it.
   const fromBucket = draft.fromBucket ?? null;
   const toBucket = draft.toBucket ?? null;
+  const fromIsHolding = t === "redeem";
+  const toIsHolding = t === "invest";
   if (fromBucket) {
-    if (!(t === "expense" || t === "transfer" || t === "debt_payment") || !from) {
-      fail("fromBucket", "Only money leaving an account can come from a bucket");
+    if (fromIsHolding) {
+      bucketHolding(holding!, fromBucket, "fromBucket");
+      const effective = await effectiveHoldingEarmarksOf(holding!, ctx.tz, session);
+      let amounts;
+      try {
+        amounts = earmarksAfterBucketSpend(effective, fromBucket, amountMinor);
+      } catch {
+        const have =
+          fromBucket === "emergency" ? effective.emergencyMinor : effective.opportunityMinor;
+        fail(
+          "fromBucket",
+          `"${holding!.name}" has only ${formatMoney(have, holding!.currency)} of ${fromBucket} money; sell the rest as a separate entry`,
+        );
+      }
+      await storeHoldingBucketAmounts(ctx, holding!, amounts!, "earmark_bucket_spend", session);
+    } else {
+      if (
+        !(t === "expense" || t === "transfer" || t === "debt_payment" || t === "invest") ||
+        !from
+      ) {
+        fail("fromBucket", "Only money leaving an account or asset can come from a bucket");
+      }
+      bucketAccount(from!, fromBucket, "fromBucket");
+      const effective = await effectiveEarmarksOf(from!, session);
+      const outflow = guardedOutflow({ type: t, amountMinor, feeMinor: fee });
+      let amounts;
+      try {
+        amounts = earmarksAfterBucketSpend(effective, fromBucket, outflow);
+      } catch {
+        const have =
+          fromBucket === "emergency" ? effective.emergencyMinor : effective.opportunityMinor;
+        fail(
+          "fromBucket",
+          `"${from!.name}" has only ${formatMoney(have, from!.currency)} of ${fromBucket} money; pay the rest from free cash in a separate entry`,
+        );
+      }
+      await storeBucketAmounts(ctx, from!, amounts!, "earmark_bucket_spend", session);
     }
-    bucketAccount(from!, fromBucket, "fromBucket");
-    const effective = await effectiveEarmarksOf(from!, session);
-    const outflow = guardedOutflow({ type: t, amountMinor, feeMinor: fee });
-    let amounts;
-    try {
-      amounts = earmarksAfterBucketSpend(effective, fromBucket, outflow);
-    } catch {
-      const have =
-        fromBucket === "emergency" ? effective.emergencyMinor : effective.opportunityMinor;
-      fail(
-        "fromBucket",
-        `"${from!.name}" has only ${formatMoney(have, from!.currency)} of ${fromBucket} money; pay the rest from free cash in a separate entry`,
-      );
-    }
-    await storeBucketAmounts(ctx, from!, amounts!, "earmark_bucket_spend", session);
+  } else if (fromIsHolding && !UNGUARDED_SOURCES.includes(draft.source?.kind ?? "manual")) {
+    // Sell guard (owner request): selling into a holding's reserved money asks first.
+    await guardHoldingSale(ctx, holding!, amountMinor, draft, session);
   }
   if (toBucket) {
-    if (!(t === "income" || t === "transfer") || !to) {
-      fail("toBucket", "Only money arriving in an account can go into a bucket");
+    if (toIsHolding) bucketHolding(holding!, toBucket, "toBucket");
+    else {
+      if (!(t === "income" || t === "transfer" || t === "redeem") || !to) {
+        fail("toBucket", "Only money arriving in an account or asset can go into a bucket");
+      }
+      bucketAccount(to!, toBucket, "toBucket");
     }
-    bucketAccount(to!, toBucket, "toBucket");
   }
 
   if (from && t !== "adjustment" && !draft.dipGuardDone) {
@@ -567,16 +669,19 @@ export async function postTransaction(
   let txn = doc!.toObject() as TransactionDoc;
 
   await recomputeAccounts(userId, [txn.fromAccountId, txn.toAccountId], session);
-  if (toBucket && to) {
+  if (toBucket && to && !toIsHolding) {
     // After the balance moved: the arrival grows its earmark (capped at free cash).
     const fresh = (await AccountModel.findOne({ _id: to._id, userId })
       .session(session)
       .lean<AccountDoc>())!;
-    const inflow = toAmountMinor ?? amountMinor;
     await storeBucketAmounts(
       ctx,
       fresh,
-      earmarksAfterBucketReceive(await effectiveEarmarksOf(fresh, session), toBucket, inflow),
+      earmarksAfterBucketReceive(
+        await effectiveEarmarksOf(fresh, session),
+        toBucket,
+        bucketInflow(txn),
+      ),
       "earmark_bucket_receive",
       session,
     );
@@ -584,6 +689,22 @@ export async function postTransaction(
   if (txn.debtId) await recomputeDebt(ctx, txn.debtId, session);
   if (holding) {
     await recomputeHolding(ctx, holding._id, session);
+    if (toBucket && toIsHolding) {
+      const fresh = (await HoldingModel.findOne({ _id: holding._id, userId })
+        .session(session)
+        .lean<HoldingDoc>())!;
+      await storeHoldingBucketAmounts(
+        ctx,
+        fresh,
+        earmarksAfterBucketReceive(
+          await effectiveHoldingEarmarksOf(fresh, ctx.tz, session),
+          toBucket,
+          amountMinor,
+        ),
+        "earmark_bucket_receive",
+        session,
+      );
+    }
     // Redemption figures are filled in by the replay.
     if (t === "redeem") {
       txn = (await TransactionModel.findOne({ _id: txn._id, userId })

@@ -99,7 +99,10 @@ export interface OpportunityDeploymentDoc {
   date: string;
   amountMinor: number;
   currency: string;
-  sourceAccountId: Types.ObjectId;
+  /** Source account, or null when deployed from a holding's opportunity earmark. */
+  sourceAccountId: Types.ObjectId | null;
+  /** Source holding (owner request: opportunity money kept in an asset). */
+  sourceHoldingId: Types.ObjectId | null;
   ruleIdx: number | null;
   drawdownBpAtDeploy: number;
   marketLevel: number | null;
@@ -122,7 +125,8 @@ const deploymentSchema = new Schema<OpportunityDeploymentDoc>(
     date: { type: String, required: true },
     amountMinor: intField({ required: true, min: 1 }),
     currency: { type: String, required: true },
-    sourceAccountId: { type: Schema.Types.ObjectId, required: true },
+    sourceAccountId: { type: Schema.Types.ObjectId, default: null },
+    sourceHoldingId: { type: Schema.Types.ObjectId, default: null },
     ruleIdx: { type: Number, default: null },
     drawdownBpAtDeploy: intField({ required: true, default: 0, min: 0 }),
     marketLevel: { type: Number, default: null },

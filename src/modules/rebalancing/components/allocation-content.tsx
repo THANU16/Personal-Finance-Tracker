@@ -66,10 +66,10 @@ function TabNav({
       </nav>
       {emergencyCount > 0 && (tab === "actual" || tab === "rebalance") ? (
         <nav
-          aria-label="Emergency-fund holdings"
+          aria-label="Emergency and opportunity money"
           className="inline-flex items-center gap-2 text-sm"
         >
-          <span className="text-muted-foreground">Emergency fund</span>
+          <span className="text-muted-foreground">Emergency &amp; opportunity money</span>
           <span className="inline-flex rounded-lg bg-muted p-0.5">
             {[
               [false, "Hidden"],
@@ -287,7 +287,7 @@ export async function AllocationContent({ searchParams }: { searchParams: Search
                   <span>
                     {holdingNames[a.holdingId]?.name ?? "Holding"}
                     {!a.inTarget && c.hasAssetTargets ? " (not in target)" : ""}
-                    {a.locked ? " · emergency fund (locked)" : ""}
+                    {a.locked ? " · reserved (locked)" : ""}
                   </span>
                   <span className="tabular-nums">
                     <Money valueMinor={a.valueMinor} currency={ccy} /> ·{" "}
@@ -332,8 +332,8 @@ export async function AllocationContent({ searchParams }: { searchParams: Search
             Tolerance band ± {formatPercentBp(view.target.thresholdBp)} (shaded).{" "}
             {include ? (
               <>
-                Emergency-fund holdings are included in the weights and locked (never bought or
-                sold)
+                Emergency-fund holdings and reserved parts are included in the weights and locked
+                (never bought or sold)
                 {view.drift.lockedEmergencyMinor > 0 ? (
                   <>
                     {" "}
@@ -344,7 +344,7 @@ export async function AllocationContent({ searchParams }: { searchParams: Search
               </>
             ) : view.drift.excludedEmergencyMinor > 0 ? (
               <>
-                Emergency fund not in the allocation:{" "}
+                Emergency &amp; opportunity money not in the allocation:{" "}
                 <Money valueMinor={view.drift.excludedEmergencyMinor} currency={ccy} />.
               </>
             ) : null}

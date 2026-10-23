@@ -152,6 +152,21 @@ export function HoldingsTable({
                 {INSTRUMENT_LABEL[h.instrumentType]}
                 {h.platform ? ` · ${h.platform}` : ""}
                 {h.status === "closed" ? <Badge variant="secondary">Closed</Badge> : null}
+                {h.countsTowardEmergencyFund ? (
+                  <Badge variant="outline">Emergency fund</Badge>
+                ) : null}
+                {h.reserved?.emergencyMinor ? (
+                  <Badge variant="outline">
+                    Emergency{" "}
+                    <Money valueMinor={h.reserved.emergencyMinor} currency={h.currency} compact />
+                  </Badge>
+                ) : null}
+                {h.reserved?.opportunityMinor ? (
+                  <Badge variant="outline">
+                    Opportunity{" "}
+                    <Money valueMinor={h.reserved.opportunityMinor} currency={h.currency} compact />
+                  </Badge>
+                ) : null}
               </div>
             </div>
           );

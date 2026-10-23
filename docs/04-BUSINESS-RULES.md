@@ -328,6 +328,20 @@ Email sent only if enabled and `RESEND_API_KEY` is configured.
   broker cash, not dedicated); never on asset sides. Voiding reverses both (an arrival leaves its bucket, not below 0; a payment
   goes back); an edit = void + post, so the earmark follows the new amount. Tagged earmarks are stored as fixed amounts.
 
+- **Holding earmarks** (owner request): emergency / opportunity money kept inside an asset so it keeps earning. Same rules as
+  account earmarks on the holding's value today (FDs by §9): fixed or percent of value; if Σ raw > value, opportunity is cut
+  first, then emergency ("Over-earmarked"); moves between free / emergency / opportunity sell nothing. A holding flagged
+  `countsTowardEmergencyFund` is emergency money as a whole and cannot carry earmarks (and vice versa).
+  Counting: the emergency bucket and the Opportunity Fund balance include holding earmarks (Essentials: "available
+  immediately" for high-liquidity holdings, otherwise locked). Allocation: a holding's reserved part (emergency + opportunity)
+  is its own entry, left out by default and locked when the toggle includes it; only the free part is rebalanced.
+  Bucket tags: a buy may put into the holding's bucket (value added = amount); a sale may take from it (value removed =
+  amount); a switch tags each side; the account side of a buy / sale works as for accounts (a sale's arrival = net cash).
+  **Sell guard**: selling more than a holding's free part (manual, switch) asks first — DIPS_INTO_OPPORTUNITY then
+  DIPS_INTO_EMERGENCY; confirmed, those earmarks drop (opportunity first). Deployments, FD maturity and imports are not guarded.
+  Opportunity deployment may come from a holding's opportunity part: one sale from it (switch leg) + the buys, in one DB
+  transaction; the holding's opportunity earmark drops by amounts + fees; undo restores it.
+
 ## 21. Safe to spend
 `safeToSpend = freeCash − Σ outflowMinor of upcoming items due on or before the end of the current month (user tz) that are not yet
 posted` (recurring expenses, EMIs, card dues, planned SIPs paid from earmarkable accounts). May be negative → show a warning.

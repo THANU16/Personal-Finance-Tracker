@@ -36,8 +36,18 @@ import {
   type EarmarkMode,
   type EffectiveEarmarks,
 } from "@/domain/earmarks";
-import { moveBetweenBucketsAction, setEarmarkAction } from "@/modules/earmarks/actions";
+import {
+  moveBetweenBucketsAction,
+  moveHoldingBucketsAction,
+  setEarmarkAction,
+  setHoldingEarmarkAction,
+} from "@/modules/earmarks/actions";
 import type { AccountBucketsDTO } from "@/modules/earmarks/schemas";
+import type { HoldingBucketsDTO } from "@/modules/earmarks/holding-service";
+
+/** Buckets of an account or (owner request) of a holding — the dialog works on either. */
+export type BucketsView = AccountBucketsDTO | HoldingBucketsDTO;
+const isHolding = (b: BucketsView): b is HoldingBucketsDTO => "holdingId" in b;
 
 const SLOT_LABEL: Record<BucketSlot, string> = {
   free: "Free cash",
@@ -52,7 +62,7 @@ const SLOT_ITEMS = (Object.keys(SLOT_LABEL) as BucketSlot[]).map((value) => ({
 type Tab = "set" | "move";
 
 function storedAfterMove(
-  buckets: AccountBucketsDTO,
+  buckets: BucketsView,
   from: BucketSlot,
   to: BucketSlot,
   amountMinor: number,
@@ -82,9 +92,10 @@ export function EarmarkDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   accountName: string;
-  buckets: AccountBucketsDTO;
+  buckets: BucketsView;
   initialBucket?: Bucket;
 }) {
+  const holding = isHolding(buckets);
   const router = useRouter();
   const existing = (b: Bucket) => buckets.earmarks.find((e) => e.bucket === b);
   const [tab, setTab] = useState<Tab>("set");
@@ -123,7 +134,11 @@ export function EarmarkDialog({
       const result = effectiveEarmarks(B, [...others, next]);
       return {
         result,
-        problem: result.overEarmarked ? "Earmarks would be more than the account balance" : null,
+        problem: result.overEarmarked
+          ? holding
+            ? "Earmarks would be more than the holding's value"
+            : "Earmarks would be more than the account balance"
+          : null,
       };
     }
     if (!moveMinor || moveMinor <= 0) return { result: null, problem: null };
@@ -136,24 +151,25 @@ export function EarmarkDialog({
     } catch {
       return { result: null, problem: `Not enough in ${SLOT_LABEL[from].toLowerCase()}` };
     }
-  }, [tab, mode, amountMinor, percentBp, bucket, buckets, B, moveMinor, from, to]);
+  }, [tab, mode, amountMinor, percentBp, bucket, buckets, B, moveMinor, from, to, holding]);
 
   async function submit() {
     setError(null);
     setPending(true);
+    const owner = isHolding(buckets)
+      ? { holdingId: buckets.holdingId }
+      : { accountId: buckets.accountId };
+    const setInput =
+      mode === "fixed"
+        ? { ...owner, bucket, mode, amountMinor: amountMinor ?? 0 }
+        : { ...owner, bucket, mode, percentBp: percentBp ?? 0 };
+    const moveInput = { ...owner, from, to, amountMinor: moveMinor ?? 0 };
     const result =
       tab === "set"
-        ? await setEarmarkAction(
-            mode === "fixed"
-              ? { accountId: buckets.accountId, bucket, mode, amountMinor: amountMinor ?? 0 }
-              : { accountId: buckets.accountId, bucket, mode, percentBp: percentBp ?? 0 },
-          )
-        : await moveBetweenBucketsAction({
-            accountId: buckets.accountId,
-            from,
-            to,
-            amountMinor: moveMinor ?? 0,
-          });
+        ? await (holding ? setHoldingEarmarkAction(setInput) : setEarmarkAction(setInput))
+        : await (holding
+            ? moveHoldingBucketsAction(moveInput)
+            : moveBetweenBucketsAction(moveInput));
     setPending(false);
     if (!result.ok) {
       const fieldMessage = Object.values(result.error.fieldErrors ?? {})[0]?.[0];
@@ -175,8 +191,9 @@ export function EarmarkDialog({
         <DialogHeader>
           <DialogTitle>Earmark money in {accountName}</DialogTitle>
           <DialogDescription>
-            Set money aside for emergencies or opportunities. Nothing leaves the account and no
-            transaction is recorded; spending beyond free cash will ask you first.
+            {holding
+              ? "Mark part of this asset as emergency or opportunity money. It stays invested and nothing is sold; selling beyond the free part will ask you first."
+              : "Set money aside for emergencies or opportunities. Nothing leaves the account and no transaction is recorded; spending beyond free cash will ask you first."}
           </DialogDescription>
         </DialogHeader>
 
@@ -218,7 +235,7 @@ export function EarmarkDialog({
                   <RadioGroupItem value="fixed" /> Fixed amount
                 </Label>
                 <Label className="flex items-center gap-2 rounded-lg border p-2.5 font-normal">
-                  <RadioGroupItem value="percent" /> % of balance
+                  <RadioGroupItem value="percent" /> {holding ? "% of value" : "% of balance"}
                 </Label>
               </RadioGroup>
             </div>
@@ -235,8 +252,12 @@ export function EarmarkDialog({
             ) : (
               <FormField
                 id="earmark-percent"
-                label="Percent of balance"
-                description="Follows the balance as it changes."
+                label={holding ? "Percent of value" : "Percent of balance"}
+                description={
+                  holding
+                    ? "Follows the value as it changes."
+                    : "Follows the balance as it changes."
+                }
               >
                 <PercentInput
                   id="earmark-percent"
@@ -292,7 +313,7 @@ export function EarmarkDialog({
           <div className="flex items-baseline justify-between text-sm">
             <span className="font-medium">{preview.result ? "After" : "Now"}</span>
             <span className="text-muted-foreground">
-              Balance <Money valueMinor={B} currency={ccy} />
+              {holding ? "Value" : "Balance"} <Money valueMinor={B} currency={ccy} />
             </span>
           </div>
           <BucketBar

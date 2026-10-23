@@ -7,8 +7,7 @@ import {
   voidTransaction,
 } from "@/modules/transactions/service";
 import type { Ctx } from "@/server/ctx";
-import type { AppError } from "@/server/errors";
-import { balanceOf, categoryId, makeAccount, makeHolding, makeUser } from "../helpers/factories";
+import { balanceOf, categoryId, makeAccount, makeUser } from "../helpers/factories";
 import { setupTestDb } from "../helpers/test-db";
 
 // Owner request: a transaction can optionally say which bucket its money leaves from / arrives in.
@@ -185,8 +184,8 @@ describe("bucket tags on transactions", () => {
     expect(await buckets(ctx, savings.id)).toEqual({ emergency: 0, opportunity: 0, free: 10_000 });
   });
 
-  it("refused where a bucket makes no sense: dedicated accounts, cards, assets", async () => {
-    const { ctx, bank } = await setup();
+  it("refused where a bucket makes no sense: dedicated accounts, cards", async () => {
+    const { ctx } = await setup();
     const salary = await categoryId(ctx, "Salary");
     const ef = await makeAccount(ctx, {
       name: "EF account",
@@ -220,15 +219,5 @@ describe("bucket tags on transactions", () => {
         fromBucket: "emergency",
       }),
     ).rejects.toThrow(/cannot hold emergency money/);
-    const fund = await makeHolding(ctx, { openingDate: "2026-01-01" });
-    const err = (await createTransaction(ctx, {
-      type: "transfer",
-      date: "2026-02-01",
-      amountMinor: 500,
-      fromAccountId: bank.id,
-      toHoldingId: fund.id,
-      toBucket: "emergency",
-    }).catch((e: unknown) => e)) as AppError;
-    expect(err.fieldErrors?.toBucket?.[0]).toBe("Buckets apply to accounts, not assets");
   });
 });

@@ -87,6 +87,10 @@ Renew / Withdraw actions.
 Allocation `/rebalancing` (Planned vs Actual, Rebalance): "Emergency fund: Hidden / Included" switch when emergency-fund
 holdings exist; Hidden (default) states the amount left out, Included marks them "emergency fund (locked)".
 
+Holding page: an Earmarks card (bucket bar, Earmark / move, edit, remove) like accounts; the Assets list shows "Emergency X" /
+"Opportunity Y" badges. Quick add: buys can "Put into" and sales can "Sell from" the holding's bucket (under the holding
+picker). Opportunity Fund: holdings with an opportunity part appear as deployment sources.
+
 ## 6. SIP Planner `/sip`
 Tabs: **Planner** · **Upcoming** · **History**.
 - Planner: plan cards (name, amount, frequency, next due, status, consistency %, invested vs value).

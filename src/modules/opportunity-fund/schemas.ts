@@ -73,7 +73,8 @@ export const deploymentLineSchema = z
 export const recordDeploymentSchema = z
   .object({
     date: dateKey,
-    sourceAccountId: objectId,
+    /** An account id, or `h:<holdingId>` for a holding's opportunity earmark. */
+    sourceAccountId: z.string().regex(/^(h:)?[a-f0-9]{24}$/i, "Choose where the money comes from"),
     lines: z.array(deploymentLineSchema).min(1).max(60),
     notes: z.string().trim().max(500).nullish(),
   })
@@ -97,6 +98,8 @@ export interface SourceAccountDTO {
   /** Opportunity money on the account (dedicated account: its balance). */
   opportunityMinor: number;
   dedicated: boolean;
+  /** "holding": opportunity money kept in an asset (id `h:<holdingId>`), deployed as a switch. */
+  kind: "account" | "holding";
 }
 
 export interface DeploymentDTO {

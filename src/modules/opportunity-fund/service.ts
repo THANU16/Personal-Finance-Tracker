@@ -20,6 +20,11 @@ import {
 } from "@/modules/earmarks/service";
 import { HoldingModel, type HoldingDoc } from "@/modules/holdings/model";
 import {
+  canCarryHoldingEarmarks,
+  effectiveHoldingEarmarksOf,
+  storeHoldingBucketAmounts,
+} from "@/modules/earmarks/holding-service";
+import {
   MarketLevelModel,
   OpportunityDeploymentModel,
   OpportunityFundModel,
@@ -182,6 +187,35 @@ async function sourceAccounts(
         currency: a.currency,
         opportunityMinor,
         dedicated: dedicated === "opportunity",
+        kind: "account",
+      },
+    });
+  }
+  return out.sort((x, y) => y.dto.opportunityMinor - x.dto.opportunityMinor);
+}
+
+/** Holdings with opportunity money earmarked (deployed as a switch out of the holding). */
+async function sourceHoldings(
+  ctx: Ctx,
+  session: ClientSession | null = null,
+): Promise<{ doc: HoldingDoc; dto: SourceAccountDTO }[]> {
+  const holdings = await HoldingModel.find({ userId: uid(ctx), status: "active" })
+    .session(session)
+    .lean<HoldingDoc[]>();
+  const out: { doc: HoldingDoc; dto: SourceAccountDTO }[] = [];
+  for (const h of holdings) {
+    if (!canCarryHoldingEarmarks(h)) continue;
+    const { opportunityMinor } = await effectiveHoldingEarmarksOf(h, ctx.tz, session);
+    if (opportunityMinor <= 0) continue;
+    out.push({
+      doc: h,
+      dto: {
+        id: `h:${String(h._id)}`,
+        name: `${h.name} (opportunity part)`,
+        currency: h.currency,
+        opportunityMinor,
+        dedicated: false,
+        kind: "holding",
       },
     });
   }
@@ -202,7 +236,9 @@ function toDeploymentDTO(
     amountMinor: d.amountMinor,
     feeMinor: d.lines.reduce((s, l) => s + l.feeMinor, 0),
     currency: d.currency,
-    sourceAccount: names.accounts.get(String(d.sourceAccountId)) ?? "Unknown account",
+    sourceAccount: d.sourceHoldingId
+      ? `${names.holdings.get(String(d.sourceHoldingId)) ?? "Unknown holding"} (opportunity part)`
+      : (names.accounts.get(String(d.sourceAccountId)) ?? "Unknown account"),
     ruleIdx: d.ruleIdx,
     drawdownBpAtDeploy: d.drawdownBpAtDeploy,
     marketLevel: d.marketLevel,
@@ -284,7 +320,7 @@ export async function getOpportunityOverview(ctx: Ctx): Promise<OpportunityOverv
       fundBalanceMinor: balance.balanceMinor,
     }),
     levels: levels.map((l) => ({ id: String(l._id), date: l.date, level: l.level, note: l.note })),
-    sources: sources.map((s) => s.dto),
+    sources: [...sources.map((s) => s.dto), ...(await sourceHoldings(ctx)).map((s) => s.dto)],
     deployments: deployments.map((d) => toDeploymentDTO(d, names)),
     allocationInUse: allocation,
   };
@@ -432,13 +468,25 @@ export async function recordDeployment(ctx: Ctx, input: unknown): Promise<Deploy
   return withTransaction(async (session) => {
     const userId = uid(ctx);
     const fund = await loadFund(ctx, session);
-    const sources = await sourceAccounts(ctx, session);
-    const source = sources.find((s) => s.dto.id === data.sourceAccountId);
-    if (!source) {
-      throw new AppError("VALIDATION", "Choose an account that holds opportunity money", {
-        sourceAccountId: ["No opportunity money on this account"],
+    const fromHolding = data.sourceAccountId.startsWith("h:");
+    const accountSource = fromHolding
+      ? undefined
+      : (await sourceAccounts(ctx, session)).find((x) => x.dto.id === data.sourceAccountId);
+    const holdingSource = fromHolding
+      ? (await sourceHoldings(ctx, session)).find((x) => x.dto.id === data.sourceAccountId)
+      : undefined;
+    if (!accountSource && !holdingSource) {
+      throw new AppError("VALIDATION", "Choose an account or asset that holds opportunity money", {
+        sourceAccountId: ["No opportunity money here"],
       });
     }
+    const source = {
+      dto: (accountSource ?? holdingSource)!.dto,
+      doc: {
+        name: (accountSource ?? holdingSource)!.doc.name,
+        currency: (accountSource ?? holdingSource)!.doc.currency,
+      },
+    };
     const lines = data.lines.filter((l) => l.amountMinor > 0);
     const holdingIds = lines.map((l) => l.holdingId).filter((v): v is string => Boolean(v));
     const holdings = new Map(
@@ -460,6 +508,11 @@ export async function recordDeployment(ctx: Ctx, input: unknown): Promise<Deploy
         });
       if (h.status !== "active")
         throw new AppError("VALIDATION", `"${h.name}" is closed`, { [field]: ["Closed holding"] });
+      if (holdingSource && String(h._id) === String(holdingSource.doc._id)) {
+        throw new AppError("VALIDATION", `"${h.name}" is the source; invest in other holdings`, {
+          [field]: ["Same as the source"],
+        });
+      }
       if (String(h.assetClassId) !== l.assetClassId) {
         throw new AppError("VALIDATION", `"${h.name}" is in another asset class`, {
           [field]: ["Wrong class"],
@@ -499,6 +552,25 @@ export async function recordDeployment(ctx: Ctx, input: unknown): Promise<Deploy
 
     const groupId = new Types.ObjectId();
     const postedLines: DeploymentLineDoc[] = [];
+    const description = `Opportunity deployment${state.drawdownBp ? ` · −${(state.drawdownBp / 100).toFixed(1)}%` : ""}`;
+    if (holdingSource) {
+      // Owner request: opportunity money kept in an asset is sold out of it (switch leg).
+      await postTransaction(
+        ctx,
+        {
+          type: "redeem",
+          date: businessDateToUtc(data.date, ctx.tz),
+          amountMinor: outflow,
+          feeMinor: 0,
+          holdingId: String(holdingSource.doc._id),
+          switchLeg: true,
+          description,
+          source: { kind: "opportunity_deployment", refId: groupId },
+          groupId,
+        },
+        session,
+      );
+    }
     for (const l of lines) {
       const txn = await postTransaction(
         ctx,
@@ -507,9 +579,9 @@ export async function recordDeployment(ctx: Ctx, input: unknown): Promise<Deploy
           date: businessDateToUtc(data.date, ctx.tz),
           amountMinor: l.amountMinor,
           feeMinor: l.feeMinor,
-          fromAccountId: data.sourceAccountId,
+          ...(holdingSource ? { switchLeg: true } : { fromAccountId: data.sourceAccountId }),
           holdingId: l.holdingId!,
-          description: `Opportunity deployment${state.drawdownBp ? ` · −${(state.drawdownBp / 100).toFixed(1)}%` : ""}`,
+          description,
           source: { kind: "opportunity_deployment", refId: groupId },
           groupId,
         },
@@ -524,11 +596,30 @@ export async function recordDeployment(ctx: Ctx, input: unknown): Promise<Deploy
       });
     }
 
-    // Earmark: the cash that left is no longer opportunity money (dedicated accounts need nothing).
+    // Earmark: the money that left is no longer opportunity money (dedicated accounts need nothing).
     let earmarkReducedMinor = 0;
-    if (!source.dto.dedicated) {
+    if (holdingSource) {
       earmarkReducedMinor = Math.min(outflow, source.dto.opportunityMinor);
-      const account = (await AccountModel.findOne({ _id: source.doc._id, userId })
+      const fresh = (await HoldingModel.findOne({ _id: holdingSource.doc._id, userId })
+        .session(session)
+        .lean<HoldingDoc>())!;
+      const effective = await effectiveHoldingEarmarksOf(fresh, ctx.tz, session);
+      await storeHoldingBucketAmounts(
+        ctx,
+        fresh,
+        {
+          emergencyMinor: null,
+          opportunityMinor: Math.max(
+            0,
+            Math.min(effective.opportunityMinor, source.dto.opportunityMinor - earmarkReducedMinor),
+          ),
+        },
+        "opportunity_deployment",
+        session,
+      );
+    } else if (!source.dto.dedicated) {
+      earmarkReducedMinor = Math.min(outflow, source.dto.opportunityMinor);
+      const account = (await AccountModel.findOne({ _id: accountSource!.doc._id, userId })
         .session(session)
         .lean<AccountDoc>())!;
       await storeBucketAmounts(
@@ -550,7 +641,8 @@ export async function recordDeployment(ctx: Ctx, input: unknown): Promise<Deploy
           date: data.date,
           amountMinor,
           currency: source.doc.currency,
-          sourceAccountId: source.doc._id,
+          sourceAccountId: accountSource ? accountSource.doc._id : null,
+          sourceHoldingId: holdingSource ? holdingSource.doc._id : null,
           ruleIdx: suggestion.ruleIdx,
           drawdownBpAtDeploy: state.drawdownBp,
           marketLevel: state.latest?.level ?? null,
@@ -577,8 +669,12 @@ export async function recordDeployment(ctx: Ctx, input: unknown): Promise<Deploy
     );
     const holdingNames = new Map([...holdings.values()].map((h) => [String(h._id), h.name]));
     return toDeploymentDTO(doc!.toObject() as OpportunityDeploymentDoc, {
-      accounts: new Map([[String(source.doc._id), source.doc.name]]),
-      holdings: holdingNames,
+      accounts: new Map(
+        accountSource ? [[String(accountSource.doc._id), accountSource.doc.name]] : [],
+      ),
+      holdings: holdingSource
+        ? new Map([...holdingNames, [String(holdingSource.doc._id), holdingSource.doc.name]])
+        : holdingNames,
       classes: new Map(),
     });
   });
@@ -604,7 +700,24 @@ export async function undoDeployment(ctx: Ctx, id: string): Promise<{ id: string
         viaOwner: true,
       });
     }
-    if (d.earmarkReducedMinor > 0) {
+    if (d.earmarkReducedMinor > 0 && d.sourceHoldingId) {
+      const holding = await HoldingModel.findOne({ _id: d.sourceHoldingId, userId })
+        .session(session)
+        .lean<HoldingDoc>();
+      if (holding && canCarryHoldingEarmarks(holding)) {
+        const effective = await effectiveHoldingEarmarksOf(holding, ctx.tz, session);
+        await storeHoldingBucketAmounts(
+          ctx,
+          holding,
+          {
+            emergencyMinor: null,
+            opportunityMinor: effective.opportunityMinor + d.earmarkReducedMinor,
+          },
+          "opportunity_deployment_undone",
+          session,
+        );
+      }
+    } else if (d.earmarkReducedMinor > 0) {
       const account = await AccountModel.findOne({ _id: d.sourceAccountId, userId })
         .session(session)
         .lean<AccountDoc>();

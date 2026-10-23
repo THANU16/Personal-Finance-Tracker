@@ -50,6 +50,14 @@ idx: {userId, accountId}, {userId, bucket, accountId} unique
 ```
 Only earmarkable accounts (bank, cash, wallet, broker_cash); dedicated accounts reject earmarks.
 
+## holdingEarmarks (owner request)
+```
+holdingId, bucket: emergency|opportunity, mode: fixed|percent, amountMinor?, percentBp? (of the holding's value), note?
+idx: {userId, holdingId, bucket} unique
+```
+Same rules as `earmarks` (docs/04 §20) on the holding's value; not for holdings flagged `countsTowardEmergencyFund`.
+`opportunityDeployments` gained `sourceHoldingId` (deployment from a holding's opportunity part; `sourceAccountId` null then).
+
 ## categories
 ```
 name, kind: income|expense, parentId?, icon?, color?, isEssential: false, isSystem: false, archivedAt?

@@ -354,6 +354,14 @@ export async function getBuckets(ctx: Ctx): Promise<BucketTotalsDTO[]> {
     t.freeMinor += b.freeMinor;
   }
   for (const h of holdings) row(h.currency).emergencyMinor += holdingValueToday(h, ctx.tz);
+  // Holding earmarks (owner request): emergency / opportunity money kept inside an asset.
+  const { listHoldingBuckets } = await import("@/modules/earmarks/holding-service");
+  for (const hb of (await listHoldingBuckets(ctx)).values()) {
+    if (!hb.canCarryEarmarks || (hb.emergencyMinor === 0 && hb.opportunityMinor === 0)) continue;
+    const t = row(hb.currency);
+    t.emergencyMinor += hb.emergencyMinor;
+    t.opportunityMinor += hb.opportunityMinor;
+  }
   return [...totals.values()].sort((a, b) =>
     a.currency === ctx.baseCurrency
       ? -1

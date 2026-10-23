@@ -80,6 +80,8 @@ function toDraft(ctx: Ctx, data: TransactionData): LedgerDraft {
         feeMinor: data.feeMinor,
         units: data.units ?? null,
         priceMinorE4: data.priceMinorE4 ?? null,
+        fromBucket: data.fromBucket,
+        toBucket: data.toBucket,
       };
     case "redeem":
       return {
@@ -91,6 +93,8 @@ function toDraft(ctx: Ctx, data: TransactionData): LedgerDraft {
         taxMinor: data.taxMinor,
         units: data.units ?? null,
         priceMinorE4: data.priceMinorE4 ?? null,
+        fromBucket: data.fromBucket,
+        toBucket: data.toBucket,
       };
     case "investment_income":
       return {
@@ -139,6 +143,8 @@ async function postAssetTransfer(
         feeMinor: fee,
         fromAccountId: data.fromAccountId,
         holdingId: data.toHoldingId,
+        fromBucket: data.fromBucket,
+        toBucket: data.toBucket,
       },
       session,
     );
@@ -154,6 +160,8 @@ async function postAssetTransfer(
         feeMinor: fee,
         toAccountId: data.toAccountId,
         holdingId: data.fromHoldingId,
+        fromBucket: data.fromBucket,
+        toBucket: data.toBucket,
       },
       session,
     );
@@ -188,12 +196,20 @@ async function postAssetTransfer(
       amountMinor: amount + fee,
       feeMinor: fee,
       holdingId: data.fromHoldingId!,
+      fromBucket: data.fromBucket,
     },
     session,
   );
   const invest = await postTransaction(
     ctx,
-    { ...leg, type: "invest", amountMinor: amount, feeMinor: 0, holdingId: data.toHoldingId! },
+    {
+      ...leg,
+      type: "invest",
+      amountMinor: amount,
+      feeMinor: 0,
+      holdingId: data.toHoldingId!,
+      toBucket: data.toBucket,
+    },
     session,
   );
   return { id: String(invest._id) };

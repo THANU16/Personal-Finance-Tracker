@@ -152,13 +152,6 @@ const transferSchema = z
         message: "Choose a different account",
       });
     }
-    if ((v.fromHoldingId && v.fromBucket) || (v.toHoldingId && v.toBucket)) {
-      ctx.addIssue({
-        code: "custom",
-        path: [v.fromHoldingId && v.fromBucket ? "fromBucket" : "toBucket"],
-        message: "Buckets apply to accounts, not assets",
-      });
-    }
     if ((v.fromHoldingId || v.toHoldingId) && v.toAmountMinor) {
       ctx.addIssue({
         code: "custom",
@@ -185,6 +178,9 @@ const investSchema = z
     feeMinor: nonNegativeMinor,
     units: units.nullish(),
     priceMinorE4: priceMinorE4.nullish(),
+    /** Optional: pay from the account's bucket / put into the holding's bucket. */
+    fromBucket: bucket,
+    toBucket: bucket,
   })
   .strict();
 
@@ -200,6 +196,9 @@ const redeemSchema = z
     taxMinor: nonNegativeMinor,
     units: units.nullish(),
     priceMinorE4: priceMinorE4.nullish(),
+    /** Optional: sell from the holding's bucket / put the cash into the account's bucket. */
+    fromBucket: bucket,
+    toBucket: bucket,
   })
   .strict()
   .refine((v) => Boolean(v.amountMinor) || Boolean(v.units), {

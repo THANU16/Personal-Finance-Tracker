@@ -26,6 +26,7 @@ export const BACKUP_COLLECTIONS = [
   "settings",
   "accounts",
   "earmarks",
+  "holdingEarmarks",
   "categories",
   "categoryRules",
   "assetClasses",
