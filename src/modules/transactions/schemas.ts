@@ -3,6 +3,7 @@ import { DATE_RANGE_PRESETS } from "@/domain/date-range";
 import { dateKey } from "@/modules/accounts/schemas";
 import type { TransactionStatus, TransactionType } from "@/domain/ledger";
 import type { SourceKind } from "@/modules/transactions/model";
+import { BUCKETS } from "@/domain/earmarks";
 
 const objectId = z.string().regex(/^[a-f0-9]{24}$/i, "Choose an item");
 const amountMinor = z
@@ -43,12 +44,24 @@ const base = {
   confirmEmergency: z.boolean().optional(),
 };
 
+/** Optional bucket (owner request): empty = free cash, the normal behaviour. */
+const bucket = z
+  .enum(BUCKETS)
+  .nullish()
+  .transform((v) => v ?? null);
+
 export const splitLineSchema = z
   .object({ categoryId: objectId, amountMinor, note: text(100) })
   .strict();
 
 const incomeSchema = z
-  .object({ ...base, type: z.literal("income"), toAccountId: objectId, categoryId: objectId })
+  .object({
+    ...base,
+    type: z.literal("income"),
+    toAccountId: objectId,
+    categoryId: objectId,
+    toBucket: bucket,
+  })
   .strict();
 
 const expenseSchema = z
@@ -58,6 +71,7 @@ const expenseSchema = z
     fromAccountId: objectId,
     categoryId: objectId.nullish(),
     splits: z.array(splitLineSchema).max(20).nullish(),
+    fromBucket: bucket,
   })
   .strict()
   .superRefine((v, ctx) => {
@@ -114,6 +128,8 @@ const transferSchema = z
     toAmountMinor: amountMinor.nullish(),
     /** Optional fee, charged to the source on top of the amount. */
     feeMinor: nonNegativeMinor,
+    fromBucket: bucket,
+    toBucket: bucket,
   })
   .strict()
   .superRefine((v, ctx) => {
@@ -134,6 +150,13 @@ const transferSchema = z
         code: "custom",
         path: ["toAccountId"],
         message: "Choose a different account",
+      });
+    }
+    if ((v.fromHoldingId && v.fromBucket) || (v.toHoldingId && v.toBucket)) {
+      ctx.addIssue({
+        code: "custom",
+        path: [v.fromHoldingId && v.fromBucket ? "fromBucket" : "toBucket"],
+        message: "Buckets apply to accounts, not assets",
       });
     }
     if ((v.fromHoldingId || v.toHoldingId) && v.toAmountMinor) {
@@ -305,6 +328,9 @@ export interface TransactionDTO {
   voidReason: string | null;
   /** Receipts on this transaction (Phase 11). */
   attachmentCount: number;
+  /** Optional bucket tags (null = free cash). */
+  fromBucket: "emergency" | "opportunity" | null;
+  toBucket: "emergency" | "opportunity" | null;
   /** True when edit/void must go through the owner (SIP execution, deployment). */
   ownerManaged: boolean;
   editable: boolean;

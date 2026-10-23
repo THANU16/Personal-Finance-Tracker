@@ -49,6 +49,7 @@ function toDraft(ctx: Ctx, data: TransactionData): LedgerDraft {
         type: "income",
         toAccountId: data.toAccountId,
         categoryId: data.categoryId,
+        toBucket: data.toBucket,
       };
     case "expense":
       return {
@@ -57,6 +58,7 @@ function toDraft(ctx: Ctx, data: TransactionData): LedgerDraft {
         fromAccountId: data.fromAccountId,
         categoryId: data.splits?.length ? null : (data.categoryId ?? null),
         splits: data.splits?.length ? data.splits : null,
+        fromBucket: data.fromBucket,
       };
     case "transfer":
       return {
@@ -66,6 +68,8 @@ function toDraft(ctx: Ctx, data: TransactionData): LedgerDraft {
         toAccountId: data.toAccountId ?? null,
         toAmountMinor: data.toAmountMinor ?? null,
         feeMinor: data.feeMinor,
+        fromBucket: data.fromBucket,
+        toBucket: data.toBucket,
       };
     case "invest":
       return {

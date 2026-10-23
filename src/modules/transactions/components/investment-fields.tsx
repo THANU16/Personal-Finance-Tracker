@@ -46,6 +46,9 @@ export interface QuickAddFormValues {
   redeemBy: "amount" | "units";
   incomeKind: IncomeKind;
   reinvest: boolean;
+  /** Optional bucket tags; "" = normal (free cash). */
+  fromBucket: "" | "emergency" | "opportunity";
+  toBucket: "" | "emergency" | "opportunity";
 }
 
 type QuickAddControl = Control<QuickAddFormValues>;

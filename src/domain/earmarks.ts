@@ -174,3 +174,52 @@ export function moveBetweenBuckets(
   }
   return next;
 }
+
+// ---------------------------------------------------------------------------- tagged transactions
+// Owner request: a transaction can optionally say which bucket its money leaves from or arrives in
+// (default: none = free cash, the normal behaviour). The earmarks follow in the same DB transaction.
+
+/** Bucket a tagged outflow is paid from: that bucket drops by the outflow; refused if it holds less. */
+export function earmarksAfterBucketSpend(
+  effective: EffectiveEarmarks,
+  bucket: Bucket,
+  outflowMinor: number,
+): BucketAmounts {
+  const have = bucket === "emergency" ? effective.emergencyMinor : effective.opportunityMinor;
+  if (outflowMinor > have) throw new RangeError(`Only ${have} is ${bucket} money on this account`);
+  return bucket === "emergency"
+    ? { emergencyMinor: have - outflowMinor, opportunityMinor: null }
+    : { emergencyMinor: null, opportunityMinor: have - outflowMinor };
+}
+
+/**
+ * Money tagged to a bucket has arrived (`effective` is AFTER the inflow): the bucket grows by the
+ * inflow, never past the account's free cash (an overdrawn account cannot earmark more than it has).
+ */
+export function earmarksAfterBucketReceive(
+  effective: EffectiveEarmarks,
+  bucket: Bucket,
+  inflowMinor: number,
+): BucketAmounts {
+  const add = Math.min(inflowMinor, Math.max(0, effective.freeMinor));
+  return bucket === "emergency"
+    ? { emergencyMinor: effective.emergencyMinor + add, opportunityMinor: null }
+    : { emergencyMinor: null, opportunityMinor: effective.opportunityMinor + add };
+}
+
+/**
+ * Voiding a tagged transaction (`effective` is BEFORE the void): an arrival leaves its bucket again
+ * (not below 0); a payment goes back into the bucket it came from (the money returns with it).
+ */
+export function earmarksAfterBucketUndo(
+  effective: EffectiveEarmarks,
+  bucket: Bucket,
+  kind: "spend" | "receive",
+  amountMinor: number,
+): BucketAmounts {
+  const have = bucket === "emergency" ? effective.emergencyMinor : effective.opportunityMinor;
+  const next = kind === "receive" ? Math.max(0, have - amountMinor) : have + amountMinor;
+  return bucket === "emergency"
+    ? { emergencyMinor: next, opportunityMinor: null }
+    : { emergencyMinor: null, opportunityMinor: next };
+}

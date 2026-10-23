@@ -5,6 +5,7 @@ import {
   type TransactionStatus,
   type TransactionType,
 } from "@/domain/ledger";
+import { BUCKETS, type Bucket } from "@/domain/earmarks";
 import { intField, userScopedModel } from "@/server/db/model";
 
 export const SOURCE_KINDS = [
@@ -64,6 +65,12 @@ export interface TransactionDoc {
   notes: string | null;
   tags: string[];
   attachmentIds: Types.ObjectId[];
+  /**
+   * Optional bucket tags (owner request): the money left the source account's emergency /
+   * opportunity earmark, or arrived into the destination's. null = free cash (normal).
+   */
+  fromBucket: Bucket | null;
+  toBucket: Bucket | null;
   source: { kind: SourceKind; refId: Types.ObjectId | null };
   groupId: Types.ObjectId | null;
   status: TransactionStatus;
@@ -126,6 +133,8 @@ const transactionSchema = new Schema<TransactionDoc>(
     notes: { type: String, default: null },
     tags: { type: [String], default: [] },
     attachmentIds: { type: [Schema.Types.ObjectId], default: [] },
+    fromBucket: { type: String, enum: [...BUCKETS, null], default: null },
+    toBucket: { type: String, enum: [...BUCKETS, null], default: null },
     source: {
       kind: { type: String, enum: SOURCE_KINDS, required: true, default: "manual" },
       refId: { type: Schema.Types.ObjectId, default: null },

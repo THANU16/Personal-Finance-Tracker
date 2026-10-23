@@ -95,6 +95,8 @@ export function toTransactionDTO(doc: TransactionDoc, refs: RefMaps, tz: string)
     notes: doc.notes ?? null,
     tags: doc.tags ?? [],
     attachmentCount: doc.attachmentIds?.length ?? 0,
+    fromBucket: doc.fromBucket ?? null,
+    toBucket: doc.toBucket ?? null,
     source: doc.source.kind,
     groupId: doc.groupId ? String(doc.groupId) : null,
     voidReason: doc.voidReason ?? null,

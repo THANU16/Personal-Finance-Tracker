@@ -34,6 +34,8 @@ import { FormField, fieldAria } from "@/components/shared/form-field";
 import { Money } from "@/components/shared/money";
 import { MoneyInput } from "@/components/shared/money-input";
 import { minorUnitDigits } from "@/domain/money";
+import { formatMoney } from "@/lib/format";
+import { cn } from "@/lib/utils";
 import { zodFieldErrors } from "@/server/action-result";
 import { CategorySelect } from "@/modules/categories/components/category-select";
 import {
@@ -137,6 +139,8 @@ function initialValues(request: QuickAddRequest, options: QuickAddOptions): Form
     redeemBy: t.type === "redeem" && t.units ? "units" : "amount",
     incomeKind: t.incomeKind ?? "dividend",
     reinvest: Boolean(t.reinvest),
+    fromBucket: t.fromBucket ?? "",
+    toBucket: t.toBucket ?? "",
   });
   if (request.mode === "edit") return fromTxn(request.txn, request.txn.date);
   if (request.duplicateOf) return fromTxn(request.duplicateOf, options.todayKey);
@@ -197,6 +201,8 @@ function initialValues(request: QuickAddRequest, options: QuickAddOptions): Form
     redeemBy: "amount",
     incomeKind: "dividend",
     reinvest: false,
+    fromBucket: "",
+    toBucket: "",
     ...(type === "invest" ? { fromAccountId: forHolding(request.accountId ?? last.invest) } : {}),
     ...(type === "redeem" ? { toAccountId: forHolding(request.accountId ?? last.redeem) } : {}),
     ...(type === "investment_income"
@@ -219,7 +225,13 @@ function toInput(v: FormValues) {
       .filter(Boolean),
   };
   if (v.type === "income")
-    return { ...base, type: "income", toAccountId: v.toAccountId, categoryId: v.categoryId };
+    return {
+      ...base,
+      type: "income",
+      toAccountId: v.toAccountId,
+      categoryId: v.categoryId,
+      toBucket: v.toBucket || null,
+    };
   if (v.type === "transfer") {
     const fromHolding = holdingRef(v.fromAccountId);
     const toHolding = holdingRef(v.toAccountId);
@@ -230,6 +242,8 @@ function toInput(v: FormValues) {
       ...(toHolding ? { toHoldingId: toHolding } : { toAccountId: v.toAccountId }),
       toAmountMinor: fromHolding || toHolding ? null : v.toAmountMinor,
       feeMinor: v.feeMinor ?? 0,
+      fromBucket: fromHolding ? null : v.fromBucket || null,
+      toBucket: toHolding ? null : v.toBucket || null,
     };
   }
   if (v.type === "invest") {
@@ -273,12 +287,94 @@ function toInput(v: FormValues) {
         ...base,
         type: "expense",
         fromAccountId: v.fromAccountId,
+        fromBucket: v.fromBucket || null,
         splits: v.splits.map((s) => ({
           categoryId: s.categoryId,
           amountMinor: s.amountMinor ?? Number.NaN,
         })),
       }
-    : { ...base, type: "expense", fromAccountId: v.fromAccountId, categoryId: v.categoryId };
+    : {
+        ...base,
+        type: "expense",
+        fromAccountId: v.fromAccountId,
+        categoryId: v.categoryId,
+        fromBucket: v.fromBucket || null,
+      };
+}
+
+const BUCKET_CHOICES = [
+  { value: "", label: "Normal" },
+  { value: "emergency", label: "Emergency" },
+  { value: "opportunity", label: "Opportunity" },
+] as const;
+
+/**
+ * Optional bucket for one side of a transaction (owner request). Normal (default) = free cash, as
+ * before; Emergency / Opportunity moves that account's earmark with the money.
+ */
+function BucketChoice({
+  id,
+  label,
+  control,
+  name,
+  account,
+  error,
+  direction,
+}: {
+  id: string;
+  label: string;
+  control: ReturnType<typeof useForm<FormValues>>["control"];
+  name: "fromBucket" | "toBucket";
+  account: QuickAddOptions["accounts"][number];
+  error?: string;
+  direction: "in" | "out";
+}) {
+  return (
+    <Controller
+      control={control}
+      name={name}
+      render={({ field }) => (
+        <div className="grid gap-1.5">
+          <span id={id} className="text-sm font-medium">
+            {label}
+          </span>
+          <div
+            role="radiogroup"
+            aria-labelledby={id}
+            className="flex w-fit flex-wrap rounded-lg bg-muted p-0.5 text-sm"
+          >
+            {BUCKET_CHOICES.map((c) => (
+              <button
+                key={c.value}
+                type="button"
+                role="radio"
+                aria-checked={field.value === c.value}
+                onClick={() => field.onChange(c.value)}
+                className={cn(
+                  "rounded-md px-3 py-1",
+                  field.value === c.value
+                    ? "bg-background font-medium shadow-sm"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {c.label}
+              </button>
+            ))}
+          </div>
+          <p className={cn("text-xs", error ? "text-destructive" : "text-muted-foreground")}>
+            {error ??
+              (field.value === ""
+                ? direction === "out"
+                  ? "Paid from free cash (earmarks stay as they are)."
+                  : "Arrives as free cash."
+                : direction === "out"
+                  ? `Lowers the ${field.value} money on ${account.name} (now ${formatMoney(field.value === "emergency" ? account.emergencyMinor : account.opportunityMinor, account.currency)}).`
+                  : `Adds to the ${field.value} money on ${account.name} (now ${formatMoney(field.value === "emergency" ? account.emergencyMinor : account.opportunityMinor, account.currency)}).`)}
+          </p>
+        </div>
+      )}
+    />
+  );
 }
 
 function AccountSelect({
@@ -414,6 +510,17 @@ function QuickAddForm({
     type === "transfer" ||
     type === "redeem" ||
     (type === "investment_income" && !reinvest);
+  // Optional bucket choice (owner request): only for accounts that can hold earmarks.
+  const fromAccount = holdingRef(fromId) ? undefined : account(fromId);
+  const toAccount = holdingRef(toId) ? undefined : account(toId);
+  const showFromBucket =
+    (type === "expense" || type === "transfer") && Boolean(fromAccount?.bucketable);
+  const showToBucket = (type === "income" || type === "transfer") && Boolean(toAccount?.bucketable);
+  // A hidden choice goes back to Normal, so a stale bucket is never sent for another account/type.
+  React.useEffect(() => {
+    if (!showFromBucket && getValues("fromBucket")) setValue("fromBucket", "");
+    if (!showToBucket && getValues("toBucket")) setValue("toBucket", "");
+  }, [showFromBucket, showToBucket, getValues, setValue]);
   const byUnits = type === "redeem" && redeemBy === "units";
   const preview =
     type === "redeem"
@@ -701,6 +808,17 @@ function QuickAddForm({
             />
           </FormField>
         ) : null}
+        {showFromBucket ? (
+          <BucketChoice
+            id="qa-from-bucket"
+            label={type === "transfer" ? "Take from (optional)" : "Pay from (optional)"}
+            control={control}
+            name="fromBucket"
+            account={fromAccount!}
+            error={err("fromBucket")}
+            direction="out"
+          />
+        ) : null}
         {showTo ? (
           <FormField
             id="qa-to"
@@ -722,6 +840,17 @@ function QuickAddForm({
               )}
             />
           </FormField>
+        ) : null}
+        {showToBucket ? (
+          <BucketChoice
+            id="qa-to-bucket"
+            label="Put into (optional)"
+            control={control}
+            name="toBucket"
+            account={toAccount!}
+            error={err("toBucket")}
+            direction="in"
+          />
         ) : null}
 
         {crossCurrency ? (

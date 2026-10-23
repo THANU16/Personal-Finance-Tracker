@@ -11,6 +11,11 @@ import { toObjectId } from "@/server/db/ids";
 import { AppError } from "@/server/errors";
 import { recomputeDebt } from "@/server/ledger/debt";
 import { recomputeAccounts, recomputeHolding } from "@/server/ledger/recompute";
+import { canCarryEarmarks, earmarksAfterBucketUndo, type Bucket } from "@/domain/earmarks";
+import { AccountModel, type AccountDoc } from "@/modules/accounts/model";
+import { effectiveEarmarksOf, storeBucketAmounts } from "@/modules/earmarks/service";
+import type { Types } from "mongoose";
+import { guardedOutflow } from "@/server/ledger/post";
 
 /**
  * Voids a posted transaction (never deleted) and recomputes the accounts it touched.
@@ -38,6 +43,35 @@ export async function voidTransaction(
       "This transaction belongs to a grouped operation; undo it from its owner instead",
     );
   }
+
+  // Bucket tags: undo the earmark change while the balances are still the posted ones.
+  const undo = async (
+    accountId: Types.ObjectId | null,
+    bucket: Bucket | null,
+    kind: "spend" | "receive",
+    amount: number,
+  ) => {
+    if (!accountId || !bucket || amount <= 0) return;
+    const account = await AccountModel.findOne({ _id: accountId, userId })
+      .session(session)
+      .lean<AccountDoc>();
+    if (!account || !canCarryEarmarks(account)) return;
+    const effective = await effectiveEarmarksOf(account, session);
+    await storeBucketAmounts(
+      ctx,
+      account,
+      earmarksAfterBucketUndo(effective, bucket, kind, amount),
+      "earmark_bucket_undo",
+      session,
+    );
+  };
+  await undo(txn.fromAccountId, txn.fromBucket ?? null, "spend", guardedOutflow(txn));
+  await undo(
+    txn.toAccountId,
+    txn.toBucket ?? null,
+    "receive",
+    txn.toAmountMinor ?? txn.amountMinor,
+  );
 
   const voidedAt = new Date();
   await TransactionModel.updateOne(

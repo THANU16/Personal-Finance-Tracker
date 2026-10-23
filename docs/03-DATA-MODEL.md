@@ -112,6 +112,7 @@ incomeKind?: dividend|interest|distribution|rent|other, reinvest?: boolean,   # 
 redemption?: { costRemovedMinor, realizedGainMinor, unitsRemoved? },          # redeem (computed)
 debtId?, principalMinor?, interestMinor?,     # debt_payment
 description?, counterparty?, notes?, tags: [string], attachmentIds: [ObjectId],
+fromBucket?, toBucket?: emergency|opportunity   # optional bucket tags (docs/04 §20); null = free cash
 source: { kind: manual|sip_execution|recurring|opportunity_deployment|import|reconcile|fd_maturity|system, refId? },
 groupId?: ObjectId,                           # links lines of one operation
 status: posted|void, voidedAt?, voidReason?, replacedById?,

@@ -320,6 +320,14 @@ Email sent only if enabled and `RESEND_API_KEY` is configured.
   outflow returns the money to free cash; earmarks are not restored. An account with explicit earmarks cannot be flagged
   `countsTowardEmergencyFund` until they are removed.
 
+- **Bucket tags on transactions** (owner request, optional; default Normal = free cash, unchanged behaviour): an expense,
+  transfer or loan payment may say `fromBucket` (emergency | opportunity) — the source account's earmark drops by the outflow
+  (amount + fee) in the same DB transaction, before the dip guard, so other buckets and free cash are untouched; more than the
+  bucket holds is refused. Income or a transfer may say `toBucket` — after posting, the destination's earmark grows by what
+  arrived (toAmount for cross-currency), capped at its free cash. Only accounts that can carry earmarks (bank, cash, wallet,
+  broker cash, not dedicated); never on asset sides. Voiding reverses both (an arrival leaves its bucket, not below 0; a payment
+  goes back); an edit = void + post, so the earmark follows the new amount. Tagged earmarks are stored as fixed amounts.
+
 ## 21. Safe to spend
 `safeToSpend = freeCash − Σ outflowMinor of upcoming items due on or before the end of the current month (user tz) that are not yet
 posted` (recurring expenses, EMIs, card dues, planned SIPs paid from earmarkable accounts). May be negative → show a warning.

@@ -61,6 +61,10 @@ export interface QuickAddOptions {
     type: AccountType;
     currency: string;
     balanceMinor: number;
+    /** Can carry emergency / opportunity earmarks (bucket tags on transactions). */
+    bucketable: boolean;
+    emergencyMinor: number;
+    opportunityMinor: number;
   }[];
   categories: CategoryNode[];
   holdings: HoldingOption[];
@@ -74,12 +78,14 @@ export async function getQuickAddOptionsAction(): Promise<ActionResult<QuickAddO
   return runAction(async () => {
     const ctx = await requireUser();
     const { listTemplates } = await import("@/modules/recurring/service");
-    const [accounts, categories, tags, holdings, templates] = await Promise.all([
+    const { listAccountBuckets } = await import("@/modules/earmarks/service");
+    const [accounts, categories, tags, holdings, templates, buckets] = await Promise.all([
       listAccounts(ctx),
       getCategoryTree(ctx),
       listTags(ctx),
       listHoldingOptions(ctx),
       listTemplates(ctx),
+      listAccountBuckets(ctx),
     ]);
     return {
       todayKey: utcToBusinessDate(new Date(), ctx.tz),
@@ -90,6 +96,9 @@ export async function getQuickAddOptionsAction(): Promise<ActionResult<QuickAddO
         type: a.type,
         currency: a.currency,
         balanceMinor: a.balanceMinor,
+        bucketable: Boolean(buckets.get(a.id)?.canCarryEarmarks),
+        emergencyMinor: buckets.get(a.id)?.emergencyMinor ?? 0,
+        opportunityMinor: buckets.get(a.id)?.opportunityMinor ?? 0,
       })),
       categories,
       holdings,

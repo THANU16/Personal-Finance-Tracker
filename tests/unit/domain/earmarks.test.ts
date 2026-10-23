@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  earmarksAfterBucketReceive,
+  earmarksAfterBucketSpend,
+  earmarksAfterBucketUndo,
   canCarryEarmarks,
   dedicatedBucket,
   dipCheck,
@@ -225,6 +228,53 @@ describe("account rules", () => {
     expect(dedicatedBucket(bank)).toBeNull();
     expect(canCarryEarmarks({ type: "opportunity_fund", countsTowardEmergencyFund: false })).toBe(
       false,
+    );
+  });
+});
+
+describe("tagged transactions (owner request)", () => {
+  // Commercial Bank 350,000: emergency 100,000, opportunity 200,000, free 50,000
+  const eff = {
+    emergencyMinor: 100_000,
+    opportunityMinor: 200_000,
+    freeMinor: 50_000,
+    overEarmarked: false,
+  };
+
+  it("a payment from a bucket lowers only that bucket; more than it holds is refused", () => {
+    expect(earmarksAfterBucketSpend(eff, "emergency", 30_000)).toEqual({
+      emergencyMinor: 70_000,
+      opportunityMinor: null,
+    });
+    expect(earmarksAfterBucketSpend(eff, "opportunity", 200_000)).toEqual({
+      emergencyMinor: null,
+      opportunityMinor: 0,
+    });
+    expect(() => earmarksAfterBucketSpend(eff, "emergency", 100_001)).toThrow(/Only 100000/);
+  });
+
+  it("money arriving in a bucket grows it, capped at free cash", () => {
+    // after a 20,000 income: balance 370,000, free 70,000
+    expect(earmarksAfterBucketReceive({ ...eff, freeMinor: 70_000 }, "emergency", 20_000)).toEqual({
+      emergencyMinor: 120_000,
+      opportunityMinor: null,
+    });
+    // overdrawn-ish: only 5,000 free after the inflow
+    expect(earmarksAfterBucketReceive({ ...eff, freeMinor: 5_000 }, "opportunity", 20_000)).toEqual(
+      {
+        emergencyMinor: null,
+        opportunityMinor: 205_000,
+      },
+    );
+  });
+
+  it("undo on void: an arrival leaves its bucket (not below 0); a payment goes back", () => {
+    expect(earmarksAfterBucketUndo(eff, "emergency", "receive", 20_000).emergencyMinor).toBe(
+      80_000,
+    );
+    expect(earmarksAfterBucketUndo(eff, "emergency", "receive", 500_000).emergencyMinor).toBe(0);
+    expect(earmarksAfterBucketUndo(eff, "opportunity", "spend", 30_000).opportunityMinor).toBe(
+      230_000,
     );
   });
 });

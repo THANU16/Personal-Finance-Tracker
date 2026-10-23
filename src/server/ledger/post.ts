@@ -1,7 +1,17 @@
 import "server-only";
 import type { ClientSession, Types } from "mongoose";
 import { minorUnitDigits } from "@/domain/money";
-import { dedicatedBucket, dipCheck, earmarksAfterDip, isEarmarkable } from "@/domain/earmarks";
+import { formatMoney } from "@/lib/format";
+import {
+  canCarryEarmarks,
+  dedicatedBucket,
+  dipCheck,
+  earmarksAfterBucketReceive,
+  earmarksAfterBucketSpend,
+  earmarksAfterDip,
+  isEarmarkable,
+  type Bucket,
+} from "@/domain/earmarks";
 import { effectiveEarmarksOf, storeBucketAmounts } from "@/modules/earmarks/service";
 import { utcToBusinessDate } from "@/domain/dates";
 import { validateSplits } from "@/domain/ledger";
@@ -63,6 +73,13 @@ export interface LedgerDraft {
   debtId?: Types.ObjectId | null;
   principalMinor?: number | null;
   interestMinor?: number | null;
+  /**
+   * Optional bucket tags (owner request; default null = free cash). fromBucket: an expense, transfer
+   * or loan payment is paid from that earmark of the source account. toBucket: income or a transfer
+   * arrives into that earmark of the destination. Only for accounts that can carry earmarks.
+   */
+  fromBucket?: Bucket | null;
+  toBucket?: Bucket | null;
   /** Dip guard confirmations (docs/04 §20). Emergency money needs its own flag. */
   confirmOpportunity?: boolean;
   confirmEmergency?: boolean;
@@ -162,6 +179,20 @@ async function guardOutflow(
     );
   }
   await storeBucketAmounts(ctx, from, earmarksAfterDip(effective, dip), "earmark_dip", session);
+}
+
+/** A bucket tag needs an account that can carry earmarks (dedicated accounts are one bucket already). */
+function bucketAccount(account: AccountDoc, bucket: Bucket, field: string): void {
+  const dedicated = dedicatedBucket(account);
+  if (dedicated) {
+    fail(field, `"${account.name}" is all ${dedicated} money already; leave the bucket empty`);
+  }
+  if (!canCarryEarmarks(account)) {
+    fail(
+      field,
+      `"${account.name}" cannot hold ${bucket} money (bank, cash, wallet or broker cash only)`,
+    );
+  }
 }
 
 const SPLIT_MESSAGES = {
@@ -455,6 +486,37 @@ export async function postTransaction(
     categoryId = await getSystemCategoryId(ctx, SYSTEM_CATEGORY.bankFees, "expense", session);
   }
 
+  // Bucket tags (owner request): validate, then pay a tagged outflow from its earmark BEFORE the
+  // dip guard (the earmark becomes free cash, so the guard passes without touching other buckets).
+  const fromBucket = draft.fromBucket ?? null;
+  const toBucket = draft.toBucket ?? null;
+  if (fromBucket) {
+    if (!(t === "expense" || t === "transfer" || t === "debt_payment") || !from) {
+      fail("fromBucket", "Only money leaving an account can come from a bucket");
+    }
+    bucketAccount(from!, fromBucket, "fromBucket");
+    const effective = await effectiveEarmarksOf(from!, session);
+    const outflow = guardedOutflow({ type: t, amountMinor, feeMinor: fee });
+    let amounts;
+    try {
+      amounts = earmarksAfterBucketSpend(effective, fromBucket, outflow);
+    } catch {
+      const have =
+        fromBucket === "emergency" ? effective.emergencyMinor : effective.opportunityMinor;
+      fail(
+        "fromBucket",
+        `"${from!.name}" has only ${formatMoney(have, from!.currency)} of ${fromBucket} money; pay the rest from free cash in a separate entry`,
+      );
+    }
+    await storeBucketAmounts(ctx, from!, amounts!, "earmark_bucket_spend", session);
+  }
+  if (toBucket) {
+    if (!(t === "income" || t === "transfer") || !to) {
+      fail("toBucket", "Only money arriving in an account can go into a bucket");
+    }
+    bucketAccount(to!, toBucket, "toBucket");
+  }
+
   if (from && t !== "adjustment" && !draft.dipGuardDone) {
     await guardOutflow(
       ctx,
@@ -495,6 +557,8 @@ export async function postTransaction(
         debtId: t === "debt_payment" ? draft.debtId : null,
         principalMinor: t === "debt_payment" ? draft.principalMinor : null,
         interestMinor: t === "debt_payment" ? draft.interestMinor : null,
+        fromBucket,
+        toBucket,
         status: "posted",
       },
     ],
@@ -503,6 +567,20 @@ export async function postTransaction(
   let txn = doc!.toObject() as TransactionDoc;
 
   await recomputeAccounts(userId, [txn.fromAccountId, txn.toAccountId], session);
+  if (toBucket && to) {
+    // After the balance moved: the arrival grows its earmark (capped at free cash).
+    const fresh = (await AccountModel.findOne({ _id: to._id, userId })
+      .session(session)
+      .lean<AccountDoc>())!;
+    const inflow = toAmountMinor ?? amountMinor;
+    await storeBucketAmounts(
+      ctx,
+      fresh,
+      earmarksAfterBucketReceive(await effectiveEarmarksOf(fresh, session), toBucket, inflow),
+      "earmark_bucket_receive",
+      session,
+    );
+  }
   if (txn.debtId) await recomputeDebt(ctx, txn.debtId, session);
   if (holding) {
     await recomputeHolding(ctx, holding._id, session);

@@ -424,6 +424,12 @@ Status values: ⬜ not started · 🟡 in progress · ✅ done
 - [12] README (setup on any OS, every env variable, scripts, Vercel + Atlas deploy, Docker, backup/restore, troubleshooting).
   Docker: `output: "standalone"`, multi-stage Dockerfile (non-root, build-time placeholder env only), docker-compose with
   `mongo` (always) and `app` + `cron` under the `app` profile (`docker compose --profile app up -d --build`).
+- [buckets] Optional bucket tags on transactions (owner request; docs/04 §20, docs/03, docs/05 updated). Default Normal keeps
+  every existing behaviour. Expense / transfer / loan payment: "Pay from" / "Take from" Emergency or Opportunity lowers that
+  earmark by amount + fee; refused when the bucket holds less (owner choice: no automatic top-up from free cash). Income /
+  transfer: "Put into" grows the destination's earmark (capped at free cash). Transfers can tag both sides. Void reverses,
+  edit follows. Not offered for cards/loans, dedicated accounts or asset sides; Investing with opportunity money stays
+  Record deployment (cycle tracking). "Use emergency fund" on Essentials is unchanged.
 - [mm] e2e `allocation.spec` raced (`isVisible()` right after navigation); it now waits for the editor first.
 
 ## Deviations from docs

@@ -52,6 +52,10 @@ with drill-down, top categories (click filters Transactions with the same range)
 - Import `/transactions/import`: upload CSV → choose account → map columns → preview with duplicates
   flagged and categories auto-suggested → import → result summary (undo batch).
 
+Quick add: under "Paid from" / "From" and "Received into" / "To", an optional bucket choice (Normal · Emergency ·
+Opportunity, default Normal) for accounts that can hold earmarks, with the current amount in that bucket. The transactions
+list shows "From emergency" / "To opportunity" badges.
+
 ## 5. Assets `/assets`
 - Header totals: value, invested, unrealised gain (%), realised gain, income, portfolio XIRR.
 - Toggle view: **By class** (accordion per class with class totals, weight, XIRR) / **All holdings** table.

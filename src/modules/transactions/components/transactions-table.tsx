@@ -44,6 +44,16 @@ function Title({ txn }: { txn: TransactionDTO }) {
           <Badge variant="secondary">Void{txn.voidReason ? ` · ${txn.voidReason}` : ""}</Badge>
         ) : null}
         {txn.source === "reconcile" ? <Badge variant="outline">Reconcile</Badge> : null}
+        {txn.fromBucket ? (
+          <Badge variant="outline">
+            From {txn.fromBucket === "emergency" ? "emergency" : "opportunity"}
+          </Badge>
+        ) : null}
+        {txn.toBucket ? (
+          <Badge variant="outline">
+            To {txn.toBucket === "emergency" ? "emergency" : "opportunity"}
+          </Badge>
+        ) : null}
         {txn.tags.map((t) => (
           <Badge key={t} variant="outline">
             #{t}
