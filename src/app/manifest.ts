@@ -3,12 +3,14 @@ import type { MetadataRoute } from "next";
 // PWA manifest (Phase 12). Installable; no offline caching (financial data must be live).
 export default function manifest(): MetadataRoute.Manifest {
   return {
+    id: "/",
     name: "WealthTrack",
     short_name: "WealthTrack",
     description: "Personal finance and portfolio tracker",
     start_url: "/dashboard",
     scope: "/",
     display: "standalone",
+    orientation: "portrait",
     background_color: "#ffffff",
     theme_color: "#2a78d6",
     icons: [

@@ -58,7 +58,9 @@ function ActiveNavGroups() {
 }
 
 export function AppSidebar() {
-  const { setOpenMobile } = useSidebar();
+  const { isMobile, setOpenMobile } = useSidebar();
+  // Phones navigate with the tab bar and the More page (docs/07 §1), never this drawer.
+  if (isMobile) return null;
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader>

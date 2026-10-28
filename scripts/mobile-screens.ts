@@ -84,6 +84,7 @@ const ROUTES = [
   "/reports",
   "/notifications",
   "/settings",
+  "/more",
 ];
 
 /**
@@ -102,10 +103,24 @@ const OVERLAYS: Overlay[] = [
     name: "quick-add",
     route: "/dashboard",
     open: async (page) => {
-      await page.getByRole("button", { name: "Add", exact: true }).first().click();
+      // Tab bar "+" on phones, top bar "Add" on desktop.
+      await page
+        .getByRole("button", { name: /^(Add|Quick add)$/ })
+        .filter({ visible: true })
+        .first()
+        .click();
       const sheet = page.getByRole("dialog", { name: "Quick add" });
       // The form loads lazily behind a skeleton; capture it once the amount field is there.
       await sheet.getByLabel("Amount").first().waitFor({ timeout: 60_000 });
+    },
+  },
+  {
+    // The top bar's compact title appears only once the page title has scrolled away.
+    name: "scrolled-title",
+    route: "/accounts",
+    open: async (page) => {
+      await page.evaluate(() => window.scrollTo(0, 500));
+      await page.waitForTimeout(400);
     },
   },
   {
@@ -114,18 +129,6 @@ const OVERLAYS: Overlay[] = [
     open: async (page) => {
       await page.getByRole("button", { name: "Add account" }).first().click();
       await page.getByRole("dialog").waitFor();
-    },
-  },
-  {
-    name: "more-menu",
-    route: "/dashboard",
-    mobileOnly: true,
-    open: async (page) => {
-      await page
-        .getByRole("navigation", { name: "Primary" })
-        .getByRole("button", { name: "More" })
-        .click();
-      await page.waitForTimeout(500);
     },
   },
 ];

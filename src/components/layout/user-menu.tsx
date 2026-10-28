@@ -17,16 +17,16 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { authClient } from "@/lib/auth-client";
 
-function initials(name: string, email: string): string {
+export function initials(name: string, email: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   const letters = parts.length ? parts.slice(0, 2).map((p) => p[0]) : [email[0]];
   return letters.join("").toUpperCase();
 }
 
-export function UserMenu({ name, email }: { name: string; email: string }) {
+/** Signs out and returns to the login page (account menu on desktop, More page on mobile). */
+export function useLogOut() {
   const router = useRouter();
-
-  async function logOut() {
+  return async function logOut() {
     const { error } = await authClient.signOut();
     if (error) {
       toast.error(error.message ?? "Could not log out");
@@ -34,7 +34,11 @@ export function UserMenu({ name, email }: { name: string; email: string }) {
     }
     router.replace("/login");
     router.refresh();
-  }
+  };
+}
+
+export function UserMenu({ name, email }: { name: string; email: string }) {
+  const logOut = useLogOut();
 
   return (
     <DropdownMenu>

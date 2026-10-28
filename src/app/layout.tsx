@@ -23,6 +23,8 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
+  // Edge-to-edge on notched iPhones; the shell pads itself with env(safe-area-inset-*) (docs/07 §1).
+  viewportFit: "cover",
   themeColor: [
     { media: "(prefers-color-scheme: light)", color: "#ffffff" },
     { media: "(prefers-color-scheme: dark)", color: "#0a0a0a" },

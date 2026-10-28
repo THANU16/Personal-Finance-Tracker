@@ -1,23 +1,21 @@
 import Link from "next/link";
 import { Bell } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { unreadCount } from "@/modules/notifications/service";
 import { getCurrentUser } from "@/server/auth/require-user";
 
+// A link styled as an icon button (Base UI's Button expects a native <button>).
+const bellClass = (className?: string) =>
+  cn(buttonVariants({ variant: "ghost", size: "icon" }), "relative", className);
+
 /** Header bell with the unread count (docs/05 §1). Render inside <Suspense> (reads the session). */
-export async function NotificationBell() {
+export async function NotificationBell({ className }: { className?: string }) {
   const current = await getCurrentUser();
   const count = current ? await unreadCount(current.ctx) : 0;
   const label = count ? `Notifications, ${count} unread` : "Notifications";
   return (
-    <Button
-      variant="ghost"
-      size="icon"
-      aria-label={label}
-      title={label}
-      className="relative"
-      render={<Link href="/notifications" />}
-    >
+    <Link href="/notifications" aria-label={label} title={label} className={bellClass(className)}>
       <Bell aria-hidden />
       {count ? (
         <span
@@ -27,20 +25,19 @@ export async function NotificationBell() {
           {count > 99 ? "99+" : count}
         </span>
       ) : null}
-    </Button>
+    </Link>
   );
 }
 
-export function NotificationBellFallback() {
+export function NotificationBellFallback({ className }: { className?: string }) {
   return (
-    <Button
-      variant="ghost"
-      size="icon"
+    <Link
+      href="/notifications"
       aria-label="Notifications"
       title="Notifications"
-      render={<Link href="/notifications" />}
+      className={bellClass(className)}
     >
       <Bell aria-hidden />
-    </Button>
+    </Link>
   );
 }

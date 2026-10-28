@@ -2,8 +2,8 @@
 
 | Phase | Status | Date | Commit |
 |---|---|---|---|
-| M0 Mobile audit | ✅ (owner review of MOBILE-AUDIT.md pending) | 2026-10-29 | feat(mobile-M0) |
-| M1 Foundation & shell | ⬜ | | |
+| M0 Mobile audit | ✅ | 2026-10-29 | 06c6802 |
+| M1 Foundation & shell | ✅ | 2026-10-29 | feat(mobile-M1) |
 | M2 Component kit | ⬜ | | |
 | M3 Home & Quick add | ⬜ | | |
 | M4 Activity & Accounts | ⬜ | | |
@@ -30,12 +30,28 @@ Status values: ⬜ not started · 🟡 in progress · ✅ done
   (they only stretch to the widened viewport); if none is found it lists the rightmost elements.
 - **M0 — filtered runs merge** into the existing `screens/report.json`; a full run replaces `screens/`.
 
+- **M1 — Invest hub label "Allocation"** (not docs/07's "Rebalance"), matching the sidebar and the
+  page title. Owner decision, 2026-10-29.
+- **M1 — what moved off the phone top bar:** Add → tab-bar `+`; theme → More › App › Theme; account
+  name/email and Log out → More. The phone bar keeps hide-amounts and notifications (docs/07: ≤ 2).
+  The disabled "Search (coming soon)" box is hidden below md (it showed from 640px before).
+- **M1 — large-title collapse** reads the page's own `<h1>`: the compact title fades in when the
+  h1 scrolls under the bar, so no per-page title config is needed. Back targets come from
+  `mobileParent()` in `nav.ts` (detail page → its list, More pages → More).
+- **M1 — More page** is a real route (`/more`); the desktop sidebar is not rendered below md.
+- **M1 — refresh in standalone mode:** pull-to-refresh only when installed (`display-mode:
+  standalone`) and on a phone, plus "Refresh data" on More for any mode.
+- **M1 — toasts:** bottom-centre above the tab bar below md, top-right from md (unchanged).
+- **M1 — iOS status bar style stays `default`.** `black-translucent` would draw white status text
+  over the light top bar; dark-mode status bar colour is M8 polish.
+- **M1 — screens script:** `@more-menu` replaced by the `/more` route; new `@scrolled-title` overlay
+  (scrolls `/accounts`) to capture the collapsed title.
+
 ## Deviations from docs
 - M0: `/transactions/import/money-manager/[batchId]` has no screenshot (the demo data has no import
   batch). Proposed for M4: upload the e2e Money Manager fixture during `npm run screens`.
 
 ## Open questions for the owner
-- Review `docs/MOBILE-AUDIT.md` before M1 (M0 acceptance).
 - Approve the plan changes in `docs/MOBILE-AUDIT.md` §4 (M2 primitive sizes, chart mobile mode, stat
   strip, `DataTable` breakpoint `sm`→`md`; Money Manager capture in M4; Quick add "Debt pay").
 - ESS-01: the essentials insurance table also scrolls the page 75px sideways at 1440. Fixing it
@@ -45,4 +61,8 @@ Status values: ⬜ not started · 🟡 in progress · ✅ done
 
 ## Known issues
 - Dev-only: the Next dev-tools badge appears bottom-left over the tab bar in screenshots.
-- Base UI `nativeButton` warning on every page (X-17); planned with the M1 top-bar rework.
+- Base UI `nativeButton` warning remains on 8 pages (other `Button render={<Link>}` uses); X-17.
+- Detail pages still show their in-page "← Accounts"/"← Assets" link under the new top-bar back
+  chevron (ACC-03, HLD); removed in their page phases.
+- Sub-pages (`/sip/history`, `/sip/plans/new`, `/assets/update-values`, `/assets/import-valuations`,
+  `/transactions/import`) and detail pages are 3 taps from the tab bar (section + one in-page link).

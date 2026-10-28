@@ -43,7 +43,7 @@ export function HideAmountsSync({ hidden }: { hidden: boolean }) {
   return null;
 }
 
-export function HideAmountsToggle() {
+export function HideAmountsToggle({ className }: { className?: string }) {
   const hidden = useHideAmounts();
   const label = hidden ? "Show amounts" : "Hide amounts";
 
@@ -61,6 +61,7 @@ export function HideAmountsToggle() {
     <Button
       variant="ghost"
       size="icon"
+      className={className}
       onClick={() => void toggle()}
       aria-label={label}
       aria-pressed={hidden}
