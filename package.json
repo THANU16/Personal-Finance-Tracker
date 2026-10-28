@@ -13,6 +13,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
+    "screens": "tsx scripts/mobile-screens.ts",
     "seed": "tsx --conditions=react-server scripts/seed.ts",
     "repair:categories": "tsx --conditions=react-server scripts/repair-categories.ts",
     "recompute": "tsx --conditions=react-server scripts/recompute-all.ts",
