@@ -10,9 +10,11 @@ import {
   sortFn_text,
   tableFeatures,
   useTable,
+  type CellData,
   type ColumnDef,
   type RowData,
   type SortingState,
+  type TableFeatures,
 } from "@tanstack/react-table";
 import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 import {
@@ -23,6 +25,23 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+
+/** Where a column goes in the phone card row (docs/07 §3: table → card list). */
+export type MobileSlot = "title" | "subtitle" | "amount" | "meta" | "actions" | "hidden";
+
+declare module "@tanstack/table-core" {
+  // Declaration merging must repeat the original type parameters, used or not.
+  /* eslint-disable @typescript-eslint/no-unused-vars */
+  interface ColumnMeta<
+    in out TFeatures extends TableFeatures,
+    in out TData extends RowData,
+    TValue extends CellData = CellData,
+  > {
+    /** Phone card slot; when no column sets one, rows fall back to label/value cards. */
+    mobile?: MobileSlot;
+  }
+  /* eslint-enable @typescript-eslint/no-unused-vars */
+}
 
 // TanStack Table v9: features are explicit and must be stable (module scope).
 export const dataTableFeatures = tableFeatures({
@@ -53,7 +72,10 @@ function headerLabel(header: unknown): string | null {
   return typeof header === "string" ? header : null;
 }
 
-/** Sortable table; below 640px rows become stacked cards labelled by column header. */
+/**
+ * Sortable table; below md rows become cards. Columns with `meta.mobile` slots render a compact
+ * row (title/subtitle/meta left, amount right, actions); otherwise label/value cards.
+ */
 export function DataTable<TData extends RowData>({
   columns,
   data,
@@ -74,10 +96,11 @@ export function DataTable<TData extends RowData>({
   if (data.length === 0 && empty) return <>{empty}</>;
 
   const rows = table.getRowModel().rows;
+  const slotted = columns.some((c) => c.meta?.mobile && c.meta.mobile !== "hidden");
 
   return (
     <>
-      <div className="hidden rounded-xl border sm:block">
+      <div className="hidden rounded-xl border md:block">
         <Table>
           <TableHeader>
             {table.getHeaderGroups().map((group) => (
@@ -136,25 +159,71 @@ export function DataTable<TData extends RowData>({
         </Table>
       </div>
 
-      <ul className="space-y-3 sm:hidden">
-        {rows.map((row) => (
-          <li key={row.id} className="rounded-xl border p-4">
-            <dl className="space-y-1.5">
-              {row.getAllCells().map((cell) => {
-                const label = headerLabel(cell.column.columnDef.header);
-                return (
-                  <div key={cell.id} className="flex justify-between gap-4 text-sm">
-                    {label ? <dt className="text-muted-foreground">{label}</dt> : null}
-                    <dd className="text-right">
-                      <table.FlexRender cell={cell} />
-                    </dd>
+      {slotted ? (
+        <ul className="divide-y rounded-xl border md:hidden">
+          {rows.map((row) => {
+            const cells = row.getAllCells();
+            const inSlot = (slot: MobileSlot) =>
+              cells.filter((c) => c.column.columnDef.meta?.mobile === slot);
+            const meta = inSlot("meta");
+            return (
+              <li key={row.id} className="flex min-h-14 items-center gap-3 px-4 py-3">
+                <div className="min-w-0 flex-1">
+                  {inSlot("title").map((c) => (
+                    <div key={c.id} className="truncate font-medium">
+                      <table.FlexRender cell={c} />
+                    </div>
+                  ))}
+                  {inSlot("subtitle").map((c) => (
+                    <div key={c.id} className="truncate text-sm text-muted-foreground">
+                      <table.FlexRender cell={c} />
+                    </div>
+                  ))}
+                  {meta.length ? (
+                    <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                      {meta.map((c) => (
+                        <span key={c.id}>
+                          <table.FlexRender cell={c} />
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+                {inSlot("amount").map((c) => (
+                  <div key={c.id} className="shrink-0 text-right font-medium tabular-nums">
+                    <table.FlexRender cell={c} />
                   </div>
-                );
-              })}
-            </dl>
-          </li>
-        ))}
-      </ul>
+                ))}
+                {inSlot("actions").map((c) => (
+                  <div key={c.id} className="-mr-2 shrink-0">
+                    <table.FlexRender cell={c} />
+                  </div>
+                ))}
+              </li>
+            );
+          })}
+        </ul>
+      ) : (
+        <ul className="space-y-3 md:hidden">
+          {rows.map((row) => (
+            <li key={row.id} className="rounded-xl border p-4">
+              <dl className="space-y-1.5">
+                {row.getAllCells().map((cell) => {
+                  const label = headerLabel(cell.column.columnDef.header);
+                  return (
+                    <div key={cell.id} className="flex justify-between gap-4 text-sm">
+                      {label ? <dt className="text-muted-foreground">{label}</dt> : null}
+                      <dd className="text-right">
+                        <table.FlexRender cell={cell} />
+                      </dd>
+                    </div>
+                  );
+                })}
+              </dl>
+            </li>
+          ))}
+        </ul>
+      )}
     </>
   );
 }

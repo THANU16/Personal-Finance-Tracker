@@ -720,7 +720,7 @@ function QuickAddForm({
                 field.onChange(v);
               }}
             >
-              <TabsList className="grid w-full grid-cols-3 group-data-horizontal/tabs:h-auto">
+              <TabsList className="grid w-full grid-cols-3 group-data-horizontal/tabs:h-auto md:group-data-horizontal/tabs:h-auto">
                 <TabsTrigger value="expense">Expense</TabsTrigger>
                 <TabsTrigger value="income">Income</TabsTrigger>
                 <TabsTrigger value="transfer">Transfer</TabsTrigger>

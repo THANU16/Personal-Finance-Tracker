@@ -1,5 +1,6 @@
 "use client";
 
+import { useChartAxes } from "@/components/charts/chart-kit";
 import { format, parse } from "date-fns";
 import {
   Area,
@@ -58,6 +59,7 @@ export function BalanceHistoryChart({
   points: BalancePoint[];
   currency: string;
 }) {
+  const ax = useChartAxes();
   if (points.length < 2) {
     return (
       <p className="py-10 text-center text-sm text-muted-foreground">
@@ -66,7 +68,6 @@ export function BalanceHistoryChart({
     );
   }
   const data = points.map((p) => ({ ...p, t: parseKey(p.date).getTime() }));
-  const compact = (v: number) => formatMoney(Math.round(v), currency, { compact: true });
   const ticks = monthTicks(data[0]!.t, data.at(-1)!.t);
 
   return (
@@ -81,18 +82,18 @@ export function BalanceHistoryChart({
             domain={["dataMin", "dataMax"]}
             ticks={ticks}
             tickFormatter={(t: number) => format(t, "MMM yy")}
-            tick={{ fill: "var(--muted-foreground)", fontSize: 11 }}
+            tick={ax.axis.tick}
             tickLine={false}
             axisLine={{ stroke: "var(--border)" }}
             minTickGap={32}
           />
           <YAxis
             dataKey="balanceMinor"
-            tickFormatter={compact}
-            tick={{ fill: "var(--muted-foreground)", fontSize: 11 }}
+            tickFormatter={ax.money(currency)}
+            tick={ax.axis.tick}
             tickLine={false}
             axisLine={false}
-            width={88}
+            width={ax.yWidth(88)}
           />
           <Tooltip
             cursor={{ stroke: "var(--muted-foreground)", strokeWidth: 1 }}

@@ -45,7 +45,9 @@ function AlertDialogContent({
         data-slot="alert-dialog-content"
         data-size={size}
         className={cn(
-          "group/alert-dialog-content fixed top-1/2 left-1/2 z-50 grid w-full -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl bg-popover p-4 text-popover-foreground ring-1 ring-foreground/10 duration-100 outline-none data-[size=default]:max-w-xs data-[size=sm]:max-w-xs data-[size=default]:sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+          // Phones (docs/07 §6): an action sheet anchored to the bottom, full width, buttons stacked.
+          // md+: the centred dialog (max-w-sm, or max-w-xs for size="sm"), as before.
+          "group/alert-dialog-content fixed inset-x-0 bottom-0 z-50 grid w-full gap-4 rounded-t-2xl bg-popover p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] text-popover-foreground ring-1 ring-foreground/10 duration-100 outline-none max-md:duration-200 md:top-1/2 md:right-auto md:bottom-auto md:left-1/2 md:-translate-x-1/2 md:-translate-y-1/2 md:rounded-xl md:pb-4 md:data-[size=default]:max-w-sm md:data-[size=sm]:max-w-xs data-open:animate-in data-open:fade-in-0 max-md:data-open:slide-in-from-bottom md:data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 max-md:data-closed:slide-out-to-bottom md:data-closed:zoom-out-95",
           className,
         )}
         {...props}
@@ -72,7 +74,7 @@ function AlertDialogFooter({ className, ...props }: React.ComponentProps<"div">)
     <div
       data-slot="alert-dialog-footer"
       className={cn(
-        "-mx-4 -mb-4 flex flex-col-reverse gap-2 rounded-b-xl border-t bg-muted/50 p-4 group-data-[size=sm]/alert-dialog-content:grid group-data-[size=sm]/alert-dialog-content:grid-cols-2 sm:flex-row sm:justify-end",
+        "-mx-4 -mb-[calc(1rem+env(safe-area-inset-bottom))] flex flex-col-reverse gap-2 rounded-b-xl border-t bg-muted/50 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] group-data-[size=sm]/alert-dialog-content:grid group-data-[size=sm]/alert-dialog-content:grid-cols-2 sm:flex-row sm:justify-end md:-mb-4 md:pb-4",
         className,
       )}
       {...props}

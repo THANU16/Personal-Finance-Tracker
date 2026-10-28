@@ -16,13 +16,12 @@ import {
   type TooltipContentProps,
 } from "recharts";
 import {
-  AXIS,
   Amount,
   ChartFrame,
   NoData,
   TooltipRow,
   TooltipShell,
-  moneyTick,
+  useChartAxes,
 } from "@/components/charts/chart-kit";
 import { Money } from "@/components/shared/money";
 import { StatCard } from "@/components/shared/stat-card";
@@ -283,6 +282,7 @@ function FlowTip({ active, payload, currency }: TooltipContentProps & { currency
 }
 
 export function IncomeExpenseView({ data }: { data: { currency: string; points: FlowPoint[] } }) {
+  const ax = useChartAxes();
   const ccy = data.currency;
   if (data.points.every((p) => p.incomeMinor === 0 && p.expenseMinor === 0)) {
     return <NoData>No income or expense in the last 12 complete months.</NoData>;
@@ -329,10 +329,15 @@ export function IncomeExpenseView({ data }: { data: { currency: string; points: 
               <XAxis
                 dataKey="key"
                 tickFormatter={(k: string) => format(parseISO(k), "MMM yy")}
-                {...AXIS}
+                {...ax.axis}
                 axisLine={{ stroke: "var(--border)" }}
               />
-              <YAxis tickFormatter={moneyTick(ccy)} {...AXIS} axisLine={false} width={88} />
+              <YAxis
+                tickFormatter={ax.money(ccy)}
+                {...ax.axis}
+                axisLine={false}
+                width={ax.yWidth(88)}
+              />
               <Tooltip
                 cursor={{ fill: "var(--muted)" }}
                 content={(p) => <FlowTip {...p} currency={ccy} />}
@@ -711,6 +716,7 @@ function NwTip({ active, payload, currency }: TooltipContentProps & { currency: 
 }
 
 export function NetWorthView({ data }: { data: { currency: string; rows: NetWorthRow[] } }) {
+  const ax = useChartAxes();
   const ccy = data.currency;
   if (data.rows.length === 0)
     return <NoData>Add accounts or holdings to see your net worth history.</NoData>;
@@ -758,11 +764,16 @@ export function NetWorthView({ data }: { data: { currency: string; rows: NetWort
               <XAxis
                 dataKey="date"
                 tickFormatter={(d: string) => format(parseISO(d), "MMM yy")}
-                {...AXIS}
+                {...ax.axis}
                 axisLine={{ stroke: "var(--border)" }}
                 minTickGap={16}
               />
-              <YAxis tickFormatter={moneyTick(ccy)} {...AXIS} axisLine={false} width={88} />
+              <YAxis
+                tickFormatter={ax.money(ccy)}
+                {...ax.axis}
+                axisLine={false}
+                width={ax.yWidth(88)}
+              />
               <Tooltip
                 cursor={{ stroke: "var(--muted-foreground)", strokeWidth: 1 }}
                 content={(p) => <NwTip {...p} currency={ccy} />}

@@ -1,5 +1,6 @@
 "use client";
 
+import { useChartAxes } from "@/components/charts/chart-kit";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { format, parseISO } from "date-fns";
@@ -423,6 +424,7 @@ function SplitTooltip({ active, payload, currency }: TooltipContentProps & { cur
 }
 
 export function DebtDetailClient({ d, today }: { d: DebtDetailDTO; today: string }) {
+  const ax = useChartAxes();
   const [dialog, setDialog] = useState<"pay" | "prepay" | "edit" | null>(null);
   const posted = d.payments.filter((p) => p.status === "posted");
   let n = d.paidBeforeTracking;
@@ -518,19 +520,17 @@ export function DebtDetailClient({ d, today }: { d: DebtDetailDTO; today: string
                 <XAxis
                   dataKey="date"
                   tickFormatter={(v: string) => format(parseISO(v), "MMM yy")}
-                  tick={{ fill: "var(--muted-foreground)", fontSize: 11 }}
+                  tick={ax.axis.tick}
                   tickLine={false}
                   axisLine={{ stroke: "var(--border)" }}
                   minTickGap={16}
                 />
                 <YAxis
-                  tickFormatter={(v: number) =>
-                    formatMoney(Math.round(v), d.currency, { compact: true })
-                  }
-                  tick={{ fill: "var(--muted-foreground)", fontSize: 11 }}
+                  tickFormatter={ax.money(d.currency)}
+                  tick={ax.axis.tick}
                   tickLine={false}
                   axisLine={false}
-                  width={80}
+                  width={ax.yWidth(80)}
                 />
                 <Tooltip
                   cursor={{ fill: "var(--muted)" }}

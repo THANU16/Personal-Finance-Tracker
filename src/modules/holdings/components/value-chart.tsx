@@ -1,5 +1,6 @@
 "use client";
 
+import { useChartAxes } from "@/components/charts/chart-kit";
 import { format, parse } from "date-fns";
 import {
   CartesianGrid,
@@ -66,6 +67,7 @@ function ChartTooltip({ active, payload, currency }: TooltipContentProps & { cur
 
 /** Holding value vs invested over time (docs/05 §5). Step lines: values hold between events. */
 export function ValueChart({ points, currency }: { points: ValuePoint[]; currency: string }) {
+  const ax = useChartAxes();
   if (points.length < 2) {
     return (
       <p className="py-10 text-center text-sm text-muted-foreground">
@@ -100,16 +102,16 @@ export function ValueChart({ points, currency }: { points: ValuePoint[]; currenc
               domain={["dataMin", "dataMax"]}
               ticks={ticks}
               tickFormatter={(t: number) => format(t, "MMM yy")}
-              tick={{ fill: "var(--muted-foreground)", fontSize: 11 }}
+              tick={ax.axis.tick}
               tickLine={false}
               axisLine={{ stroke: "var(--border)" }}
             />
             <YAxis
-              tickFormatter={(v: number) => formatMoney(Math.round(v), currency, { compact: true })}
-              tick={{ fill: "var(--muted-foreground)", fontSize: 11 }}
+              tickFormatter={ax.money(currency)}
+              tick={ax.axis.tick}
               tickLine={false}
               axisLine={false}
-              width={88}
+              width={ax.yWidth(88)}
             />
             <Tooltip
               cursor={{ stroke: "var(--muted-foreground)", strokeWidth: 1 }}

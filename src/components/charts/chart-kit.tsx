@@ -3,6 +3,7 @@
 import { format, parse } from "date-fns";
 import { useState, type ReactNode } from "react";
 import type { Granularity } from "@/domain/date-range";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { formatMoney } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -32,6 +33,28 @@ export const AXIS = {
   tick: { fill: "var(--muted-foreground)", fontSize: 11 },
   tickLine: false,
 } as const;
+
+const AXIS_PHONE = {
+  tick: { fill: "var(--muted-foreground)", fontSize: 12 },
+  tickLine: false,
+} as const;
+
+/** Compact money tick without the currency code ("-3.5M"); the chart title names the currency. */
+export const bareMoneyTick = (currency: string) => (v: number) =>
+  formatMoney(Math.round(v), currency, { compact: true }).replace(`${currency.toUpperCase()} `, "");
+
+/**
+ * Axis props per screen size (docs/07 §3 simplified axes). Phones: 12px labels (never below 12px),
+ * money ticks without the currency code and a Y axis no wider than 48px; md+ unchanged.
+ */
+export function useChartAxes() {
+  const isMobile = useIsMobile();
+  return {
+    axis: isMobile ? AXIS_PHONE : AXIS,
+    yWidth: (desktop: number) => (isMobile ? Math.min(desktop, 48) : desktop),
+    money: (currency: string) => (isMobile ? bareMoneyTick(currency) : moneyTick(currency)),
+  };
+}
 
 export interface LegendItem {
   label: string;
@@ -107,7 +130,7 @@ export function ChartFrame<T>({
           type="button"
           onClick={() => setTable((t) => !t)}
           aria-pressed={table}
-          className="text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+          className="-my-3 inline-flex min-h-11 items-center text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline md:my-0 md:min-h-0"
         >
           {table ? "Show chart" : "Show table"}
         </button>

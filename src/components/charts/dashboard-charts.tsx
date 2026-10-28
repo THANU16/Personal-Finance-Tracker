@@ -22,7 +22,6 @@ import {
   type TooltipContentProps,
 } from "recharts";
 import {
-  AXIS,
   Amount,
   ChartFrame,
   DeltaText,
@@ -31,7 +30,7 @@ import {
   TooltipShell,
   bucketLabel,
   bucketTick,
-  moneyTick,
+  useChartAxes,
 } from "@/components/charts/chart-kit";
 import type { Granularity } from "@/domain/date-range";
 import { formatMoney, formatPercentBp } from "@/lib/format";
@@ -102,6 +101,7 @@ export function NetWorthChart({
   granularity: Granularity;
   compare: boolean;
 }) {
+  const ax = useChartAxes();
   if (points.every((p) => p.netWorthMinor === 0 && p.assetsMinor === 0)) {
     return <NoData>Add accounts or holdings to see your net worth over time.</NoData>;
   }
@@ -148,11 +148,16 @@ export function NetWorthChart({
           <XAxis
             dataKey="start"
             tickFormatter={(s: string) => bucketTick(s, granularity)}
-            {...AXIS}
+            {...ax.axis}
             axisLine={{ stroke: "var(--border)" }}
             minTickGap={16}
           />
-          <YAxis tickFormatter={moneyTick(currency)} {...AXIS} axisLine={false} width={88} />
+          <YAxis
+            tickFormatter={ax.money(currency)}
+            {...ax.axis}
+            axisLine={false}
+            width={ax.yWidth(88)}
+          />
           <Tooltip
             cursor={{ stroke: "var(--muted-foreground)", strokeWidth: 1 }}
             content={(p) => <NetWorthTip {...p} currency={currency} g={granularity} />}
@@ -229,6 +234,7 @@ export function AssetsLiabilitiesChart({
   currency: string;
   granularity: Granularity;
 }) {
+  const ax = useChartAxes();
   if (points.every((p) => p.assetsMinor === 0 && p.liabilitiesMinor === 0)) {
     return <NoData>No balances in this range yet.</NoData>;
   }
@@ -268,11 +274,16 @@ export function AssetsLiabilitiesChart({
           <XAxis
             dataKey="start"
             tickFormatter={(s: string) => bucketTick(s, granularity)}
-            {...AXIS}
+            {...ax.axis}
             axisLine={{ stroke: "var(--border)" }}
             minTickGap={12}
           />
-          <YAxis tickFormatter={moneyTick(currency)} {...AXIS} axisLine={false} width={88} />
+          <YAxis
+            tickFormatter={ax.money(currency)}
+            {...ax.axis}
+            axisLine={false}
+            width={ax.yWidth(88)}
+          />
           <ReferenceLine y={0} stroke="var(--border)" />
           <Tooltip
             cursor={{ fill: "var(--muted)", opacity: 0.5 }}
@@ -351,6 +362,7 @@ export function CashflowChart({
   currency: string;
   granularity: Granularity;
 }) {
+  const ax = useChartAxes();
   if (points.every((p) => p.incomeMinor === 0 && p.expenseMinor === 0)) {
     return <NoData>No income or expenses in this range.</NoData>;
   }
@@ -390,11 +402,16 @@ export function CashflowChart({
           <XAxis
             dataKey="start"
             tickFormatter={(s: string) => bucketTick(s, granularity)}
-            {...AXIS}
+            {...ax.axis}
             axisLine={{ stroke: "var(--border)" }}
             minTickGap={12}
           />
-          <YAxis tickFormatter={moneyTick(currency)} {...AXIS} axisLine={false} width={88} />
+          <YAxis
+            tickFormatter={ax.money(currency)}
+            {...ax.axis}
+            axisLine={false}
+            width={ax.yWidth(88)}
+          />
           <Tooltip
             cursor={{ fill: "var(--muted)", opacity: 0.5 }}
             content={(p) => <CashTip {...p} currency={currency} g={granularity} />}
@@ -433,6 +450,7 @@ export function SavingsRateChart({
   points: CashflowBucket[];
   granularity: Granularity;
 }) {
+  const ax = useChartAxes();
   const rows: RateRow[] = points.map((p) => ({
     ...p,
     rate: p.savingsRateBp === null ? null : p.savingsRateBp / 100,
@@ -461,15 +479,15 @@ export function SavingsRateChart({
           <XAxis
             dataKey="start"
             tickFormatter={(s: string) => bucketTick(s, granularity)}
-            {...AXIS}
+            {...ax.axis}
             axisLine={{ stroke: "var(--border)" }}
             minTickGap={16}
           />
           <YAxis
             tickFormatter={(v: number) => `${Math.round(v)}%`}
-            {...AXIS}
+            {...ax.axis}
             axisLine={false}
-            width={88}
+            width={ax.yWidth(88)}
           />
           <ReferenceLine y={0} stroke="var(--border)" />
           <Tooltip

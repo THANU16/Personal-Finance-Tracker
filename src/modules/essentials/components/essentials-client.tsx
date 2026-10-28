@@ -17,7 +17,13 @@ import {
   YAxis,
   type TooltipContentProps,
 } from "recharts";
-import { AXIS, ChartFrame, NoData, TooltipRow, TooltipShell } from "@/components/charts/chart-kit";
+import {
+  ChartFrame,
+  NoData,
+  TooltipRow,
+  TooltipShell,
+  useChartAxes,
+} from "@/components/charts/chart-kit";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { DatePicker } from "@/components/shared/date-picker";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -904,6 +910,7 @@ function SavingsTip({ active, payload }: TooltipContentProps) {
 }
 
 function SavingsCard({ data }: { data: EssentialsDTO }) {
+  const ax = useChartAxes();
   const rows = data.savings.trend.map((t) => ({
     ...t,
     pct: t.savingsRateBp === null ? null : t.savingsRateBp / 100,
@@ -942,14 +949,14 @@ function SavingsCard({ data }: { data: EssentialsDTO }) {
                 <XAxis
                   dataKey="month"
                   tickFormatter={(m: string) => format(parseISO(`${m}-01`), "MMM")}
-                  {...AXIS}
+                  {...ax.axis}
                   axisLine={{ stroke: "var(--border)" }}
                 />
                 <YAxis
                   tickFormatter={(v: number) => `${v}%`}
-                  {...AXIS}
+                  {...ax.axis}
                   axisLine={false}
-                  width={44}
+                  width={ax.yWidth(44)}
                 />
                 <ReferenceLine y={0} stroke="var(--border)" />
                 <ReferenceLine y={30} stroke="var(--muted-foreground)" strokeDasharray="4 4" />

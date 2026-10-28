@@ -167,7 +167,7 @@ export async function PortfolioView({ searchParams }: { searchParams: SearchPara
               <Button
                 variant="link"
                 size="sm"
-                className="h-auto p-0"
+                className="h-auto p-0 md:h-auto"
                 render={<Link href="/assets/update-values" />}
               >
                 <RefreshCw aria-hidden /> Update values

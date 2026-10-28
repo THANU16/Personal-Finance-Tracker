@@ -1,5 +1,6 @@
 "use client";
 
+import { useChartAxes } from "@/components/charts/chart-kit";
 import { format, parse } from "date-fns";
 import {
   CartesianGrid,
@@ -51,6 +52,7 @@ export function LevelsChart({
   rules: OpportunityRule[];
   benchmarkName: string;
 }) {
+  const ax = useChartAxes();
   if (levels.length < 2) {
     return (
       <p className="py-10 text-center text-sm text-muted-foreground">
@@ -80,7 +82,7 @@ export function LevelsChart({
             scale="time"
             domain={["dataMin", "dataMax"]}
             tickFormatter={(t: number) => format(t, "d MMM yy")}
-            tick={{ fill: "var(--muted-foreground)", fontSize: 11 }}
+            tick={ax.axis.tick}
             tickLine={false}
             axisLine={{ stroke: "var(--border)" }}
             minTickGap={24}
@@ -88,10 +90,10 @@ export function LevelsChart({
           <YAxis
             domain={[Math.max(0, min - pad), max + pad]}
             tickFormatter={(v: number) => fmtLevel(Math.round(v))}
-            tick={{ fill: "var(--muted-foreground)", fontSize: 11 }}
+            tick={ax.axis.tick}
             tickLine={false}
             axisLine={false}
-            width={64}
+            width={ax.yWidth(64)}
           />
           {referenceHigh ? (
             <ReferenceLine

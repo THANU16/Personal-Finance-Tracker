@@ -17,13 +17,12 @@ import {
   YAxis,
 } from "recharts";
 import {
-  AXIS,
   Amount,
   ChartFrame,
   NoData,
   TooltipRow,
   TooltipShell,
-  moneyTick,
+  useChartAxes,
 } from "@/components/charts/chart-kit";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { Button } from "@/components/ui/button";
@@ -220,6 +219,7 @@ const S2 = "var(--viz-series-2)";
 
 /** Per-plan charts: cumulative invested (with today's estimated value) · planned vs actual per period. */
 export function PlanChartsView({ charts }: { charts: PlanCharts }) {
+  const ax = useChartAxes();
   const ccy = charts.currency;
   if (charts.periods.length === 0) return <NoData>No periods due yet.</NoData>;
   return (
@@ -251,11 +251,16 @@ export function PlanChartsView({ charts }: { charts: PlanCharts }) {
                 <CartesianGrid vertical={false} stroke="var(--border)" />
                 <XAxis
                   dataKey="date"
-                  {...AXIS}
+                  {...ax.axis}
                   axisLine={{ stroke: "var(--border)" }}
                   minTickGap={16}
                 />
-                <YAxis tickFormatter={moneyTick(ccy)} {...AXIS} axisLine={false} width={88} />
+                <YAxis
+                  tickFormatter={ax.money(ccy)}
+                  {...ax.axis}
+                  axisLine={false}
+                  width={ax.yWidth(88)}
+                />
                 <Tooltip
                   content={({ active, payload }) => {
                     const r = active
@@ -330,11 +335,16 @@ export function PlanChartsView({ charts }: { charts: PlanCharts }) {
               <CartesianGrid vertical={false} stroke="var(--border)" />
               <XAxis
                 dataKey="periodKey"
-                {...AXIS}
+                {...ax.axis}
                 axisLine={{ stroke: "var(--border)" }}
                 minTickGap={8}
               />
-              <YAxis tickFormatter={moneyTick(ccy)} {...AXIS} axisLine={false} width={88} />
+              <YAxis
+                tickFormatter={ax.money(ccy)}
+                {...ax.axis}
+                axisLine={false}
+                width={ax.yWidth(88)}
+              />
               <Tooltip
                 cursor={{ fill: "var(--muted)", opacity: 0.5 }}
                 content={({ active, payload }) => {

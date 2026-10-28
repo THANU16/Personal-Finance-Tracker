@@ -85,6 +85,7 @@ const ROUTES = [
   "/notifications",
   "/settings",
   "/more",
+  "/dev/mobile-kit",
 ];
 
 /**
@@ -123,6 +124,25 @@ const OVERLAYS: Overlay[] = [
       await page.waitForTimeout(400);
     },
   },
+  ...(
+    [
+      ["kit-form-sheet", "button", "Open form sheet"],
+      ["kit-picker", "combobox", "Account"],
+      ["kit-action-sheet", "button", "Actions for Cash wallet"],
+      ["kit-confirm", "button", "Void…"],
+    ] as const
+  ).map(([name, role, label]): Overlay => ({
+    name,
+    route: "/dev/mobile-kit",
+    open: async (page) => {
+      await page
+        .getByRole(role, { name: label, exact: true })
+        .filter({ visible: true })
+        .first()
+        .click();
+      await page.waitForTimeout(500);
+    },
+  })),
   {
     name: "add-account-dialog",
     route: "/accounts",

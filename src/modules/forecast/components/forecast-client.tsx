@@ -18,13 +18,12 @@ import {
   type TooltipContentProps,
 } from "recharts";
 import {
-  AXIS,
   Amount,
   ChartFrame,
   NoData,
   TooltipRow,
   TooltipShell,
-  moneyTick,
+  useChartAxes,
 } from "@/components/charts/chart-kit";
 import { Money } from "@/components/shared/money";
 import { Badge } from "@/components/ui/badge";
@@ -97,6 +96,7 @@ function BalanceTip({ active, payload, currency }: TooltipContentProps & { curre
 }
 
 function BalanceChart({ f }: { f: ForecastDTO }) {
+  const ax = useChartAxes();
   if (!f.accounts.length)
     return <NoData>Add a bank, cash or wallet account to see a forecast.</NoData>;
   const floor = Math.max(0, f.minimumMinor);
@@ -132,15 +132,15 @@ function BalanceChart({ f }: { f: ForecastDTO }) {
           <XAxis
             dataKey="date"
             tickFormatter={fmtDay}
-            {...AXIS}
+            {...ax.axis}
             axisLine={{ stroke: "var(--border)" }}
             minTickGap={24}
           />
           <YAxis
-            tickFormatter={moneyTick(f.currency)}
-            {...AXIS}
+            tickFormatter={ax.money(f.currency)}
+            {...ax.axis}
             axisLine={false}
-            width={88}
+            width={ax.yWidth(88)}
             domain={[lo, hi]}
           />
           <ReferenceArea
@@ -337,6 +337,7 @@ function ProjectionTip({ active, payload, p }: TooltipContentProps & { p: Projec
 }
 
 function ProjectionCard({ p }: { p: ProjectionDTO }) {
+  const ax = useChartAxes();
   const at = (y: number) => p.points.find((x) => x.year === y);
   return (
     <Card>
@@ -401,10 +402,15 @@ function ProjectionCard({ p }: { p: ProjectionDTO }) {
               <XAxis
                 dataKey="year"
                 tickFormatter={(y: number) => (y === 0 ? "Now" : `+${y}y`)}
-                {...AXIS}
+                {...ax.axis}
                 axisLine={{ stroke: "var(--border)" }}
               />
-              <YAxis tickFormatter={moneyTick(p.currency)} {...AXIS} axisLine={false} width={88} />
+              <YAxis
+                tickFormatter={ax.money(p.currency)}
+                {...ax.axis}
+                axisLine={false}
+                width={ax.yWidth(88)}
+              />
               <Tooltip
                 cursor={{ stroke: "var(--muted-foreground)", strokeWidth: 1 }}
                 content={(t) => <ProjectionTip {...t} p={p} />}
