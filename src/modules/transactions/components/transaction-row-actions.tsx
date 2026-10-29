@@ -53,7 +53,17 @@ export function voidEffect(t: TransactionDTO): string {
   }
 }
 
-export function TransactionRowActions({ txn }: { txn: TransactionDTO }) {
+export function TransactionRowActions({
+  txn,
+  layout = "menu",
+  onAction,
+}: {
+  txn: TransactionDTO;
+  /** "buttons": a row of labelled buttons (the phone detail sheet, docs/07 §5 Activity). */
+  layout?: "menu" | "buttons";
+  /** Called before Edit / Duplicate open Quick add (the detail sheet closes itself). */
+  onAction?: () => void;
+}) {
   const router = useRouter();
   const { open } = useQuickAdd();
   const [voidOpen, setVoidOpen] = React.useState(false);
@@ -75,56 +85,93 @@ export function TransactionRowActions({ txn }: { txn: TransactionDTO }) {
     }
     setVoidOpen(false);
     toast.success("Transaction voided");
+    onAction?.();
     router.refresh();
   }
 
+  const edit = () => {
+    onAction?.();
+    open({ mode: "edit", txn });
+  };
+  const duplicate = () => {
+    onAction?.();
+    open({ mode: "create", duplicateOf: txn });
+  };
+  const askVoid = () => {
+    setError(undefined);
+    setVoidOpen(true);
+  };
+
+  const menu =
+    layout === "buttons" ? (
+      <div className="grid grid-cols-2 gap-2">
+        {txn.editable ? (
+          <Button variant="outline" onClick={edit}>
+            <Pencil aria-hidden /> Edit
+          </Button>
+        ) : null}
+        {duplicable ? (
+          <Button variant="outline" onClick={duplicate}>
+            <Copy aria-hidden /> Duplicate
+          </Button>
+        ) : null}
+        <Button variant="outline" onClick={() => setFilesOpen(true)}>
+          <Paperclip aria-hidden /> Attachments
+          {txn.attachmentCount ? ` (${txn.attachmentCount})` : ""}
+        </Button>
+        {!txn.ownerManaged ? (
+          <Button variant="destructive" onClick={askVoid}>
+            <Ban aria-hidden /> Void
+          </Button>
+        ) : null}
+      </div>
+    ) : (
+      <>
+        {txn.attachmentCount > 0 ? (
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label={`${txn.attachmentCount} attachment${txn.attachmentCount === 1 ? "" : "s"}`}
+            title="Attachments"
+            onClick={() => setFilesOpen(true)}
+          >
+            <Paperclip aria-hidden />
+          </Button>
+        ) : null}
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={<Button variant="ghost" size="icon" aria-label="Transaction actions" />}
+          >
+            <MoreHorizontal aria-hidden />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            {txn.editable ? (
+              <DropdownMenuItem onClick={edit}>
+                <Pencil aria-hidden /> Edit
+              </DropdownMenuItem>
+            ) : null}
+            <DropdownMenuItem onClick={() => setFilesOpen(true)}>
+              <Paperclip aria-hidden /> Attachments
+              {txn.attachmentCount ? ` (${txn.attachmentCount})` : ""}
+            </DropdownMenuItem>
+            {duplicable ? (
+              <DropdownMenuItem onClick={duplicate}>
+                <Copy aria-hidden /> Duplicate
+              </DropdownMenuItem>
+            ) : null}
+            {!txn.ownerManaged ? (
+              <DropdownMenuItem onClick={askVoid}>
+                <Ban aria-hidden /> Void
+              </DropdownMenuItem>
+            ) : null}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </>
+    );
+
   return (
     <>
-      {txn.attachmentCount > 0 ? (
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label={`${txn.attachmentCount} attachment${txn.attachmentCount === 1 ? "" : "s"}`}
-          title="Attachments"
-          onClick={() => setFilesOpen(true)}
-        >
-          <Paperclip aria-hidden />
-        </Button>
-      ) : null}
-      <DropdownMenu>
-        <DropdownMenuTrigger
-          render={<Button variant="ghost" size="icon" aria-label="Transaction actions" />}
-        >
-          <MoreHorizontal aria-hidden />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          {txn.editable ? (
-            <DropdownMenuItem onClick={() => open({ mode: "edit", txn })}>
-              <Pencil aria-hidden /> Edit
-            </DropdownMenuItem>
-          ) : null}
-          <DropdownMenuItem onClick={() => setFilesOpen(true)}>
-            <Paperclip aria-hidden /> Attachments
-            {txn.attachmentCount ? ` (${txn.attachmentCount})` : ""}
-          </DropdownMenuItem>
-          {duplicable ? (
-            <DropdownMenuItem onClick={() => open({ mode: "create", duplicateOf: txn })}>
-              <Copy aria-hidden /> Duplicate
-            </DropdownMenuItem>
-          ) : null}
-          {!txn.ownerManaged ? (
-            <DropdownMenuItem
-              onClick={() => {
-                setError(undefined);
-                setVoidOpen(true);
-              }}
-            >
-              <Ban aria-hidden /> Void
-            </DropdownMenuItem>
-          ) : null}
-        </DropdownMenuContent>
-      </DropdownMenu>
-
+      {menu}
       {filesOpen ? (
         <AttachmentsDialog
           transactionId={txn.id}

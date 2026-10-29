@@ -36,7 +36,7 @@ Med = breaks a docs/07 rule but usable. Low = polish.
 | /onboarding | 0 | 10 | 1 | Low | M7 |
 | /transactions | 0 | 44 | 0 | Med | M4 |
 | /transactions/import | 0 | 8 | 0 | Low | M4 |
-| /transactions/import/money-manager/[batchId] | not captured | – | – | ? | M4 |
+| /transactions/import/money-manager/[batchId] | captured from M4 (fixture upload) | – | – | Med | M4 ✅ |
 | /accounts | 0 | 26 | 0 | **High** | M4 |
 | /accounts/[id] | 0 | 62 | 0 | Med | M4 |
 | /assets | 0 | 23 | 0 | Med | M5 |
@@ -77,7 +77,7 @@ the overflow check cannot see. Those are listed per page below.
 | X-03 | High | Primitives | shadcn sizes are desktop sizes on phones: Button h-8 (32px) / sm h-7 / xs h-6, Select trigger h-8, Input h-8, segmented pills 28px, Switch 18px, topbar icon buttons 32×32. Every page has 8–62 targets < 44px. | §2 44×44 | Responsive sizes on the primitives (`h-11 md:h-8` style), so desktop keeps today's sizes. **Not in the plan yet — add to M2.** | M2 | ✅ M2 (Button/Input/Select/Tabs/menu items 44px below md; Switch hit area 46px via pseudo-element) |
 | X-04 | Med | Top bar | Top bar has no title or back button on mobile; right side carries 5 actions (Add, hide amounts, bell, theme, avatar). Page title + description + action buttons then take ~⅓ of the first screen on every page. | §1 top bar (≤ 2 actions, large title, back chevron) | Compact top bar: large title collapsing on scroll, back chevron on detail pages, hide-amounts + bell only; theme and account move to More; Add moves to the tab bar `+`. | M1 | ✅ M1 |
 | X-05 | Med | PWA / safe areas | Root `viewport` has no `viewport-fit=cover`; only the bottom nav uses `env(safe-area-inset-bottom)`; top bar, sheets and sticky bars have no insets. Manifest has a single light `background_color`/`theme_color`; no in-app refresh for standalone mode. | §1 safe areas, standalone refresh; §7 | `viewportFit: "cover"`, inset padding on top bar/tab bar/sheets/sticky bars, refresh action, dark-aware theme colours. | M1 (basics), M8 (polish) | 🟡 M1 basics + M2 sheets (safe-area padding, keyboard-aware drawer); dark status bar → M8 |
-| X-06 | High | Tables | Only `holdings-table` uses `DataTable`; ~15 modules render raw `<table>`s (recurring, debts, debt schedule, essentials policies, forecast balances, opportunity deployments, reports ×3, update values, imports, FX rates, holding tabs, allocation). On phones they squeeze (3-line names), clip columns and hide row actions. `DataTable` itself switches to cards at `sm` (640px), not `md`. | §2 no sideways scroll, §3 table → card list | `CardList` driven by the same columns (M2), then convert each table in its page phase; move the breakpoint to `md`. | M2 + page phases | 🟡 M2: `DataTable` card slots (`meta.mobile`) + cards below md; raw tables convert in their page phases |
+| X-06 | High | Tables | Only `holdings-table` uses `DataTable`; ~15 modules render raw `<table>`s (recurring, debts, debt schedule, essentials policies, forecast balances, opportunity deployments, reports ×3, update values, imports, FX rates, holding tabs, allocation). On phones they squeeze (3-line names), clip columns and hide row actions. `DataTable` itself switches to cards at `sm` (640px), not `md`. | §2 no sideways scroll, §3 table → card list | `CardList` driven by the same columns (M2), then convert each table in its page phase; move the breakpoint to `md`. | M2 + page phases | 🟡 M2 slots; M4: `stackOnPhone` for small tables (imports), ledger as day list; recurring/debts/forecast/reports/opp-fund in M6–M7 |
 | X-07 | Med | Dialogs | 26 components use centred `DialogContent`; on a phone the Add account dialog fills the screen with its submit button below the fold and no drag handle. Quick add is a right-side sheet (75% width). | §3 dialog → bottom sheet | `ResponsiveDialog` (Dialog ≥ md, bottom-sheet Drawer < md, full height for long forms, sticky footer). | M2 (+ adoption per phase) | ✅ M2 (every `Dialog` is a swipe-down bottom sheet below md; `AlertDialog` an action sheet) |
 | X-08 | Med | Selects | 30 components use Base UI `Select` popovers; long lists (accounts, categories, holdings, timezone) open as small popovers. | §3 picker sheet with search | `ResponsiveSelect` → bottom-sheet picker with search < md. | M2 | 🟡 M2 built; M3: CategorySelect + Quick add accounts use the picker sheet |
 | X-09 | Med | Tabs / segmented | Tab strips wrap onto 2–4 rows (Reports 7 tabs, Allocation 4, Dashboard range bar 9 presets, Quick add types 6, Opp-fund "Pay from") or scroll with the active tab cut off (Settings starts at "…erences"). | §3 scrollable segmented chips | `SegmentedControl` with horizontal scroll + active-tab scroll-into-view; fewer presets on mobile. | M2 | 🟡 M2 built; M3: range presets and Quick add types scroll in one row |
@@ -88,7 +88,7 @@ the overflow check cannot see. Those are listed per page below.
 | X-14 | Low | Hover-only info | 42 module components use `title=`/Tooltip for extra info (e.g. "Safe to spend ⓘ"); no tap equivalent on touch. | §3 hover → tap popover | Tap popover component; replace per page. | M2 (+ adoption) | 🟡 M2: `InfoTip` built; adoption per page |
 | X-15 | Low | Loading states | One `loading.tsx` for the whole `(app)` group; no page-shaped skeletons. | §6 skeletons, §8 | Page skeletons sized like the card layouts. | M8 | ⬜ |
 | X-16 | Low | Inline links | Inline text links used as navigation (account names, holding names, "Budgets →", "All goals →") are 16–20px tall. | §2 44px | Make whole rows/cards the link on mobile. | page phases | ⬜ |
-| X-17 | Low | Console (all pages) | Base UI warns on every page: a component with `nativeButton` renders a non-`<button>` (seen via `NotificationBell` → `Button render={<Link>}` in the top bar and others). Not a layout issue. | – | Pass `nativeButton={false}` where `Button` renders a link. Fix with the top-bar rework. | M1 | 🟡 M1: top-bar bell fixed (warning gone on 19 of 27 pages); remaining `Button render={<Link>}` uses → page phases |
+| X-17 | Low | Console (all pages) | Base UI warns on every page: a component with `nativeButton` renders a non-`<button>` (seen via `NotificationBell` → `Button render={<Link>}` in the top bar and others). Not a layout issue. | – | Pass `nativeButton={false}` where `Button` renders a link. Fix with the top-bar rework. | M1 | 🟡 M1 bell; M4: transactions, accounts, imports (link buttons → styled links); rest in their phases |
 
 ## 3. Per-page issues
 
@@ -113,25 +113,25 @@ the overflow check cannot see. Those are listed per page below.
 ### Activity — `/transactions` (M4)
 | ID | Sev | What's wrong | Rule | Proposed fix |
 |---|---|---|---|---|
-| TXN-01 | Med | Income / Expense / Net stat cards take the whole first screen. | §2, X-11 | Compact 3-up summary strip. |
-| TXN-02 | Med | List is a flat card list (34 rows) not grouped by day, no day totals; descriptions truncate to ~12 chars ("Bakery & veget…") because amount and `⋯` share the title row. | §5 Activity | Day-grouped list with day totals; amount right, meta row below. |
-| TXN-03 | Med | Search and a filter toggle exist (`transaction-filters.tsx`), but the expanded filters render inline (dates, selects), not as a filter sheet with removable chips. | §3 filters | Keep search on top; Filter chip → sheet; active filters as chips. |
-| TXN-04 | Med | `⋯` row menu is a dropdown, and edit/void open centred dialogs. | §3 action sheet, §5 detail sheet | Tap row → detail sheet with Edit / Duplicate / Void; action sheet for `⋯`. |
-| TXN-05 | Low | Header actions (Import, Add transaction) duplicate the `+`. | §1 | Keep Import in a `⋯` menu; `+` covers add. |
+| TXN-01 | Med | Income / Expense / Net stat cards take the whole first screen. | §2, X-11 | Compact 3-up summary strip. **✅ M4** |
+| TXN-02 | Med | List is a flat card list (34 rows) not grouped by day, no day totals; descriptions truncate to ~12 chars ("Bakery & veget…") because amount and `⋯` share the title row. | §5 Activity | Day-grouped list with day totals; amount right, meta row below. **✅ M4 (day groups + day net)** |
+| TXN-03 | Med | Search and a filter toggle exist (`transaction-filters.tsx`), but the expanded filters render inline (dates, selects), not as a filter sheet with removable chips. | §3 filters | Keep search on top; Filter chip → sheet; active filters as chips. **✅ M4** |
+| TXN-04 | Med | `⋯` row menu is a dropdown, and edit/void open centred dialogs. | §3 action sheet, §5 detail sheet | Tap row → detail sheet with Edit / Duplicate / Void; action sheet for `⋯`. **✅ M4 (detail sheet)** |
+| TXN-05 | Low | Header actions (Import, Add transaction) duplicate the `+`. | §1 | Keep Import in a `⋯` menu; `+` covers add. **✅ M4 (Add hidden on phones; Import kept)** |
 
 ### `/transactions/import` and Money Manager wizard (M4)
 | ID | Sev | What's wrong | Rule | Proposed fix |
 |---|---|---|---|---|
-| IMP-01 | Low | Upload step is fine at 375 (single column); "Choose file" is a native file input styled at 14px label. | §4 | Larger file button. |
-| IMP-02 | ? | `/transactions/import/money-manager/[batchId]` (mapping + review wizard with wide tables) not captured — no seeded batch. Code shows raw tables in `wizard-review-step.tsx` / `wizard-finish-steps.tsx` (X-06). | §2 | Extend `npm run screens` to upload the e2e Money Manager fixture, then audit in M4. |
+| IMP-01 | Low | Upload step is fine at 375 (single column); "Choose file" is a native file input styled at 14px label. | §4 | Larger file button. **🟡 M4: steps stack; file input 44px (native control)** |
+| IMP-02 | ? | `/transactions/import/money-manager/[batchId]` (mapping + review wizard with wide tables) not captured — no seeded batch. Code shows raw tables in `wizard-review-step.tsx` / `wizard-finish-steps.tsx` (X-06). | §2 | Extend `npm run screens` to upload the e2e Money Manager fixture, then audit in M4. **✅ M4 (captured; tables stack on phones)** |
 
 ### Accounts — `/accounts`, `/accounts/[id]` (M4)
 | ID | Sev | What's wrong | Rule | Proposed fix |
 |---|---|---|---|---|
-| ACC-01 | **High** | Account row with earmarks (Commercial Bank): the balance overlaps the earmark bar and legend ("LKR 2,945,959.15" drawn across "Emergency LKR 150,000.00"). | §2 | Row = name/subtitle + amount on one line, earmark bar and legend full width below. |
-| ACC-02 | Med | Names truncate hard ("Commercial …", "Emergency fu…", "Opportunity f…"); card row crowded (limit, % used, outstanding, due). | §3 card list | Two-line rows; card details in meta row. |
-| ACC-03 | Med | Detail: Reconcile / Edit / Archive buttons (32px) at the top; Balance + Opening balance as two full cards; earmark text squeezed beside the "Earmark / move" button. | §2 thumb zone, §5 | Primary action row; reconcile as a sheet; stacked earmark card. |
-| ACC-04 | Low | Detail transaction list is ~8 screens with pagination at the bottom. | §2 | Day grouping (shared with TXN-02), load more. |
+| ACC-01 | **High** | Account row with earmarks (Commercial Bank): the balance overlaps the earmark bar and legend ("LKR 2,945,959.15" drawn across "Emergency LKR 150,000.00"). | §2 | Row = name/subtitle + amount on one line, earmark bar and legend full width below. **✅ M4** |
+| ACC-02 | Med | Names truncate hard ("Commercial …", "Emergency fu…", "Opportunity f…"); card row crowded (limit, % used, outstanding, due). | §3 card list | Two-line rows; card details in meta row. **✅ M4** |
+| ACC-03 | Med | Detail: Reconcile / Edit / Archive buttons (32px) at the top; Balance + Opening balance as two full cards; earmark text squeezed beside the "Earmark / move" button. | §2 thumb zone, §5 | Primary action row; reconcile as a sheet; stacked earmark card. **✅ M4 (Add + ⋯; balance cards kept full width)** |
+| ACC-04 | Low | Detail transaction list is ~8 screens with pagination at the bottom. | §2 | Day grouping (shared with TXN-02), load more. **✅ M4 (day-grouped list)** |
 
 ### Assets — `/assets`, `/assets/[id]` (M5)
 | ID | Sev | What's wrong | Rule | Proposed fix |

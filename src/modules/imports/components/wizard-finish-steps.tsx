@@ -8,11 +8,12 @@ import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { DatePicker } from "@/components/shared/date-picker";
 import { Money } from "@/components/shared/money";
 import { MoneyInput } from "@/components/shared/money-input";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import { commitImportAction, undoImportAction } from "@/modules/imports/actions";
 import type { ImportResult, PreviewData, WizardData, WizardState } from "@/modules/imports/schemas";
+import { stackOnPhone } from "@/components/shared/mobile/stack-table";
 
 type SetState = React.Dispatch<React.SetStateAction<WizardState>>;
 
@@ -242,7 +243,7 @@ export function PreviewStep({
             : "Every account will match Money Manager’s own balance."}
         </p>
         <div className="overflow-x-auto rounded-lg border">
-          <table className="w-full text-sm">
+          <table className={cn("w-full text-sm", stackOnPhone)}>
             <thead className="bg-muted/50 text-left text-xs text-muted-foreground">
               <tr>
                 <th className="px-3 py-2 font-medium">Account</th>
@@ -304,11 +305,11 @@ export function PreviewStep({
       </div>
 
       <details className="rounded-lg border">
-        <summary className="cursor-pointer px-4 py-3 font-medium">
+        <summary className="cursor-pointer px-4 py-3 font-medium max-md:py-3">
           Monthly income and expenses
         </summary>
         <div className="overflow-x-auto border-t">
-          <table className="w-full text-sm">
+          <table className={cn("w-full text-sm", stackOnPhone)}>
             <thead className="text-left text-xs text-muted-foreground">
               <tr>
                 <th className="px-3 py-2 font-medium">Month</th>
@@ -348,7 +349,7 @@ export function PreviewStep({
 
       {preview.skipped.length ? (
         <details className="rounded-lg border">
-          <summary className="cursor-pointer px-4 py-3 font-medium">
+          <summary className="cursor-pointer px-4 py-3 font-medium max-md:py-3">
             Skipped ({preview.skipped.length})
           </summary>
           <ul className="border-t px-4 py-3 text-sm">
@@ -414,13 +415,15 @@ export function ResultStep({ data, result }: { data: WizardData; result: ImportR
       ) : (
         <>
           <div className="flex flex-wrap gap-2">
-            <Button render={<Link href="/transactions" />}>View transactions</Button>
-            <Button variant="outline" render={<Link href="/accounts" />}>
+            <Link href="/transactions" className={buttonVariants()}>
+              View transactions
+            </Link>
+            <Link href="/accounts" className={buttonVariants({ variant: "outline" })}>
               Accounts
-            </Button>
-            <Button variant="outline" render={<Link href="/assets" />}>
+            </Link>
+            <Link href="/assets" className={buttonVariants({ variant: "outline" })}>
               Assets
-            </Button>
+            </Link>
           </div>
           <div className="rounded-lg border p-4">
             <p className="font-medium">Made a mistake?</p>
@@ -444,9 +447,9 @@ export function ResultStep({ data, result }: { data: WizardData; result: ImportR
           </div>
         </>
       )}
-      <Button variant="ghost" render={<Link href="/transactions/import" />}>
+      <Link href="/transactions/import" className={buttonVariants({ variant: "ghost" })}>
         Back to imports
-      </Button>
+      </Link>
     </section>
   );
 }

@@ -5,6 +5,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import type { WizardData, WizardRowRef, WizardState } from "@/modules/imports/schemas";
+import { stackOnPhone } from "@/components/shared/mobile/stack-table";
+import { cn } from "@/lib/utils";
 
 type SetState = React.Dispatch<React.SetStateAction<WizardState>>;
 
@@ -21,7 +23,7 @@ function Panel({
 }) {
   return (
     <details className="rounded-lg border" open={open}>
-      <summary className="flex cursor-pointer items-center justify-between gap-2 px-4 py-3 font-medium">
+      <summary className="flex cursor-pointer items-center justify-between gap-2 px-4 py-3 font-medium max-md:py-3">
         {title}
         <Badge variant="outline">{count}</Badge>
       </summary>
@@ -90,7 +92,7 @@ export function ReviewStep({
       </div>
 
       <Panel title="Transfers" count={data.transfers.length}>
-        <table className="w-full text-sm">
+        <table className={cn("w-full text-sm", stackOnPhone)}>
           <thead className="text-left text-xs text-muted-foreground">
             <tr>
               <th className="py-1 pr-3 font-medium">When</th>
@@ -131,7 +133,7 @@ export function ReviewStep({
         <p className="mb-2 text-sm text-muted-foreground">
           An attached fee is added to its transfer; a standalone fee becomes a “Bank fees” expense.
         </p>
-        <table className="w-full text-sm">
+        <table className={cn("w-full text-sm", stackOnPhone)}>
           <tbody>
             {attached.map((t) => (
               <tr key={t.fee!.id} className="border-t">
@@ -166,7 +168,7 @@ export function ReviewStep({
           Money Manager’s balance corrections. On an account they become an adjustment; on a holding
           they update its value (an empty holding gets an opening value).
         </p>
-        <table className="w-full text-sm">
+        <table className={cn("w-full text-sm", stackOnPhone)}>
           <tbody>
             {data.differences.map((d) => {
               const kind = targetKind(d.account);
@@ -196,7 +198,7 @@ export function ReviewStep({
               These rows are skipped. Fix them in Money Manager and upload the file again if you
               need them.
             </p>
-            <table className="w-full text-sm">
+            <table className={cn("w-full text-sm", stackOnPhone)}>
               <tbody>
                 {data.problems.map((p) => (
                   <tr key={p.row.id} className="border-t">

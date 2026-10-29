@@ -83,39 +83,58 @@ function AccountRow({
 }) {
   const meta = ACCOUNT_TYPE_META[account.type];
   const sub = account.counterparty ?? account.institution ?? meta.label;
+  // Earmarks and card details (docs/07 §2, audit ACC-01).
+  const details = (
+    <>
+      {buckets ? <BucketsLine buckets={buckets} /> : null}
+      {account.card ? (
+        <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+          {account.card.utilisationBp !== null ? (
+            <UtilisationBar bp={account.card.utilisationBp} />
+          ) : null}
+          {account.creditCard ? (
+            <span>
+              Limit <Money valueMinor={account.creditCard.limitMinor} currency={account.currency} />
+            </span>
+          ) : null}
+          <span>Due {shortDate(account.card.nextDueDate)}</span>
+        </div>
+      ) : null}
+    </>
+  );
+  // Mirrors when BucketsLine / the card line render, so phones only get a line when needed.
+  const phoneDetails =
+    Boolean(
+      buckets &&
+      !buckets.archived &&
+      (buckets.dedicated || (buckets.earmarkable && buckets.earmarks.length > 0)),
+    ) || Boolean(account.card);
   return (
-    <li className="flex items-center gap-3 py-3">
+    // Details are rendered once. Desktop: under the name in the middle column, as before. Phones:
+    // the middle column dissolves (`contents`) and the details wrap to a full-width last line, so
+    // they never run into the balance.
+    <li className="flex items-center gap-3 py-3 max-md:flex-wrap max-md:gap-y-1">
       <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
         <meta.icon className="size-4" aria-hidden />
       </span>
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <Link
-            href={`/accounts/${account.id}`}
-            className="truncate font-medium hover:underline focus-visible:underline"
-          >
-            {account.name}
-          </Link>
-          {account.archived ? <Badge variant="secondary">Archived</Badge> : null}
-          {buckets?.overEarmarked && !account.archived ? (
-            <Badge variant="destructive">Over-earmarked</Badge>
-          ) : null}
-        </div>
-        <div className="truncate text-xs text-muted-foreground">{sub}</div>
-        {buckets ? <BucketsLine buckets={buckets} /> : null}
-        {account.card ? (
-          <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-            {account.card.utilisationBp !== null ? (
-              <UtilisationBar bp={account.card.utilisationBp} />
+      <div className="min-w-0 flex-1 max-md:contents">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <Link
+              href={`/accounts/${account.id}`}
+              className="truncate font-medium hover:underline focus-visible:underline max-md:-my-3 max-md:py-3"
+            >
+              {account.name}
+            </Link>
+            {account.archived ? <Badge variant="secondary">Archived</Badge> : null}
+            {buckets?.overEarmarked && !account.archived ? (
+              <Badge variant="destructive">Over-earmarked</Badge>
             ) : null}
-            {account.creditCard ? (
-              <span>
-                Limit{" "}
-                <Money valueMinor={account.creditCard.limitMinor} currency={account.currency} />
-              </span>
-            ) : null}
-            <span>Due {shortDate(account.card.nextDueDate)}</span>
           </div>
+          <div className="truncate text-xs text-muted-foreground">{sub}</div>
+        </div>
+        {phoneDetails ? (
+          <div className="max-md:order-last max-md:basis-full max-md:pl-12">{details}</div>
         ) : null}
       </div>
       <div className="text-right">

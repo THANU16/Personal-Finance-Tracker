@@ -6,7 +6,7 @@ import { format, parseISO } from "date-fns";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { undoBankImportAction } from "@/modules/imports/bank-actions";
 import { undoValuationImportAction } from "@/modules/imports/valuation-actions";
 import type { ImportHistoryItem } from "@/modules/imports/valuation-service";
@@ -71,13 +71,12 @@ export function ImportHistoryList({ items }: { items: ImportHistoryItem[] }) {
               }}
             />
           ) : b.kind === "transactions" && b.status === "imported" ? (
-            <Button
-              size="sm"
-              variant="outline"
-              render={<Link href={`/transactions/import/money-manager/${b.id}`} />}
+            <Link
+              href={`/transactions/import/money-manager/${b.id}`}
+              className={buttonVariants({ size: "sm", variant: "outline" })}
             >
               View
-            </Button>
+            </Link>
           ) : null}
         </li>
       ))}

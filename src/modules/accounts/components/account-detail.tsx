@@ -3,7 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { format, parse } from "date-fns";
 import { ArrowLeft, ReceiptText } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Money } from "@/components/shared/money";
@@ -65,7 +65,8 @@ export async function AccountDetail({
     <>
       <Link
         href="/accounts"
-        className="mb-3 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+        // Phones go back with the top bar's chevron (docs/07 §1).
+        className="mb-3 hidden items-center gap-1 text-sm text-muted-foreground hover:text-foreground md:inline-flex"
       >
         <ArrowLeft className="size-4" aria-hidden /> Accounts
       </Link>
@@ -87,12 +88,22 @@ export async function AccountDetail({
                 request={{ mode: "create", type: quickAddType, accountId: account.id }}
               />
             ) : null}
-            <AccountActions
-              account={account}
-              todayKey={todayKey}
-              baseCurrency={ctx.baseCurrency}
-              variant="buttons"
-            />
+            <div className="hidden md:contents">
+              <AccountActions
+                account={account}
+                todayKey={todayKey}
+                baseCurrency={ctx.baseCurrency}
+                variant="buttons"
+              />
+            </div>
+            {/* Phones: Reconcile / Edit / Archive behind ⋯ next to the main action */}
+            <div className="md:hidden">
+              <AccountActions
+                account={account}
+                todayKey={todayKey}
+                baseCurrency={ctx.baseCurrency}
+              />
+            </div>
           </>
         }
       />
@@ -193,22 +204,20 @@ export async function AccountDetail({
               </span>
               <div className="flex gap-2">
                 {detail.page > 1 ? (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    render={<Link href={`/accounts/${account.id}?page=${detail.page - 1}`} />}
+                  <Link
+                    href={`/accounts/${account.id}?page=${detail.page - 1}`}
+                    className={buttonVariants({ variant: "outline", size: "sm" })}
                   >
                     Newer
-                  </Button>
+                  </Link>
                 ) : null}
                 {detail.page < detail.pageCount ? (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    render={<Link href={`/accounts/${account.id}?page=${detail.page + 1}`} />}
+                  <Link
+                    href={`/accounts/${account.id}?page=${detail.page + 1}`}
+                    className={buttonVariants({ variant: "outline", size: "sm" })}
                   >
                     Older
-                  </Button>
+                  </Link>
                 ) : null}
               </div>
             </nav>

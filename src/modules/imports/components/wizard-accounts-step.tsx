@@ -338,7 +338,9 @@ export function AccountsStep({
                 </p>
               ) : null}
               <details className="mt-2 text-sm">
-                <summary className="cursor-pointer text-muted-foreground">Sample rows</summary>
+                <summary className="cursor-pointer text-muted-foreground max-md:py-3">
+                  Sample rows
+                </summary>
                 <ul className="mt-1 space-y-0.5">
                   {a.samples.map((r, i) => (
                     <li key={i} className="flex flex-wrap gap-x-3 tabular-nums">

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { format, parseISO } from "date-fns";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import type { ImportBatchListItem } from "@/modules/imports/service";
 
 const STATUS: Record<
@@ -30,13 +30,12 @@ export function ImportHistory({ batches }: { batches: ImportBatchListItem[] }) {
           </div>
           <Badge variant={STATUS[b.status].variant}>{STATUS[b.status].label}</Badge>
           {b.status !== "reverted" ? (
-            <Button
-              size="sm"
-              variant="outline"
-              render={<Link href={`/transactions/import/money-manager/${b.id}`} />}
+            <Link
+              href={`/transactions/import/money-manager/${b.id}`}
+              className={buttonVariants({ size: "sm", variant: "outline" })}
             >
               {b.status === "imported" ? "View" : "Continue"}
-            </Button>
+            </Link>
           ) : null}
         </li>
       ))}

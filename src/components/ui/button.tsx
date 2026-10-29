@@ -4,7 +4,7 @@ import { cn } from "cn";
 
 // Below md every size is at least 44px tall (docs/07 §2 touch targets); md: restores desktop
 // heights. Only heights change, so callers overriding padding or text keep the same desktop look.
-const buttonVariants = cva(
+const buttonStyles = cva(
   "group/button inline-flex shrink-0 items-center justify-center rounded-lg border border-transparent bg-clip-padding text-sm font-medium whitespace-nowrap transition-all outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {
     variants: {
@@ -41,12 +41,20 @@ const buttonVariants = cva(
   },
 );
 
+/**
+ * Button classes for elements that are not a <Button> (links). Merged with tailwind-merge so a
+ * variant's colours win over the base ones, exactly as inside <Button>.
+ */
+function buttonVariants(props?: Parameters<typeof buttonStyles>[0]) {
+  return cn(buttonStyles(props));
+}
+
 function Button({
   className,
   variant = "default",
   size = "default",
   ...props
-}: ButtonPrimitive.Props & VariantProps<typeof buttonVariants>) {
+}: ButtonPrimitive.Props & VariantProps<typeof buttonStyles>) {
   return (
     <ButtonPrimitive
       data-slot="button"

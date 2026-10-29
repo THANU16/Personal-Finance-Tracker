@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { format, parse } from "date-fns";
 import { ArrowLeftRight, Download } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Money } from "@/components/shared/money";
 import { StatCard } from "@/components/shared/stat-card";
@@ -54,14 +54,20 @@ function Pagination({
       </span>
       <div className="flex gap-2">
         {page > 1 ? (
-          <Button variant="outline" size="sm" render={<Link href={href(page - 1)} />}>
+          <Link
+            href={href(page - 1)}
+            className={buttonVariants({ variant: "outline", size: "sm" })}
+          >
             Previous
-          </Button>
+          </Link>
         ) : null}
         {page < pageCount ? (
-          <Button variant="outline" size="sm" render={<Link href={href(page + 1)} />}>
+          <Link
+            href={href(page + 1)}
+            className={buttonVariants({ variant: "outline", size: "sm" })}
+          >
             Next
-          </Button>
+          </Link>
         ) : null}
       </div>
     </nav>
@@ -100,7 +106,29 @@ export async function TransactionsContent({
 
   return (
     <>
-      <div className="mb-4 grid gap-3 sm:grid-cols-3">
+      {/* Phones: one compact strip instead of three cards (docs/07 §2). */}
+      <div className="mb-3 grid grid-cols-3 gap-2 md:hidden">
+        {(
+          [
+            ["Income", summary.incomeMinor],
+            ["Expense", summary.expenseMinor],
+            ["Net", summary.netMinor],
+          ] as const
+        ).map(([label, minor]) => (
+          <div key={label} className="min-w-0 rounded-xl border bg-card p-3">
+            <div className="truncate text-xs text-muted-foreground">{label}</div>
+            <div className="mt-1 text-sm leading-tight font-semibold tabular-nums [&_*]:whitespace-normal">
+              <Money
+                valueMinor={minor}
+                currency={summary.currency}
+                compact
+                signed={label === "Net" && minor > 0}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="mb-4 hidden gap-3 sm:grid-cols-3 md:grid">
         <StatCard
           label="Income"
           value={<Money valueMinor={summary.incomeMinor} currency={summary.currency} />}
@@ -160,20 +188,18 @@ export async function TransactionsContent({
             <p className="text-sm text-muted-foreground">
               {page.total} transaction{page.total === 1 ? "" : "s"}
             </p>
-            <Button
-              variant="outline"
-              size="sm"
-              render={
-                <a
-                  href={`/api/export?${new URLSearchParams({ ...exportParams, kind: "transactions" })}`}
-                  download
-                />
-              }
+            <a
+              href={`/api/export?${new URLSearchParams({ ...exportParams, kind: "transactions" })}`}
+              download
+              className={buttonVariants({ variant: "outline", size: "sm" })}
             >
               <Download aria-hidden /> Export CSV
-            </Button>
+            </a>
           </div>
-          <TransactionsTable rows={page.rows.map((txn) => ({ txn }))} />
+          <TransactionsTable
+            rows={page.rows.map((txn) => ({ txn }))}
+            baseCurrency={summary.currency}
+          />
           <Pagination page={page.page} pageCount={page.pageCount} params={params} />
         </>
       )}

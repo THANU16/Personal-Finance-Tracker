@@ -5,8 +5,8 @@
 | M0 Mobile audit | ✅ | 2026-10-29 | 06c6802 |
 | M1 Foundation & shell | ✅ | 2026-10-29 | 0d763b6 |
 | M2 Component kit | ✅ | 2026-10-29 | 27a0b7e + 3b357b8 |
-| M3 Home & Quick add | ✅ | 2026-10-29 | feat(mobile-M3) |
-| M4 Activity & Accounts | ⬜ | | |
+| M3 Home & Quick add | ✅ | 2026-10-29 | 01c0dfd |
+| M4 Activity & Accounts | ✅ | 2026-10-29 | feat(mobile-M4) |
 | M5 Assets & valuations | ⬜ | | |
 | M6 SIP, Rebalancing, Opportunity Fund | ⬜ | | |
 | M7 Remaining pages | ⬜ | | |
@@ -103,6 +103,30 @@ Status values: ⬜ not started · 🟡 in progress · ✅ done
   block with `min-w-0`.
 - **M3 — desktop check:** pixel diff of every desktop screenshot against M2 — identical except
   run-dependent text (notification times, throwaway email).
+- **M4 — day totals** (owner decision): `src/lib/day-groups.ts` (unit tested) groups the rows on
+  the page by day and sums what is shown: ledger view = income − expense in the base currency
+  (transfers, investments and voids count 0; another currency marks the day "+ other
+  currencies"); account view = the effect on the account. Display only, current page only.
+- **M4 — Activity** (phones): `TransactionsTable` renders `TransactionDayList` below md (sticky day
+  headers, two-line rows); a row opens a detail sheet with the same Edit / Duplicate / Attachments /
+  Void handlers (`TransactionRowActions layout="buttons"`). The same list serves account detail
+  (running balance) and holding tabs. Ledger cells moved to `ledger-cells.tsx`.
+- **M4 — filters** (phones): search + "Filter (n)" sheet with the same controls + removable chips;
+  desktop markup unchanged (the old phone-only toggle is gone).
+- **M4 — accounts** (phones): earmark bar / card details on a full-width line under the row
+  (fixes the overlap); account names have a 44px hit area; detail page shows Add transaction + ⋯
+  (Reconcile / Edit / Archive), hides the in-page back link, earmarks header stacks.
+- **M4 — imports** (phones): bank CSV column mapping as a "column → first value" list, rows to
+  import as cards with a 44px category select, sticky Import button; Money Manager wizard tables use
+  `stackOnPhone` (`src/components/shared/mobile/stack-table.ts`: rows become wrapped lines below md).
+  `npm run screens` uploads the e2e Money Manager fixture so the wizard is captured.
+- **M4 — don't render content twice for phone vs desktop** (screen readers and e2e locators see
+  both copies — a ledger test found "12.0% used" twice). Move one element with layout instead: the
+  account row's details use `max-md:contents` on the middle column + `max-md:order-last
+  max-md:basis-full`, so the same node sits under the name on desktop and on its own line on phones.
+- **M4 — `buttonVariants()` merges its classes** (tailwind-merge), so links styled as buttons look
+  exactly like `<Button>` (an outline link had lost its border). Link buttons on the touched pages
+  are now real links (`Link` + `buttonVariants`), which removes the Base UI `nativeButton` warning.
 
 ## Deviations from docs
 - M3: Quick add keeps "Paid from"/"Received into" before Category (DOM order kept so keyboard
@@ -112,13 +136,14 @@ Status values: ⬜ not started · 🟡 in progress · ✅ done
   batch). Proposed for M4: upload the e2e Money Manager fixture during `npm run screens`.
 
 ## Open questions for the owner
-- Approve the remaining plan change in `docs/MOBILE-AUDIT.md` §4 (Money Manager capture in M4).
 - ESS-01: the essentials insurance table also scrolls the page 75px sideways at 1440. Fixing it
   changes desktop rendering — OK to fix in M7?
 - OPP-03: `/opportunity-fund` logs a server→client serialisation error (not a mobile issue). Fix it
   now as a separate change, or later?
 
 ## Known issues
+- Screenshot runs on `next dev` can log a hydration warning about `caret-color: transparent` on a
+  focused input: Playwright hides the caret while the page is still hydrating. Not an app issue.
 - Pre-existing, date-dependent e2e failure (not mobile): `tests/e2e/allocation.spec.ts` "Tilt next
   period" fails on the 29th–31st. A new SIP plan defaults to day `min(28, today)` starting today, so
   its first period is ~30 days out, beyond `GENERATE_AHEAD_DAYS = 7`; no `due` execution exists and

@@ -10,7 +10,7 @@ import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { FormField } from "@/components/shared/form-field";
 import { Money } from "@/components/shared/money";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -182,9 +182,9 @@ export function BankImportClient() {
           {result.skipped ? ` · ${result.skipped} skipped` : ""}.
         </p>
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline" render={<Link href="/transactions" />}>
+          <Link href="/transactions" className={buttonVariants({ variant: "outline" })}>
             View transactions
-          </Button>
+          </Link>
           <Button variant="ghost" onClick={reset}>
             Import another file
           </Button>
@@ -232,7 +232,21 @@ export function BankImportClient() {
         <h3 id="bank-map" className="font-medium">
           1. Map the columns
         </h3>
-        <div className="overflow-x-auto rounded-lg border">
+        {/* Phones (docs/07 §2): the first row as a list of columns instead of a wide table. */}
+        <dl
+          className="divide-y rounded-lg border text-sm md:hidden"
+          aria-label="Columns in the first row"
+        >
+          {analysis.headers.map((h, i) => (
+            <div key={i} className="flex justify-between gap-3 px-3 py-2">
+              <dt className="shrink-0 text-muted-foreground">
+                {i + 1}. {h}
+              </dt>
+              <dd className="min-w-0 truncate text-right">{analysis.sample[0]?.[i] ?? ""}</dd>
+            </div>
+          ))}
+        </dl>
+        <div className="hidden overflow-x-auto rounded-lg border md:block">
           <table className="w-full text-xs">
             <caption className="sr-only">First rows of the file</caption>
             <thead className="bg-muted text-muted-foreground">
@@ -428,7 +442,73 @@ export function BankImportClient() {
               </ul>
             </details>
           ) : null}
-          <div className="max-h-[32rem] overflow-auto rounded-lg border">
+          <ul className="divide-y rounded-lg border md:hidden" aria-label="Rows to import">
+            {preview.rows.map((r) => {
+              const kind = r.amountMinor > 0 ? "income" : "expense";
+              const chosen = categories[r.line] ?? r.categoryId ?? "";
+              return (
+                <li
+                  key={r.line}
+                  className={cn(
+                    "grid gap-2 p-3",
+                    (r.duplicate || skip.has(r.line)) && "text-muted-foreground",
+                  )}
+                >
+                  <div className="flex items-start gap-3">
+                    {r.duplicate ? (
+                      <Badge variant="outline">Imported</Badge>
+                    ) : (
+                      <Checkbox
+                        aria-label={`Import line ${r.line}`}
+                        checked={!skip.has(r.line)}
+                        onCheckedChange={(v) =>
+                          setSkip((s) => {
+                            const next = new Set(s);
+                            if (v) next.delete(r.line);
+                            else next.add(r.line);
+                            return next;
+                          })
+                        }
+                        className="mt-0.5"
+                      />
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <div className="line-clamp-2 text-sm">{r.description}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {format(parseISO(r.date), "d MMM yyyy")}
+                        {r.counterparty ? ` · ${r.counterparty}` : ""}
+                      </div>
+                    </div>
+                    <span className="shrink-0 text-sm tabular-nums">
+                      <Money valueMinor={r.amountMinor} currency={preview.currency} signed />
+                    </span>
+                  </div>
+                  {r.duplicate ? null : (
+                    <select
+                      aria-label={`Category for line ${r.line}`}
+                      className="h-11 w-full rounded-md border bg-background px-2 text-base"
+                      value={chosen}
+                      disabled={skip.has(r.line)}
+                      onChange={(e) => setCategories((c) => ({ ...c, [r.line]: e.target.value }))}
+                    >
+                      {!chosen ? <option value="">Choose a category…</option> : null}
+                      {preview.categories
+                        .filter((c) => c.kind === kind)
+                        .map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.label}
+                          </option>
+                        ))}
+                    </select>
+                  )}
+                  {!r.duplicate && r.ruleId && !categories[r.line] ? (
+                    <span className="text-xs text-muted-foreground">Category by rule</span>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ul>
+          <div className="hidden max-h-[32rem] overflow-auto rounded-lg border md:block">
             <table className="w-full text-sm">
               <caption className="sr-only">Rows to import</caption>
               <thead className="sticky top-0 z-10 bg-muted text-xs text-muted-foreground">
@@ -525,7 +605,7 @@ export function BankImportClient() {
               </tbody>
             </table>
           </div>
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3 max-md:sticky max-md:bottom-[calc(4rem+env(safe-area-inset-bottom))] max-md:z-20 max-md:-mx-4 max-md:border-t max-md:bg-background/95 max-md:px-4 max-md:py-3 max-md:backdrop-blur">
             <Button onClick={commit} disabled={pending || toImport.length === 0 || missing > 0}>
               {pending
                 ? "Importing…"

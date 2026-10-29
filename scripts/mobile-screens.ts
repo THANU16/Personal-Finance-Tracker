@@ -28,6 +28,7 @@ import {
 import path from "node:path";
 import { chromium, type Browser, type BrowserContext, type Page } from "@playwright/test";
 import { MongoMemoryReplSet } from "mongodb-memory-server";
+import { fixtureRows2025, moneyManagerXlsx } from "../tests/helpers/money-manager-fixture";
 
 const PORT = 3200;
 const BASE_URL = `http://localhost:${PORT}`;
@@ -157,6 +158,36 @@ const OVERLAYS: Overlay[] = [
     },
   },
   {
+    // Activity (phones): tap a transaction for its detail sheet.
+    name: "txn-detail",
+    route: "/transactions",
+    mobileOnly: true,
+    open: async (page) => {
+      await page
+        .locator('section[aria-label] ul li button[aria-haspopup="dialog"]')
+        .filter({ visible: true })
+        .first()
+        .click();
+      await page.getByRole("dialog").waitFor();
+      await page.waitForTimeout(400);
+    },
+  },
+  {
+    // Activity (phones): the filter sheet.
+    name: "txn-filters",
+    route: "/transactions",
+    mobileOnly: true,
+    open: async (page) => {
+      await page
+        .getByRole("button", { name: /^Filter/ })
+        .filter({ visible: true })
+        .first()
+        .click();
+      await page.getByRole("dialog", { name: "Filters" }).waitFor();
+      await page.waitForTimeout(400);
+    },
+  },
+  {
     name: "add-account-dialog",
     route: "/accounts",
     open: async (page) => {
@@ -263,6 +294,24 @@ async function createSeededUser(browser: Browser): Promise<BrowserContext> {
   await page.waitForURL(/\/dashboard$/, { timeout: 600_000 });
   await page.close();
   return context;
+}
+
+/**
+ * Uploads the e2e Money Manager fixture (not imported, just a draft batch) so the import wizard
+ * at /transactions/import/money-manager/[batchId] has something to show.
+ */
+async function uploadMoneyManagerFixture(context: BrowserContext) {
+  const page = await context.newPage();
+  page.setDefaultTimeout(120_000);
+  await page.goto(`${BASE_URL}/transactions/import`);
+  await page.getByLabel("Money Manager export (.xlsx)").setInputFiles({
+    name: "2025.xlsx",
+    mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    buffer: await moneyManagerXlsx(fixtureRows2025()),
+  });
+  await page.getByRole("button", { name: "Upload and continue" }).click();
+  await page.waitForURL(/\/transactions\/import\/money-manager\/[a-f0-9]{24}$/);
+  await page.close();
 }
 
 async function resolveDynamic(context: BrowserContext): Promise<Record<string, string | null>> {
@@ -512,6 +561,7 @@ async function main() {
     browser = await chromium.launch();
     const authContext = await createSeededUser(browser);
     const storageState = await authContext.storageState();
+    await uploadMoneyManagerFixture(authContext);
     const dynamic = await resolveDynamic(authContext);
     await authContext.close();
 
