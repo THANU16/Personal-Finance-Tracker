@@ -11,7 +11,7 @@ import { Money } from "@/components/shared/money";
 import { MoneyInput } from "@/components/shared/money-input";
 import { PercentInput } from "@/components/shared/percent-input";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -36,6 +36,7 @@ import {
   type JumpChoice,
 } from "@/domain/valuation-import";
 import { formatPercentBp } from "@/lib/format";
+import { stackOnPhone } from "@/components/shared/mobile/stack-table";
 import { cn } from "@/lib/utils";
 import { INSTRUMENT_LABEL, instrumentsForClass } from "@/modules/holdings/components/holding-meta";
 import type { InstrumentType } from "@/modules/holdings/constants";
@@ -226,7 +227,9 @@ function ImportCard({ file, onRemove }: { file: FileState; onRemove: () => void 
                 {result.errors ? `; ${result.errors} rows with errors skipped` : ""}.
               </p>
               <div className="flex flex-wrap gap-2">
-                <Button render={<Link href={`/assets/${result.holdingId}`} />}>Open holding</Button>
+                <Link href={`/assets/${result.holdingId}`} className={buttonVariants()}>
+                  Open holding
+                </Link>
                 <Button
                   variant="outline"
                   disabled={pending}
@@ -393,8 +396,8 @@ function ImportCard({ file, onRemove }: { file: FileState; onRemove: () => void 
         ) : null}
 
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_18rem]">
-          <div className="overflow-x-auto rounded-lg border">
-            <table className="w-full text-sm">
+          <div className="overflow-x-auto rounded-lg border max-md:px-3">
+            <table className={cn("w-full text-sm", stackOnPhone)}>
               <thead className="bg-muted/50 text-left text-xs text-muted-foreground">
                 <tr>
                   <th className="px-3 py-2 font-medium">Date</th>

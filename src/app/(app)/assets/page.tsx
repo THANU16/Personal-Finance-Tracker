@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
 import { RefreshCw } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/shared/page-header";
 import { AddHoldingAction, PortfolioView } from "@/modules/holdings/components/portfolio-view";
@@ -17,12 +17,15 @@ export default function AssetsPage({ searchParams }: PageProps<"/assets">) {
         description="Every investment with invested, value, gains and XIRR."
         actions={
           <>
-            <Button variant="outline" render={<Link href="/assets/import-valuations" />}>
+            <Link
+              href="/assets/import-valuations"
+              className={buttonVariants({ variant: "outline" })}
+            >
               Import history
-            </Button>
-            <Button variant="outline" render={<Link href="/assets/update-values" />}>
+            </Link>
+            <Link href="/assets/update-values" className={buttonVariants({ variant: "outline" })}>
               <RefreshCw aria-hidden /> Update values
-            </Button>
+            </Link>
             <Suspense fallback={<Button disabled>Add holding</Button>}>
               <AddHoldingAction />
             </Suspense>

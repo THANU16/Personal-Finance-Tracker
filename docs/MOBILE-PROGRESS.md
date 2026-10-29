@@ -6,8 +6,8 @@
 | M1 Foundation & shell | ✅ | 2026-10-29 | 0d763b6 |
 | M2 Component kit | ✅ | 2026-10-29 | 27a0b7e + 3b357b8 |
 | M3 Home & Quick add | ✅ | 2026-10-29 | 01c0dfd |
-| M4 Activity & Accounts | ✅ | 2026-10-29 | feat(mobile-M4) |
-| M5 Assets & valuations | ⬜ | | |
+| M4 Activity & Accounts | ✅ | 2026-10-29 | 123a99c |
+| M5 Assets & valuations | ✅ | 2026-10-30 | feat(mobile-M5) |
 | M6 SIP, Rebalancing, Opportunity Fund | ⬜ | | |
 | M7 Remaining pages | ⬜ | | |
 | M8 PWA, performance, a11y, QA | ⬜ | | |
@@ -127,6 +127,18 @@ Status values: ⬜ not started · 🟡 in progress · ✅ done
 - **M4 — `buttonVariants()` merges its classes** (tailwind-merge), so links styled as buttons look
   exactly like `<Button>` (an outline link had lost its border). Link buttons on the touched pages
   are now real links (`Link` + `buttonVariants`), which removes the Base UI `nativeButton` warning.
+- **M5 — assets** (phones): stat cards in 2 columns (`StatCard` values `text-xl` below md, desktop
+  `text-2xl`); holdings rows from `DataTable` slots (title, value, gain + updated as meta, ⋯);
+  class cards' `<details>` is `min-w-0` (a grid item otherwise widens to its content); 44px view
+  pills; header link-buttons are real links.
+- **M5 — holding detail** (phones): Buy · Redeem · Value row, Income behind ⋯ (`aria-label`
+  "Update value" keeps the button's name); valuations table stacks; in-page back link hidden.
+  Stat cards stay full width (duplicating them for phones would break e2e locators).
+- **M5 — update values** (phones): the same table rows become cards with `max-md:` grid classes
+  (inputs are never duplicated); count + Save all pinned above the tab bar and lifted above the
+  keyboard (`useKeyboardInset`).
+- **M5 — same-day desktop baseline:** holdings content depends on today's date ("30d ago", XIRR), so
+  the desktop diff compares against a run of the committed code (changes stashed) on the same day.
 
 ## Deviations from docs
 - M3: Quick add keeps "Paid from"/"Received into" before Category (DOM order kept so keyboard
@@ -142,6 +154,11 @@ Status values: ⬜ not started · 🟡 in progress · ✅ done
   now as a separate change, or later?
 
 ## Known issues
+- **Perf gate failing since 2026-10-30, environmental (owner decision: commit and log).**
+  `tests/perf/perf-10k.test.ts` measures dashboard queries at ~1.54 s against a 1 s budget. It fails
+  the same on the committed M4 code; no query/service/domain/server file changed since the mobile
+  work began; the machine ran 2–3× slower that day (e2e timings). Re-run `npm run verify` in normal
+  power mode; investigate the queries only if it still fails.
 - Screenshot runs on `next dev` can log a hydration warning about `caret-color: transparent` on a
   focused input: Playwright hides the caret while the page is still hydrating. Not an app issue.
 - Pre-existing, date-dependent e2e failure (not mobile): `tests/e2e/allocation.spec.ts` "Tilt next

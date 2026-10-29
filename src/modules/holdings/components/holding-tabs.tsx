@@ -4,10 +4,20 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { format, parse } from "date-fns";
-import { ArrowDownToLine, ArrowUpFromLine, Coins, FileUp, RefreshCw, Trash2 } from "lucide-react";
+import {
+  ArrowDownToLine,
+  ArrowUpFromLine,
+  Coins,
+  FileUp,
+  MoreHorizontal,
+  RefreshCw,
+  Trash2,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { ActionSheet } from "@/components/shared/mobile/action-sheet";
+import { stackOnPhone } from "@/components/shared/mobile/stack-table";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -83,16 +93,20 @@ export function HoldingHeaderActions({
       >
         <ArrowUpFromLine aria-hidden /> Redeem
       </Button>
+      {/* Phones (docs/07 §5): Buy · Redeem · Update value in one row; Income sits behind ⋯ */}
       <Button
         variant="outline"
+        className="hidden md:inline-flex"
         onClick={() => open({ mode: "create", type: "investment_income", holdingId: holding.id })}
       >
         <Coins aria-hidden /> Income
       </Button>
       {!holding.fd ? (
         <>
-          <Button variant="outline" onClick={() => setValuing(true)}>
-            <RefreshCw aria-hidden /> Update value
+          <Button variant="outline" aria-label="Update value" onClick={() => setValuing(true)}>
+            <RefreshCw aria-hidden />
+            <span className="md:hidden">Value</span>
+            <span className="hidden md:inline">Update value</span>
           </Button>
           <ValuationDialog
             holding={holding}
@@ -103,6 +117,24 @@ export function HoldingHeaderActions({
           />
         </>
       ) : null}
+      <div className="md:hidden">
+        <ActionSheet
+          title={holding.name}
+          trigger={
+            <Button variant="ghost" size="icon" aria-label={`More actions for ${holding.name}`}>
+              <MoreHorizontal aria-hidden />
+            </Button>
+          }
+          actions={[
+            {
+              label: "Record income",
+              icon: Coins,
+              onSelect: () =>
+                open({ mode: "create", type: "investment_income", holdingId: holding.id }),
+            },
+          ]}
+        />
+      </div>
     </>
   );
 }
@@ -123,13 +155,12 @@ function ValuationsTable({
     );
   }
   const importButton = (
-    <Button
-      variant="outline"
-      size="sm"
-      render={<Link href={`/assets/import-valuations?holding=${holding.id}`} />}
+    <Link
+      href={`/assets/import-valuations?holding=${holding.id}`}
+      className={buttonVariants({ variant: "outline", size: "sm" })}
     >
       <FileUp aria-hidden /> Import CSV
-    </Button>
+    </Link>
   );
   if (!valuations.length) {
     return (
@@ -144,7 +175,7 @@ function ValuationsTable({
     <div className="space-y-3">
       <div className="flex justify-end">{importButton}</div>
       <div className="rounded-xl border">
-        <Table>
+        <Table className={stackOnPhone}>
           <TableHeader>
             <TableRow>
               <TableHead>Date</TableHead>

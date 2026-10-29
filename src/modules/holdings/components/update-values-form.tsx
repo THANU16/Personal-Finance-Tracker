@@ -18,6 +18,8 @@ import { DatePicker } from "@/components/shared/date-picker";
 import { FormField } from "@/components/shared/form-field";
 import { Money } from "@/components/shared/money";
 import { MoneyInput } from "@/components/shared/money-input";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { useKeyboardInset } from "@/hooks/use-keyboard-inset";
 import { PriceInput } from "@/components/shared/price-input";
 import { isBigChange } from "@/domain/holdings";
 import { unitsValueMinor } from "@/domain/redemption";
@@ -98,6 +100,10 @@ export function UpdateValuesForm({
     router.push("/assets");
   }
 
+  // Phones (docs/07 §5 Update values): Save all is pinned above the tab bar, or above the keyboard.
+  const isMobile = useIsMobile();
+  const keyboard = useKeyboardInset();
+
   return (
     <div className="grid gap-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -106,7 +112,10 @@ export function UpdateValuesForm({
             <DatePicker id="bulk-date" value={date} onChange={setDate} />
           </FormField>
         </div>
-        <div className="flex items-center gap-3 text-sm text-muted-foreground">
+        <div
+          style={isMobile && keyboard > 0 ? { bottom: keyboard } : undefined}
+          className="flex items-center gap-3 text-sm text-muted-foreground max-md:fixed max-md:inset-x-0 max-md:bottom-[calc(3.5rem+env(safe-area-inset-bottom))] max-md:z-30 max-md:justify-between max-md:border-t max-md:bg-background/95 max-md:px-4 max-md:py-3 max-md:backdrop-blur"
+        >
           {changed.length} changed
           <Button
             onClick={() => void save()}
@@ -122,9 +131,9 @@ export function UpdateValuesForm({
           {formatPercentBp(bigChangeThresholdBp)} — tick to confirm.
         </p>
       ) : null}
-      <div className="rounded-xl border">
-        <Table>
-          <TableHeader>
+      <div className="rounded-xl border max-md:rounded-none max-md:border-0">
+        <Table className="max-md:block">
+          <TableHeader className="max-md:hidden">
             <TableRow>
               <TableHead>Holding</TableHead>
               <TableHead className="text-right">Invested</TableHead>
@@ -134,7 +143,7 @@ export function UpdateValuesForm({
               <TableHead className="w-32 pr-4 text-right">Change</TableHead>
             </TableRow>
           </TableHeader>
-          <TableBody>
+          <TableBody className="max-md:grid max-md:gap-3">
             {rows.map((r) => {
               const nv = newValue(r);
               const big = nv !== null && isBigChange(r.currentValueMinor, nv, bigChangeThresholdBp);
@@ -144,8 +153,14 @@ export function UpdateValuesForm({
                   ? Math.round((delta * 10_000) / r.currentValueMinor)
                   : null;
               return (
-                <TableRow key={r.id} className={cn(errors[r.id] && "bg-destructive/5")}>
-                  <TableCell>
+                <TableRow
+                  key={r.id}
+                  className={cn(
+                    "max-md:grid max-md:grid-cols-2 max-md:gap-x-3 max-md:gap-y-2 max-md:rounded-xl max-md:border max-md:p-4",
+                    errors[r.id] && "bg-destructive/5",
+                  )}
+                >
+                  <TableCell className="max-md:col-span-2 max-md:p-0 max-md:whitespace-normal">
                     <div className="flex items-center gap-2 font-medium">
                       <span
                         className="size-2 rounded-full"
@@ -165,13 +180,17 @@ export function UpdateValuesForm({
                       </p>
                     ) : null}
                   </TableCell>
-                  <TableCell className="text-right">
+                  <TableCell className="text-right max-md:hidden">
                     <Money valueMinor={r.investedMinor} currency={r.currency} />
                   </TableCell>
-                  <TableCell className="text-right">
+                  <TableCell className="text-right max-md:p-0 max-md:text-left max-md:whitespace-normal">
+                    <span className="block text-xs text-muted-foreground md:hidden">
+                      Last value
+                    </span>
                     <Money valueMinor={r.currentValueMinor} currency={r.currency} />
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="max-md:p-0 max-md:text-right max-md:whitespace-normal">
+                    <span className="block text-xs text-muted-foreground md:hidden">Updated</span>
                     {r.stale ? (
                       <StaleBadge days={r.daysSinceValued} />
                     ) : (
@@ -180,7 +199,7 @@ export function UpdateValuesForm({
                       </span>
                     )}
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="max-md:col-span-2 max-md:p-0 max-md:whitespace-normal">
                     {byPrice(r) ? (
                       <PriceInput
                         aria-label={`New price for ${r.name}`}
@@ -198,9 +217,9 @@ export function UpdateValuesForm({
                       />
                     )}
                   </TableCell>
-                  <TableCell className="pr-4 text-right">
+                  <TableCell className="pr-4 text-right max-md:col-span-2 max-md:p-0 max-md:whitespace-normal">
                     {delta !== null ? (
-                      <div className="flex flex-col items-end gap-1">
+                      <div className="flex flex-col items-end gap-1 max-md:flex-row max-md:flex-wrap max-md:items-center max-md:justify-between">
                         <Money valueMinor={delta} currency={r.currency} signed={delta > 0} />
                         {deltaBp !== null ? (
                           <span className="text-xs text-muted-foreground">
@@ -219,7 +238,7 @@ export function UpdateValuesForm({
                         ) : null}
                       </div>
                     ) : (
-                      <span className="text-muted-foreground">—</span>
+                      <span className="text-muted-foreground max-md:hidden">—</span>
                     )}
                   </TableCell>
                 </TableRow>
@@ -228,6 +247,8 @@ export function UpdateValuesForm({
           </TableBody>
         </Table>
       </div>
+      {/* Room for the pinned Save all bar on phones */}
+      <div aria-hidden className="h-16 md:hidden" />
     </div>
   );
 }

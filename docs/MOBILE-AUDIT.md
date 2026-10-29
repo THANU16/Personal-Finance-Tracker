@@ -41,7 +41,7 @@ Med = breaks a docs/07 rule but usable. Low = polish.
 | /accounts/[id] | 0 | 62 | 0 | Med | M4 |
 | /assets | 0 | 23 | 0 | Med | M5 |
 | /assets/[id] | 0 | 34 | 0 | Med | M5 |
-| /assets/update-values | **333 / 315 / 278 / 348** / 0 | 13 | 0 | **High** | M5 |
+| /assets/update-values | **333 / 315 / 278 / 348** / 0 → 0 (M5) | 13 → 0 | 0 | **High** | M5 ✅ |
 | /assets/import-valuations | 0 | 6 | 0 | Low | M5 |
 | /sip | 0 | 13 | 0 | Med | M6 |
 | /sip/plans/new | 0 | 20 | 0 | Med | M6 |
@@ -136,22 +136,22 @@ the overflow check cannot see. Those are listed per page below.
 ### Assets — `/assets`, `/assets/[id]` (M5)
 | ID | Sev | What's wrong | Rule | Proposed fix |
 |---|---|---|---|---|
-| AST-01 | Med | Six stat cards (Value, Invested, Unrealised, Realised, Income, XIRR) before any holding. | X-11, §5 Assets totals card | One totals card. |
-| AST-02 | Med | Holdings render as stacked label/value blocks (DataTable < sm): ~350px per holding with "Holding / Invested / Value / Gain / Weight / XIRR / Updated" rows. | §5 holding rows | Row: name, value, gain % chip, stale badge; tap → detail. |
-| AST-03 | Low | "By class / All holdings" pills 28px; "Show closed" inline link. | §2 | Segmented control. |
-| HLD-01 | Med | Holding detail actions are Buy / Redeem / Income / Update value (wrapping to 2 rows, 32px). | §5 3-button row | Buy · Redeem · Update value row; Income in `⋯`. |
-| HLD-02 | Med | Four stat cards before the chart; Transactions / Valuations / Income / Details tabs 28px. | §5 segmented tabs | Header numbers block + segmented control. |
+| AST-01 | Med | Six stat cards (Value, Invested, Unrealised, Realised, Income, XIRR) before any holding. | X-11, §5 Assets totals card | One totals card. **🟡 M5: six cards in 2 columns (compact values); one totals card not done** |
+| AST-02 | Med | Holdings render as stacked label/value blocks (DataTable < sm): ~350px per holding with "Holding / Invested / Value / Gain / Weight / XIRR / Updated" rows. | §5 holding rows | Row: name, value, gain % chip, stale badge; tap → detail. **✅ M5 (DataTable slots)** |
+| AST-03 | Low | "By class / All holdings" pills 28px; "Show closed" inline link. | §2 | Segmented control. **✅ M5** |
+| HLD-01 | Med | Holding detail actions are Buy / Redeem / Income / Update value (wrapping to 2 rows, 32px). | §5 3-button row | Buy · Redeem · Update value row; Income in `⋯`. **✅ M5 (Buy · Redeem · Value + ⋯ Income)** |
+| HLD-02 | Med | Four stat cards before the chart; Transactions / Valuations / Income / Details tabs 28px. | §5 segmented tabs | Header numbers block + segmented control. **🟡 M5: 44px tabs, stacked valuations; stat cards kept full width** |
 
 ### Update values — `/assets/update-values` (M5)
 | ID | Sev | What's wrong | Rule | Proposed fix |
 |---|---|---|---|---|
-| UPD-01 | **High** | 6-column table makes the page 333px wider than the screen at 375 (348 at 360); "Save all" sits off-screen to the right; whole page pans sideways. | §2 no sideways scroll | One card per holding (last value, last updated, large input). |
-| UPD-02 | Med | "Save all" is at the top, not in the thumb zone. | §5 sticky Save all | Sticky "Save all (n changed)". |
+| UPD-01 | **High** | 6-column table makes the page 333px wider than the screen at 375 (348 at 360); "Save all" sits off-screen to the right; whole page pans sideways. | §2 no sideways scroll | One card per holding (last value, last updated, large input). **✅ M5 (one card per holding)** |
+| UPD-02 | Med | "Save all" is at the top, not in the thumb zone. | §5 sticky Save all | Sticky "Save all (n changed)". **✅ M5 (pinned Save all, lifted above keyboard)** |
 
 ### `/assets/import-valuations` (M5)
 | ID | Sev | What's wrong | Rule | Proposed fix |
 |---|---|---|---|---|
-| VIM-01 | Low | Upload step fine; preview/mapping steps use raw tables (`valuation-import-client.tsx`, X-06). | §2 | Mobile wizard steps. |
+| VIM-01 | Low | Upload step fine; preview/mapping steps use raw tables (`valuation-import-client.tsx`, X-06). | §2 | Mobile wizard steps. **✅ M5 (preview stacks)** |
 
 ### SIP — `/sip`, plans, execute, history (M6)
 | ID | Sev | What's wrong | Rule | Proposed fix |

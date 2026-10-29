@@ -128,13 +128,14 @@ export function HoldingsTable({
     () => [
       col.accessor("name", {
         header: "Holding",
+        meta: { mobile: "title" },
         cell: ({ row }) => {
           const h = row.original;
           return (
             <div className="min-w-0">
               <Link
                 href={`/assets/${h.id}`}
-                className="font-medium hover:underline focus-visible:underline"
+                className="font-medium hover:underline focus-visible:underline max-md:-my-3 max-md:inline-block max-md:py-3"
               >
                 {h.name}
               </Link>
@@ -174,12 +175,14 @@ export function HoldingsTable({
       }),
       col.accessor("investedMinor", {
         header: "Invested",
+        meta: { mobile: "hidden" },
         cell: ({ row }) => (
           <Money valueMinor={row.original.investedMinor} currency={row.original.currency} />
         ),
       }),
       col.accessor("currentValueMinor", {
         header: "Value",
+        meta: { mobile: "amount" },
         cell: ({ row }) => (
           <Money
             valueMinor={row.original.currentValueMinor}
@@ -190,6 +193,7 @@ export function HoldingsTable({
       }),
       col.accessor("unrealizedGainMinor", {
         header: "Gain",
+        meta: { mobile: "meta" },
         cell: ({ row }) => (
           <GainCell
             minor={row.original.unrealizedGainMinor}
@@ -201,6 +205,7 @@ export function HoldingsTable({
       col.accessor((h) => h.weightBp ?? -1, {
         id: "weight",
         header: "Weight",
+        meta: { mobile: "hidden" },
         cell: ({ row }) => (
           <span className="text-muted-foreground tabular-nums">
             {row.original.weightBp !== null ? formatPercentBp(row.original.weightBp) : "—"}
@@ -210,6 +215,7 @@ export function HoldingsTable({
       col.accessor((h) => h.xirrBp ?? Number.NEGATIVE_INFINITY, {
         id: "xirr",
         header: "XIRR",
+        meta: { mobile: "hidden" },
         cell: ({ row }) => (
           <span
             className="tabular-nums"
@@ -222,6 +228,7 @@ export function HoldingsTable({
       col.accessor((h) => h.lastValuedAt ?? "", {
         id: "updated",
         header: "Updated",
+        meta: { mobile: "meta" },
         cell: ({ row }) => {
           const h = row.original;
           if (h.fd) return <span className="text-xs text-muted-foreground">Calculated</span>;
@@ -237,6 +244,7 @@ export function HoldingsTable({
       col.display({
         id: "actions",
         header: () => <span className="sr-only">Actions</span>,
+        meta: { mobile: "actions" },
         cell: ({ row }) => (
           <HoldingQuickActions
             holding={row.original}

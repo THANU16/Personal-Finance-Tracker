@@ -55,7 +55,8 @@ export async function HoldingDetailView({ params }: { params: Promise<{ id: stri
     <>
       <Link
         href="/assets"
-        className="mb-3 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+        // Phones go back with the top bar's chevron (docs/07 §1).
+        className="mb-3 hidden items-center gap-1 text-sm text-muted-foreground hover:text-foreground md:inline-flex"
       >
         <ArrowLeft className="size-4" aria-hidden /> Assets
       </Link>

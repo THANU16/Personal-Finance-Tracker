@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ChartPie, RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Money } from "@/components/shared/money";
@@ -54,7 +54,7 @@ function ViewLink({
       href={href}
       aria-current={active ? "page" : undefined}
       className={cn(
-        "rounded-md px-3 py-1 text-sm",
+        "rounded-md px-3 py-1 text-sm max-md:inline-flex max-md:min-h-11 max-md:items-center",
         active
           ? "bg-background font-medium shadow-sm"
           : "text-muted-foreground hover:text-foreground",
@@ -110,7 +110,7 @@ export async function PortfolioView({ searchParams }: { searchParams: SearchPara
 
   return (
     <>
-      <div className="mb-4 grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
+      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         <StatCard
           label="Value"
           value={<Money valueMinor={t.valueMinor} currency={t.currency} compact />}
@@ -164,14 +164,15 @@ export async function PortfolioView({ searchParams }: { searchParams: SearchPara
               </Badge>
               {p.staleCount} value{p.staleCount === 1 ? "" : "s"} older than {settings.staleDays}{" "}
               days
-              <Button
-                variant="link"
-                size="sm"
-                className="h-auto p-0 md:h-auto"
-                render={<Link href="/assets/update-values" />}
+              <Link
+                href="/assets/update-values"
+                className={cn(
+                  buttonVariants({ variant: "link", size: "sm" }),
+                  "h-auto p-0 md:h-auto",
+                )}
               >
                 <RefreshCw aria-hidden /> Update values
-              </Button>
+              </Link>
             </span>
           ) : null}
         </div>
@@ -204,7 +205,7 @@ export async function PortfolioView({ searchParams }: { searchParams: SearchPara
         ) : null}
         <Link
           href={param({ closed: showClosed ? null : "1" })}
-          className="text-sm text-muted-foreground underline underline-offset-4"
+          className="text-sm text-muted-foreground underline underline-offset-4 max-md:-my-3 max-md:py-3"
         >
           {showClosed
             ? "Hide closed"
@@ -246,7 +247,7 @@ export async function PortfolioView({ searchParams }: { searchParams: SearchPara
             .map((cls) => (
               <Card key={cls.id}>
                 <CardHeader>
-                  <details open className="group">
+                  <details open className="group min-w-0">
                     <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3">
                       <span className="flex items-center gap-2 font-semibold">
                         <span
@@ -259,7 +260,7 @@ export async function PortfolioView({ searchParams }: { searchParams: SearchPara
                           {cls.weightBp !== null ? formatPercentBp(cls.weightBp) : "—"} of portfolio
                         </span>
                       </span>
-                      <span className="flex items-center gap-4 text-sm">
+                      <span className="flex items-center gap-4 text-sm max-md:flex-wrap max-md:gap-x-3 max-md:gap-y-1">
                         <Money
                           valueMinor={cls.valueMinor}
                           currency={t.currency}
