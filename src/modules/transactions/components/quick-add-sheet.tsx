@@ -771,7 +771,7 @@ function QuickAddForm({
                   onBlur={field.onBlur}
                   ref={field.ref}
                   autoFocus
-                  className="h-11 text-lg"
+                  className="h-11 text-lg md:h-11"
                   {...fieldAria("qa-amount", err("amountMinor"))}
                 />
               )}

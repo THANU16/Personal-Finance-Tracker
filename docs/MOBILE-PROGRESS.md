@@ -3,8 +3,8 @@
 | Phase | Status | Date | Commit |
 |---|---|---|---|
 | M0 Mobile audit | ✅ | 2026-10-29 | 06c6802 |
-| M1 Foundation & shell | ✅ | 2026-10-29 | feat(mobile-M1) |
-| M2 Component kit | ⬜ | | |
+| M1 Foundation & shell | ✅ | 2026-10-29 | 0d763b6 |
+| M2 Component kit | ✅ | 2026-10-29 | feat(mobile-M2) |
 | M3 Home & Quick add | ⬜ | | |
 | M4 Activity & Accounts | ⬜ | | |
 | M5 Assets & valuations | ⬜ | | |
@@ -46,20 +46,55 @@ Status values: ⬜ not started · 🟡 in progress · ✅ done
   over the light top bar; dark-mode status bar colour is M8 polish.
 - **M1 — screens script:** `@more-menu` replaced by the `/more` route; new `@scrolled-title` overlay
   (scrolls `/accounts`) to capture the collapsed title.
+- **M2 — owner approvals (2026-10-29):** global 44px primitives (X-03), chart mobile mode (X-10),
+  `StatStrip` (X-11), and converting every dialog at once (not opt-in).
+- **M2 — dialogs → bottom sheets in `ui/dialog.tsx`.** Below md `Dialog` uses Base UI's
+  `Drawer.Root` and `DialogContent` renders a swipe-down sheet (handle, scrolling body, keyboard
+  aware via `Drawer.VirtualKeyboardProvider`, sticky `DialogFooter`). Drawer extends Dialog, so
+  Trigger/Title/Description/Close are shared and the 26 dialogs needed no module changes. Callers'
+  `DialogContent` classes (max-w, max-h, overflow) apply to the desktop dialog only.
+  `AlertDialog` (incl. `ConfirmDialog`) is a bottom-anchored action sheet below md (no swipe).
+- **M2 — primitive sizes change heights only.** Below md: Button (every size) and icon buttons
+  44px, Input/Select trigger 44px (Select text 16px), Tabs triggers ≥ 44px, Dropdown/Select items
+  ≥ 44px, Switch hit area 46px, Calendar cells 44px. Padding and text sizes are untouched so callers
+  that override them keep their desktop look. Callers that override heights got a matching `md:`
+  class (portfolio-view link button, calendar day/nav buttons, Quick add tabs and amount).
+- **M2 — `MoneyInput` shows thousands separators while typing on phones only**
+  (`src/lib/typing-format.ts`, caret kept after the typed digit); desktop typing is unchanged.
+  `size="lg"` is the amount-first field for Quick add.
+- **M2 — kit** in `src/components/shared/mobile/`: `ResponsiveSelect` (picker sheet with search),
+  `ActionSheet`, `FilterSheet` + `FilterChips`, `StickyActionBar` (above the tab bar, lifted above
+  the keyboard via `useKeyboardInset`), `SegmentedControl`, `InfoTip`, `KeyboardSafeForm` (Enter →
+  next field, last submits, `enterkeyhint`); `StatStrip` in `src/components/shared/`. Demo:
+  `/dev/mobile-kit` (404 in production).
+- **M2 — `DataTable`** cards switch at md (was sm). Columns may set `meta.mobile`
+  (title/subtitle/amount/meta/actions/hidden) for compact rows; without slots the old label/value
+  cards stay.
+- **M2 — charts:** `useChartAxes()` in chart-kit; every chart's axes use it (12px labels, money
+  ticks without the currency code and a ≤ 48px Y axis on phones; desktop identical).
+- **M2 — desktop check:** full-page pixel diff of every desktop screenshot against M1 — identical
+  except run-dependent text (notification times, the throwaway user's email).
 
 ## Deviations from docs
 - M0: `/transactions/import/money-manager/[batchId]` has no screenshot (the demo data has no import
   batch). Proposed for M4: upload the e2e Money Manager fixture during `npm run screens`.
 
 ## Open questions for the owner
-- Approve the plan changes in `docs/MOBILE-AUDIT.md` §4 (M2 primitive sizes, chart mobile mode, stat
-  strip, `DataTable` breakpoint `sm`→`md`; Money Manager capture in M4; Quick add "Debt pay").
+- Approve the remaining plan changes in `docs/MOBILE-AUDIT.md` §4 (Money Manager capture in M4;
+  Quick add "Debt pay").
 - ESS-01: the essentials insurance table also scrolls the page 75px sideways at 1440. Fixing it
   changes desktop rendering — OK to fix in M7?
 - OPP-03: `/opportunity-fund` logs a server→client serialisation error (not a mobile issue). Fix it
   now as a separate change, or later?
 
 ## Known issues
+- Pre-existing, date-dependent e2e failure (not mobile): `tests/e2e/allocation.spec.ts` "Tilt next
+  period" fails on the 29th–31st. A new SIP plan defaults to day `min(28, today)` starting today, so
+  its first period is ~30 days out, beyond `GENERATE_AHEAD_DAYS = 7`; no `due` execution exists and
+  the rebalance panel shows "No SIP plan has an upcoming period". Fix belongs in the test (set the
+  day) or a product decision on the default day — owner to decide.
+- The screens check counts Switch (32×18) and checkbox/radio controls as small: their 44px touch
+  area is a pseudo-element the check cannot measure.
 - Dev-only: the Next dev-tools badge appears bottom-left over the tab bar in screenshots.
 - Base UI `nativeButton` warning remains on 8 pages (other `Button render={<Link>}` uses); X-17.
 - Detail pages still show their in-page "← Accounts"/"← Assets" link under the new top-bar back

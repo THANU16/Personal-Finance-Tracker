@@ -73,7 +73,8 @@ function headerLabel(header: unknown): string | null {
 }
 
 /**
- * Sortable table; below md rows become cards. Columns with `meta.mobile` slots render a compact
+ * Sortable table; below md rows become cards (min-w-0 so a long title truncates instead of
+ * widening a grid/flex parent). Columns with `meta.mobile` slots render a compact
  * row (title/subtitle/meta left, amount right, actions); otherwise label/value cards.
  */
 export function DataTable<TData extends RowData>({
@@ -160,7 +161,7 @@ export function DataTable<TData extends RowData>({
       </div>
 
       {slotted ? (
-        <ul className="divide-y rounded-xl border md:hidden">
+        <ul className="min-w-0 divide-y rounded-xl border md:hidden">
           {rows.map((row) => {
             const cells = row.getAllCells();
             const inSlot = (slot: MobileSlot) =>
@@ -204,7 +205,7 @@ export function DataTable<TData extends RowData>({
           })}
         </ul>
       ) : (
-        <ul className="space-y-3 md:hidden">
+        <ul className="min-w-0 space-y-3 md:hidden">
           {rows.map((row) => (
             <li key={row.id} className="rounded-xl border p-4">
               <dl className="space-y-1.5">
