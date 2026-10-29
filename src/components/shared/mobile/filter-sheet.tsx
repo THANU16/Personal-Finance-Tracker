@@ -23,6 +23,8 @@ export interface FilterSheetProps {
   children: React.ReactNode;
   onClearAll?: () => void;
   title?: string;
+  /** Chip text (default "Filter"). */
+  label?: string;
 }
 
 export function FilterSheet({
@@ -30,6 +32,7 @@ export function FilterSheet({
   children,
   onClearAll,
   title = "Filters",
+  label = "Filter",
 }: FilterSheetProps) {
   const isMobile = useIsMobile();
   const [open, setOpen] = React.useState(false);
@@ -44,7 +47,8 @@ export function FilterSheet({
         aria-haspopup="dialog"
       >
         <SlidersHorizontal aria-hidden />
-        Filter{activeCount ? ` (${activeCount})` : ""}
+        {label}
+        {activeCount ? ` (${activeCount})` : ""}
       </Button>
       <DialogContent>
         <DialogHeader>

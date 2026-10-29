@@ -1,24 +1,39 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { cache, type ReactNode } from "react";
-import { CalendarClock, CircleAlert } from "lucide-react";
+import {
+  CalendarClock,
+  CircleAlert,
+  CreditCard,
+  Landmark,
+  PiggyBank,
+  RefreshCw,
+  Repeat,
+  Scale,
+  TrendingDown,
+  type LucideIcon,
+} from "lucide-react";
 import {
   AllocationDonut,
   AssetsLiabilitiesChart,
   CashflowChart,
   NetWorthChart,
+  NetWorthSparkline,
   SavingsRateChart,
   TopCategoriesList,
 } from "@/components/charts/dashboard-charts";
 import { BucketBar } from "@/components/shared/bucket-bar";
+import { HideAmountsToggle } from "@/components/shared/hide-amounts";
 import { Money } from "@/components/shared/money";
 import { StatCard } from "@/components/shared/stat-card";
 import { TimeRangeBar } from "@/components/shared/time-range-bar";
 import { Badge } from "@/components/ui/badge";
+import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { parseRangeView, type RangeView } from "@/domain/date-range";
 import { utcToBusinessDate } from "@/domain/dates";
 import { formatPercentBp } from "@/lib/format";
+import { cn } from "@/lib/utils";
 import { NetWorthMenu, SafeToSpendValue } from "@/modules/dashboard/components/dashboard-client";
 import {
   allocationAsOf,
@@ -29,6 +44,7 @@ import {
   getStanding,
   getUpcoming,
   netWorthSeries,
+  type UpcomingItem,
   topExpenseCategories,
 } from "@/modules/dashboard/queries";
 import { getCurrentUser } from "@/server/auth/require-user";
@@ -53,6 +69,38 @@ async function load(
 }
 
 const pct = (bp: number | null) => (bp === null ? "—" : formatPercentBp(bp));
+
+/** One net worth series per request: the phone hero sparkline and the trend chart share it. */
+const seriesOf = cache((ctx: Ctx, view: RangeView) => netWorthSeries(ctx, view));
+
+/** "▲ +LKR 289,330 (+3.8%) this month" — gains green, losses red, the arrow says it too. */
+function ChangeChip({
+  deltaMinor,
+  pctBp,
+  currency,
+}: {
+  deltaMinor: number;
+  pctBp: number | null;
+  currency: string;
+}) {
+  return (
+    <span
+      className={cn(
+        "inline-flex w-fit flex-wrap items-center gap-1 rounded-full bg-muted px-2.5 py-1 text-sm tabular-nums",
+        deltaMinor < 0
+          ? "text-destructive"
+          : deltaMinor > 0
+            ? "text-emerald-600 dark:text-emerald-400"
+            : "text-muted-foreground",
+      )}
+    >
+      {deltaMinor > 0 ? "▲" : deltaMinor < 0 ? "▼" : ""}
+      <Money valueMinor={deltaMinor} currency={currency} signed colorNegative={false} />
+      {pctBp !== null ? ` (${formatPercentBp(pctBp, { signed: true })})` : ""}
+      <span className="text-muted-foreground">this month</span>
+    </span>
+  );
+}
 
 function Widget({
   title,
@@ -116,7 +164,7 @@ export async function DashboardRangeBar({ searchParams }: { searchParams: Search
 export async function StandingCards({ searchParams }: { searchParams: SearchParams }) {
   return guarded("Summary", async () => {
     const { ctx, view } = await load(searchParams);
-    const s = await getStanding(ctx, view);
+    const [s, series] = await Promise.all([getStanding(ctx, view), seriesOf(ctx, view)]);
     const ccy = s.currency;
     const change = (c: typeof s.monthChange) => (
       <span className="tabular-nums">
@@ -124,74 +172,125 @@ export async function StandingCards({ searchParams }: { searchParams: SearchPara
         {c.pctBp !== null ? ` (${formatPercentBp(c.pctBp, { signed: true })})` : ""} this month
       </span>
     );
-    return (
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[repeat(4,minmax(0,1fr))_1.4fr]">
-        <StatCard
-          label="Net worth"
-          value={<Money valueMinor={s.netWorthMinor} currency={ccy} compact />}
-          hint={change(s.monthChange)}
-        />
-        <StatCard
-          label="Assets"
-          value={<Money valueMinor={s.assetsMinor} currency={ccy} compact />}
-        />
-        <StatCard
-          label="Liabilities"
-          value={
-            <Money valueMinor={s.liabilitiesMinor} currency={ccy} compact colorNegative={false} />
-          }
-        />
-        <StatCard
-          label="Savings rate this month"
-          value={pct(s.thisMonthSavingsRateBp)}
-          hint="(income − expense) ÷ income"
-        />
-        <Card size="sm" aria-label="Standing summary">
-          <CardHeader>
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Standing summary
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
-              <dt className="text-muted-foreground">Net worth change</dt>
-              <dd className="text-right tabular-nums">
-                <Money
-                  valueMinor={s.netWorthChange.deltaMinor}
-                  currency={ccy}
-                  signed
-                  compact
-                  colorNegative={false}
-                />
-              </dd>
-              <dt className="text-muted-foreground">Savings rate</dt>
-              <dd className="text-right tabular-nums">{pct(s.savingsRateBp)}</dd>
-              <dt className="text-muted-foreground">Investment rate</dt>
-              <dd className="text-right tabular-nums">{pct(s.investmentRateBp)}</dd>
-              <dt className="text-muted-foreground">Runway</dt>
-              <dd className="text-right tabular-nums">
-                {s.runwayTenths === null ? "—" : `${(s.runwayTenths / 10).toFixed(1)} months`}
-              </dd>
-              <dt className="text-muted-foreground">Debt load</dt>
-              <dd className="text-right tabular-nums">{pct(s.debtLoadBp)}</dd>
-            </dl>
-            {s.healthScore ? (
-              <Link
-                href="/essentials"
-                className="mt-2 flex flex-wrap items-center gap-2 text-xs hover:underline"
-              >
-                <Badge variant="secondary">Health {s.healthScore.score}/100</Badge>
-                <span className="text-muted-foreground">
-                  {s.healthScore.reasons.length
-                    ? s.healthScore.reasons.join(" · ")
-                    : "All parts full"}
-                </span>
-              </Link>
-            ) : null}
-            <FxBadge count={s.fxMissing} />
-          </CardContent>
-        </Card>
+    const summary = (
+      <>
+        <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+          <dt className="text-muted-foreground">Net worth change</dt>
+          <dd className="text-right tabular-nums">
+            <Money
+              valueMinor={s.netWorthChange.deltaMinor}
+              currency={ccy}
+              signed
+              compact
+              colorNegative={false}
+            />
+          </dd>
+          <dt className="text-muted-foreground">Savings rate</dt>
+          <dd className="text-right tabular-nums">{pct(s.savingsRateBp)}</dd>
+          <dt className="text-muted-foreground">Investment rate</dt>
+          <dd className="text-right tabular-nums">{pct(s.investmentRateBp)}</dd>
+          <dt className="text-muted-foreground">Runway</dt>
+          <dd className="text-right tabular-nums">
+            {s.runwayTenths === null ? "—" : `${(s.runwayTenths / 10).toFixed(1)} months`}
+          </dd>
+          <dt className="text-muted-foreground">Debt load</dt>
+          <dd className="text-right tabular-nums">{pct(s.debtLoadBp)}</dd>
+        </dl>
+        {s.healthScore ? (
+          <Link
+            href="/essentials"
+            className="mt-2 flex flex-wrap items-center gap-2 text-xs hover:underline"
+          >
+            <Badge variant="secondary">Health {s.healthScore.score}/100</Badge>
+            <span className="text-muted-foreground">
+              {s.healthScore.reasons.length ? s.healthScore.reasons.join(" · ") : "All parts full"}
+            </span>
+          </Link>
+        ) : null}
+        <FxBadge count={s.fxMissing} />
+      </>
+    );
+    const compact = (label: string, value: ReactNode) => (
+      <div className="min-w-0 rounded-xl border bg-card p-3">
+        <div className="truncate text-xs text-muted-foreground">{label}</div>
+        <div className="mt-1 truncate text-base font-semibold tabular-nums">{value}</div>
       </div>
+    );
+    return (
+      <>
+        {/* Phones (docs/07 §5 Home): net worth hero, mini trend, compact strip, details folded. */}
+        <div className="grid gap-3 md:hidden">
+          <Card size="sm" aria-label="Net worth">
+            <CardContent className="grid gap-2">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Net worth</span>
+                <HideAmountsToggle className="-my-2 -mr-2" />
+              </div>
+              <div className="text-3xl font-semibold tracking-tight tabular-nums">
+                <Money valueMinor={s.netWorthMinor} currency={ccy} />
+              </div>
+              <ChangeChip
+                deltaMinor={s.monthChange.deltaMinor}
+                pctBp={s.monthChange.pctBp}
+                currency={ccy}
+              />
+              <NetWorthSparkline
+                points={series.points}
+                label={`Net worth trend over ${series.points.length} periods`}
+              />
+            </CardContent>
+          </Card>
+          <div className="grid grid-cols-3 gap-2">
+            {compact("Assets", <Money valueMinor={s.assetsMinor} currency={ccy} compact />)}
+            {compact(
+              "Liabilities",
+              <Money
+                valueMinor={s.liabilitiesMinor}
+                currency={ccy}
+                compact
+                colorNegative={false}
+              />,
+            )}
+            {compact("Savings rate", pct(s.thisMonthSavingsRateBp))}
+          </div>
+          <details className="rounded-xl border bg-card">
+            <summary className="flex min-h-11 cursor-pointer items-center px-4 text-sm font-medium text-muted-foreground">
+              More numbers
+            </summary>
+            <div className="px-4 pb-4">{summary}</div>
+          </details>
+        </div>
+        <div className="hidden gap-3 sm:grid-cols-2 md:grid xl:grid-cols-[repeat(4,minmax(0,1fr))_1.4fr]">
+          <StatCard
+            label="Net worth"
+            value={<Money valueMinor={s.netWorthMinor} currency={ccy} compact />}
+            hint={change(s.monthChange)}
+          />
+          <StatCard
+            label="Assets"
+            value={<Money valueMinor={s.assetsMinor} currency={ccy} compact />}
+          />
+          <StatCard
+            label="Liabilities"
+            value={
+              <Money valueMinor={s.liabilitiesMinor} currency={ccy} compact colorNegative={false} />
+            }
+          />
+          <StatCard
+            label="Savings rate this month"
+            value={pct(s.thisMonthSavingsRateBp)}
+            hint="(income − expense) ÷ income"
+          />
+          <Card size="sm" aria-label="Standing summary">
+            <CardHeader>
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Standing summary
+              </CardTitle>
+            </CardHeader>
+            <CardContent>{summary}</CardContent>
+          </Card>
+        </div>
+      </>
     );
   });
 }
@@ -199,7 +298,7 @@ export async function StandingCards({ searchParams }: { searchParams: SearchPara
 export async function NetWorthCard({ searchParams }: { searchParams: SearchParams }) {
   return guarded("Net worth trend", async () => {
     const { ctx, view } = await load(searchParams);
-    const s = await netWorthSeries(ctx, view);
+    const s = await seriesOf(ctx, view);
     return (
       <Widget
         title="Net worth trend"
@@ -236,7 +335,7 @@ export async function NetWorthCard({ searchParams }: { searchParams: SearchParam
 export async function AssetsLiabilitiesCard({ searchParams }: { searchParams: SearchParams }) {
   return guarded("Assets vs liabilities", async () => {
     const { ctx, view } = await load(searchParams);
-    const s = await netWorthSeries(ctx, view);
+    const s = await seriesOf(ctx, view);
     return (
       <Widget title="Assets vs liabilities" description="Closing value of each period">
         <AssetsLiabilitiesChart
@@ -488,6 +587,169 @@ export async function AttentionCard({ searchParams }: { searchParams: SearchPara
                 </Link>
               </li>
             ) : null}
+          </ul>
+        )}
+      </Widget>
+    );
+  });
+}
+
+interface AttentionRow {
+  key: string;
+  icon: LucideIcon;
+  title: ReactNode;
+  meta?: ReactNode;
+  href: string;
+  action: string;
+  /** The main thing to do (e.g. Execute a due SIP): a filled button. */
+  primary?: boolean;
+  urgent?: boolean;
+}
+
+const UPCOMING_ICON: Record<UpcomingItem["kind"], LucideIcon> = {
+  sip: CalendarClock,
+  recurring: Repeat,
+  card_due: CreditCard,
+  emi: Landmark,
+  fd_maturity: PiggyBank,
+};
+
+/** The button on a due item: it opens the page that already does that action. */
+function upcomingAction(i: UpcomingItem): string {
+  if (i.kind === "sip") return i.href.startsWith("/sip/execute/") ? "Execute" : "View";
+  if (i.kind === "recurring") return "Confirm";
+  if (i.kind === "card_due" || i.kind === "emi") return "Pay";
+  return "View";
+}
+
+/**
+ * Phones only (docs/07 §5 Home): one "Needs attention" stack under the hero — due SIPs, bills and
+ * EMIs (14 days) plus alerts, each with its action button. Desktop keeps Upcoming and Attention.
+ */
+export async function NeedsAttentionCard({ searchParams }: { searchParams: SearchParams }) {
+  return guarded("Needs attention", async () => {
+    const { ctx } = await load(searchParams);
+    const until = utcToBusinessDate(new Date(Date.now() + 14 * 86_400_000), ctx.tz);
+    const [items, a] = await Promise.all([getUpcoming(ctx, until), getAttention(ctx)]);
+
+    const rows: AttentionRow[] = [];
+    if (a.forecast) {
+      rows.push({
+        key: "forecast",
+        icon: CircleAlert,
+        urgent: true,
+        title: `${a.forecast.name} ${
+          a.forecast.below === "zero" ? "goes below zero" : "drops below your minimum"
+        }`,
+        meta: `on ${a.forecast.date}`,
+        href: "/forecast",
+        action: "View",
+      });
+    }
+    if (a.opportunity) {
+      rows.push({
+        key: "opportunity",
+        icon: TrendingDown,
+        title: `Market down ${formatPercentBp(a.opportunity.drawdownBp)}`,
+        meta: (
+          <>
+            Deploy{" "}
+            <Money valueMinor={a.opportunity.amountMinor} currency={a.opportunity.currency} />
+          </>
+        ),
+        href: "/opportunity-fund",
+        action: "Deploy",
+      });
+    }
+    for (const i of items) {
+      rows.push({
+        key: `u-${i.id}`,
+        icon: UPCOMING_ICON[i.kind],
+        title: i.title,
+        meta: (
+          <>
+            {i.dueDate}
+            {i.amountMinor !== null ? (
+              <>
+                {" · "}
+                <Money valueMinor={i.amountMinor} currency={i.currency} />
+              </>
+            ) : null}
+          </>
+        ),
+        href: i.href,
+        action: upcomingAction(i),
+        primary: upcomingAction(i) === "Execute",
+      });
+    }
+    if (a.budgets.warn + a.budgets.over > 0) {
+      rows.push({
+        key: "budgets",
+        icon: PiggyBank,
+        urgent: a.budgets.over > 0,
+        title: [
+          a.budgets.over ? `${a.budgets.over} over budget` : "",
+          a.budgets.warn ? `${a.budgets.warn} at 80% or more` : "",
+        ]
+          .filter(Boolean)
+          .join(" · "),
+        href: "/budgets",
+        action: "Review",
+      });
+    }
+    if (a.staleCount > 0) {
+      rows.push({
+        key: "stale",
+        icon: RefreshCw,
+        title: `${a.staleCount} holding${a.staleCount === 1 ? "" : "s"} need a new value`,
+        href: "/assets/update-values",
+        action: "Update",
+      });
+    }
+    if (a.offTargetCount > 0) {
+      rows.push({
+        key: "drift",
+        icon: Scale,
+        title: `${a.offTargetCount} asset class${a.offTargetCount === 1 ? "" : "es"} off target`,
+        href: "/rebalancing?tab=actual",
+        action: "Review",
+      });
+    }
+
+    return (
+      <Widget title="Needs attention" description="Due in the next 14 days and alerts">
+        {rows.length === 0 ? (
+          <p className="text-sm text-muted-foreground">All caught up.</p>
+        ) : (
+          <ul className="-mx-4 divide-y">
+            {rows.map((r) => (
+              <li key={r.key} className="flex items-center gap-3 px-4 py-2.5">
+                <r.icon
+                  className={cn(
+                    "size-5 shrink-0",
+                    r.urgent ? "text-destructive" : "text-muted-foreground",
+                  )}
+                  aria-hidden
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-medium">{r.title}</div>
+                  {r.meta ? (
+                    <div className="truncate text-xs text-muted-foreground tabular-nums">
+                      {r.meta}
+                    </div>
+                  ) : null}
+                </div>
+                <Link
+                  href={r.href}
+                  className={buttonVariants({
+                    variant: r.primary ? "default" : "outline",
+                    size: "sm",
+                  })}
+                >
+                  {r.action}
+                </Link>
+              </li>
+            ))}
           </ul>
         )}
       </Widget>

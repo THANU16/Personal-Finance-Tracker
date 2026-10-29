@@ -63,11 +63,14 @@ function DialogCloseButton() {
 function SheetContent({
   children,
   showCloseButton,
+  fill,
   initialFocus,
   finalFocus,
 }: {
   children: React.ReactNode;
   showCloseButton: boolean;
+  /** Full height; the children lay out their own scroll area and footer (e.g. Quick add). */
+  fill: boolean;
   initialFocus?: DialogPrimitive.Popup.Props["initialFocus"];
   finalFocus?: DialogPrimitive.Popup.Props["finalFocus"];
 }) {
@@ -80,13 +83,22 @@ function SheetContent({
             data-slot="dialog-content"
             initialFocus={initialFocus}
             finalFocus={finalFocus}
-            className="relative flex max-h-[92dvh] w-full [transform:translateY(var(--drawer-swipe-movement-y,0px))] flex-col rounded-t-2xl bg-popover text-sm text-popover-foreground ring-1 ring-foreground/10 transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] outline-none data-ending-style:[transform:translateY(100%)] data-ending-style:duration-[calc(var(--drawer-swipe-strength,1)*400ms)] data-starting-style:[transform:translateY(100%)] data-swiping:select-none motion-reduce:transition-none"
+            className={cn(
+              "relative flex max-h-[92dvh] w-full [transform:translateY(var(--drawer-swipe-movement-y,0px))] flex-col rounded-t-2xl bg-popover text-sm text-popover-foreground ring-1 ring-foreground/10 transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] outline-none data-ending-style:[transform:translateY(100%)] data-ending-style:duration-[calc(var(--drawer-swipe-strength,1)*400ms)] data-starting-style:[transform:translateY(100%)] data-swiping:select-none motion-reduce:transition-none",
+              fill && "h-[calc(100dvh-env(safe-area-inset-top)-0.75rem)] max-h-none",
+            )}
           >
             <div
               aria-hidden
               className="mx-auto mt-2 h-1.5 w-10 shrink-0 rounded-full bg-muted-foreground/30"
             />
-            <DrawerPrimitive.Content className="grid min-h-0 flex-1 gap-4 overflow-y-auto overscroll-contain px-4 pt-3 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+            <DrawerPrimitive.Content
+              className={
+                fill
+                  ? "flex min-h-0 flex-1 flex-col"
+                  : "grid min-h-0 flex-1 gap-4 overflow-y-auto overscroll-contain px-4 pt-3 pb-[calc(1rem+env(safe-area-inset-bottom))]"
+              }
+            >
               {children}
             </DrawerPrimitive.Content>
             {showCloseButton && <DialogCloseButton />}
@@ -101,9 +113,12 @@ function DialogContent({
   className,
   children,
   showCloseButton = true,
+  mobileLayout = "sheet",
   ...props
 }: DialogPrimitive.Popup.Props & {
   showCloseButton?: boolean;
+  /** Phones only: "fill" = full-height sheet whose children own the scroll area and footer. */
+  mobileLayout?: "sheet" | "fill";
 }) {
   const isMobile = useIsMobile();
   if (isMobile) {
@@ -111,6 +126,7 @@ function DialogContent({
     return (
       <SheetContent
         showCloseButton={showCloseButton}
+        fill={mobileLayout === "fill"}
         initialFocus={props.initialFocus}
         finalFocus={props.finalFocus}
       >

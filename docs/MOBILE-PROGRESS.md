@@ -4,8 +4,8 @@
 |---|---|---|---|
 | M0 Mobile audit | ✅ | 2026-10-29 | 06c6802 |
 | M1 Foundation & shell | ✅ | 2026-10-29 | 0d763b6 |
-| M2 Component kit | ✅ | 2026-10-29 | feat(mobile-M2) |
-| M3 Home & Quick add | ⬜ | | |
+| M2 Component kit | ✅ | 2026-10-29 | 27a0b7e + 3b357b8 |
+| M3 Home & Quick add | ✅ | 2026-10-29 | feat(mobile-M3) |
 | M4 Activity & Accounts | ⬜ | | |
 | M5 Assets & valuations | ⬜ | | |
 | M6 SIP, Rebalancing, Opportunity Fund | ⬜ | | |
@@ -74,14 +74,45 @@ Status values: ⬜ not started · 🟡 in progress · ✅ done
   ticks without the currency code and a ≤ 48px Y axis on phones; desktop identical).
 - **M2 — desktop check:** full-page pixel diff of every desktop screenshot against M1 — identical
   except run-dependent text (notification times, the throwaway user's email).
+- **M3 — dashboard phone order with CSS only.** Each widget sits in a `Slot` (`order-N` below md,
+  `display: contents` from md) and the desktop row wrappers are `contents` below md, so on phones
+  every widget is a grid item placed by `order` while desktop keeps its exact grids. Order: hero →
+  Needs attention → where my cash is → income vs expense → allocation → goals → essentials →
+  opportunity → net worth trend → top categories → assets vs liabilities.
+- **M3 — hero** (phones): net worth in full, ▲/▼ change chip for this month, hide-amounts toggle,
+  sparkline of the range's net worth series, a 3-up strip (assets, liabilities, savings rate) and
+  the standing summary folded under "More numbers". The series is computed once per request
+  (`cache()` around `netWorthSeries` shared with the trend and assets-vs-liabilities cards).
+- **M3 — Needs attention** (phones) merges Upcoming (14 days) and Attention into two-line rows with
+  one action each, linking to the page that already does it: SIP period generated → **Execute**
+  (filled), projected → View; recurring → Confirm; card due / EMI → Pay; FD maturity → View; budgets
+  / drift → Review; stale values → Update; market drop → Deploy. Desktop keeps both cards.
+- **M3 — range bar** (phones): presets in one sideways-scrolling row; Day/Week/Month and Compare
+  behind an "Options" chip (`FilterSheet` with `label`); desktop inline as before.
+- **M3 — Quick add** (phones): full-height bottom sheet (`DialogContent mobileLayout="fill"`), type
+  chips in one row, amount first (`MoneyInput size="lg"`), recent-categories grid (last 8 per
+  kind, stored on the device: `wt-quick-add-categories`), account and category pickers as search
+  sheets, template picker moved to the end (rendered there, so focus order matches), Save + "Save &
+  add another" (keeps type, accounts and date; detected from the form's submitter button).
+- **M3 — Debt pay** (owner decision): a chip in Quick add lists loan accounts; choosing one opens
+  `/debts/by-account/[accountId]` (thin page using the existing `getDebtForAccount`) which redirects
+  to `/debts/<id>?pay=1`, where Record payment opens. No new transaction logic.
+- **M3 — `CategorySelect`** is a grouped picker sheet with search on phones (every category field).
+- **M3 — layout lesson:** a sideways-scrolling row placed directly in a height-constrained grid
+  collapses to 0 (scroll containers have no automatic minimum height). Wrap the scroller in a plain
+  block with `min-w-0`.
+- **M3 — desktop check:** pixel diff of every desktop screenshot against M2 — identical except
+  run-dependent text (notification times, throwaway email).
 
 ## Deviations from docs
+- M3: Quick add keeps "Paid from"/"Received into" before Category (DOM order kept so keyboard
+  focus follows the screen); docs/07 lists category before account. The recent-categories grid
+  keeps the expense at ≤ 3 taps after the amount.
 - M0: `/transactions/import/money-manager/[batchId]` has no screenshot (the demo data has no import
   batch). Proposed for M4: upload the e2e Money Manager fixture during `npm run screens`.
 
 ## Open questions for the owner
-- Approve the remaining plan changes in `docs/MOBILE-AUDIT.md` §4 (Money Manager capture in M4;
-  Quick add "Debt pay").
+- Approve the remaining plan change in `docs/MOBILE-AUDIT.md` §4 (Money Manager capture in M4).
 - ESS-01: the essentials insurance table also scrolls the page 75px sideways at 1440. Fixing it
   changes desktop rendering — OK to fix in M7?
 - OPP-03: `/opportunity-fund` logs a server→client serialisation error (not a mobile issue). Fix it

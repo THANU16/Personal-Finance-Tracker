@@ -1,7 +1,7 @@
 "use client";
 
 import { useChartAxes } from "@/components/charts/chart-kit";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useState, useTransition } from "react";
 import { format, parseISO } from "date-fns";
 import { Check } from "lucide-react";
@@ -425,7 +425,13 @@ function SplitTooltip({ active, payload, currency }: TooltipContentProps & { cur
 
 export function DebtDetailClient({ d, today }: { d: DebtDetailDTO; today: string }) {
   const ax = useChartAxes();
-  const [dialog, setDialog] = useState<"pay" | "prepay" | "edit" | null>(null);
+  const router = useRouter();
+  const pathname = usePathname();
+  // `?pay=1` (Quick add "Debt pay" on phones) opens Record payment straight away.
+  const payLink = useSearchParams().get("pay") === "1";
+  const [dialog, setDialog] = useState<"pay" | "prepay" | "edit" | null>(() =>
+    payLink && d.status === "active" ? "pay" : null,
+  );
   const posted = d.payments.filter((p) => p.status === "posted");
   let n = d.paidBeforeTracking;
   const rows: Row[] = [
@@ -621,7 +627,14 @@ export function DebtDetailClient({ d, today }: { d: DebtDetailDTO; today: string
       </Card>
 
       {dialog === "pay" ? (
-        <PaymentDialog d={d} today={today} onClose={() => setDialog(null)} />
+        <PaymentDialog
+          d={d}
+          today={today}
+          onClose={() => {
+            setDialog(null);
+            if (payLink) router.replace(pathname, { scroll: false });
+          }}
+        />
       ) : null}
       {dialog === "edit" ? <EditLoanDialog d={d} onClose={() => setDialog(null)} /> : null}
       {dialog === "prepay" ? (

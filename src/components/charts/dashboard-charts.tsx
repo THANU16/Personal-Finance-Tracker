@@ -90,6 +90,32 @@ function NetWorthTip({
 }
 
 /** Net worth closing values per bucket (area), with the previous period dashed when comparing. */
+/**
+ * Mini net worth trend for the phone hero (docs/07 §5 Home): the same series as the trend chart,
+ * no axes or tooltip; the full chart with its table view stays further down the page.
+ */
+export function NetWorthSparkline({ points, label }: { points: NetWorthBucket[]; label: string }) {
+  if (points.length < 2) return null;
+  return (
+    <figure aria-label={label} className="h-14 w-full">
+      <ResponsiveContainer width="100%" height="100%">
+        <ComposedChart data={points} margin={{ top: 4, right: 0, bottom: 0, left: 0 }}>
+          <Area
+            type="monotone"
+            dataKey="netWorthMinor"
+            stroke={S1}
+            strokeWidth={2}
+            fill={S1}
+            fillOpacity={0.12}
+            dot={false}
+            isAnimationActive={false}
+          />
+        </ComposedChart>
+      </ResponsiveContainer>
+    </figure>
+  );
+}
+
 export function NetWorthChart({
   points,
   currency,

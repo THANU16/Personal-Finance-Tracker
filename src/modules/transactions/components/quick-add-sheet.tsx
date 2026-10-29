@@ -4,9 +4,10 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Controller, useFieldArray, useForm, useWatch, type Path } from "react-hook-form";
-import { Plus, Split, Trash2 } from "lucide-react";
+import { Landmark, Plus, Split, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -33,6 +34,9 @@ import { DatePicker } from "@/components/shared/date-picker";
 import { FormField, fieldAria } from "@/components/shared/form-field";
 import { Money } from "@/components/shared/money";
 import { MoneyInput } from "@/components/shared/money-input";
+import { ActionSheet } from "@/components/shared/mobile/action-sheet";
+import { ResponsiveSelect } from "@/components/shared/mobile/responsive-select";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { minorUnitDigits } from "@/domain/money";
 import { formatMoney } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -102,6 +106,92 @@ function rememberLast(v: FormValues) {
   } catch {
     // storage unavailable — remembering is a convenience only
   }
+}
+
+const RECENT_CATEGORIES_KEY = "wt-quick-add-categories";
+const RECENT_MAX = 8;
+type RecentCategories = Partial<Record<"expense" | "income", string[]>>;
+
+function readRecentRaw(): string {
+  try {
+    return localStorage.getItem(RECENT_CATEGORIES_KEY) ?? "{}";
+  } catch {
+    return "{}";
+  }
+}
+
+function parseRecent(raw: string): RecentCategories {
+  try {
+    return JSON.parse(raw) as RecentCategories;
+  } catch {
+    return {};
+  }
+}
+
+const readRecentCategories = () => parseRecent(readRecentRaw());
+const noopSubscribe = () => () => {};
+
+function rememberCategory(v: FormValues) {
+  if ((v.type !== "expense" && v.type !== "income") || v.splitMode || !v.categoryId) return;
+  try {
+    const recent = readRecentCategories();
+    const list = [v.categoryId, ...(recent[v.type] ?? []).filter((id) => id !== v.categoryId)];
+    recent[v.type] = list.slice(0, RECENT_MAX);
+    localStorage.setItem(RECENT_CATEGORIES_KEY, JSON.stringify(recent));
+  } catch {
+    // storage unavailable — the grid is a convenience only
+  }
+}
+
+/** Phones: the last used categories as one-tap chips above the full picker. */
+function RecentCategoryGrid({
+  tree,
+  kind,
+  value,
+  onPick,
+}: {
+  tree: QuickAddOptions["categories"];
+  kind: "expense" | "income";
+  value: string;
+  onPick: (id: string) => void;
+}) {
+  // localStorage is browser-only; the server snapshot is empty, so hydration agrees.
+  const stored = React.useSyncExternalStore(
+    noopSubscribe,
+    () => readRecentRaw(),
+    () => "{}",
+  );
+  const recent = (parseRecent(stored)[kind] ?? []) as string[];
+  const names = new Map(
+    tree
+      .filter((c) => c.kind === kind)
+      .flatMap((root) => [
+        [root.id, root.name] as const,
+        ...root.children.map((c) => [c.id, c.name] as const),
+      ]),
+  );
+  const chips = recent.filter((id) => names.has(id));
+  if (chips.length === 0) return null;
+  return (
+    <div role="group" aria-label="Recent categories" className="grid grid-cols-2 gap-2 md:hidden">
+      {chips.map((id) => (
+        <button
+          key={id}
+          type="button"
+          aria-pressed={value === id}
+          onClick={() => onPick(id)}
+          className={cn(
+            "min-h-11 truncate rounded-lg border px-3 text-left text-sm",
+            value === id
+              ? "border-primary bg-primary text-primary-foreground"
+              : "bg-background active:bg-muted",
+          )}
+        >
+          {names.get(id)}
+        </button>
+      ))}
+    </div>
+  );
 }
 
 const EMPTY_SPLITS = [
@@ -406,6 +496,33 @@ function AccountSelect({
   onChange: (id: string) => void;
   invalid?: boolean;
 }) {
+  const isMobile = useIsMobile();
+  if (isMobile) {
+    return (
+      <ResponsiveSelect
+        id={id}
+        value={value || null}
+        onValueChange={onChange}
+        aria-invalid={invalid}
+        placeholder={holdings ? "Choose an account or asset" : "Choose an account"}
+        title={holdings ? "Account or asset" : "Account"}
+        options={[
+          ...accounts.map((a) => ({
+            value: a.id,
+            label: a.name,
+            description: formatMoney(a.balanceMinor, a.currency),
+            group: holdings?.length ? "Accounts" : undefined,
+          })),
+          ...(holdings ?? []).map((h) => ({
+            value: `${HOLDING_PREFIX}${h.id}`,
+            label: h.name,
+            description: formatMoney(h.currentValueMinor, h.currency),
+            group: "Assets",
+          })),
+        ]}
+      />
+    );
+  }
   const accountItem = (a: QuickAddOptions["accounts"][number]) => (
     <SelectItem key={a.id} value={a.id}>
       <span className="flex w-full justify-between gap-4">
@@ -477,6 +594,7 @@ function QuickAddForm({
   onDone: () => void;
 }) {
   const router = useRouter();
+  const isMobile = useIsMobile();
   const editing = request.mode === "edit";
   const form = useForm<FormValues>({ defaultValues: initialValues(request, options) });
   const {
@@ -487,6 +605,8 @@ function QuickAddForm({
     clearErrors,
     setValue,
     getValues,
+    reset,
+    setFocus,
     formState: { errors, isSubmitting },
   } = form;
   const { fields, append, remove } = useFieldArray({ control, name: "splits" });
@@ -606,7 +726,10 @@ function QuickAddForm({
     }
   }
 
-  async function onSubmit(v: FormValues) {
+  async function onSubmit(v: FormValues, e?: React.BaseSyntheticEvent) {
+    // "Save & add another" (phones) is a second submit button: keep type, accounts and date.
+    const submitter = (e?.nativeEvent as SubmitEvent | undefined)?.submitter;
+    const again = submitter instanceof HTMLElement && submitter.dataset.addAnother === "1";
     clearErrors();
     const input = toInput(v);
     const parsed = transactionInputSchema.safeParse(input);
@@ -616,7 +739,7 @@ function QuickAddForm({
       }
       return;
     }
-    await save(v, input);
+    await save(v, input, undefined, again);
   }
 
   // Dip guard (docs/04 §20): NEEDS_CONFIRMATION opens a dialog; confirming resubmits with the flags.
@@ -624,9 +747,15 @@ function QuickAddForm({
     values: FormValues;
     input: ReturnType<typeof toInput>;
     warnings: ActionWarning[];
+    again: boolean;
   } | null>(null);
 
-  async function save(v: FormValues, input: ReturnType<typeof toInput>, flags?: DipConfirmation) {
+  async function save(
+    v: FormValues,
+    input: ReturnType<typeof toInput>,
+    flags?: DipConfirmation,
+    again = false,
+  ) {
     const payload = flags ? { ...input, ...flags } : input;
     const result =
       request.mode === "edit"
@@ -634,7 +763,7 @@ function QuickAddForm({
         : await createTransactionAction(payload);
     if (!result.ok) {
       if (result.error.code === "NEEDS_CONFIRMATION" && result.error.warnings?.length) {
-        setConfirm({ values: v, input, warnings: result.error.warnings });
+        setConfirm({ values: v, input, warnings: result.error.warnings, again });
         return;
       }
       for (const [key, messages] of Object.entries(result.error.fieldErrors ?? {})) {
@@ -644,12 +773,66 @@ function QuickAddForm({
       return;
     }
     rememberLast(v);
+    rememberCategory(v);
     toast.success(
       editing ? "Transaction updated" : `${v.type[0]!.toUpperCase()}${v.type.slice(1)} saved`,
     );
-    onDone();
     router.refresh();
+    if (again && !editing) {
+      reset({
+        ...getValues(),
+        amountMinor: null,
+        toAmountMinor: null,
+        categoryId: "",
+        splitMode: false,
+        splits: EMPTY_SPLITS,
+        description: "",
+        counterparty: "",
+        tags: "",
+        notes: "",
+      });
+      setFocus("amountMinor");
+      return;
+    }
+    onDone();
   }
+
+  const loans = options.accounts.filter((a) => a.type === "loan");
+  const templateField = (id: string) => (
+    <FormField id={id} label="From template (optional)">
+      <Select
+        value=""
+        onValueChange={(v) => {
+          const t = options.templates.find((x) => x.id === String(v));
+          if (!t) return;
+          // Fills the form only; the recurring rule itself is confirmed on /recurring.
+          setValue("type", t.kind);
+          setValue("amountMinor", t.amountMinor);
+          if (t.fromAccountId) setValue("fromAccountId", t.fromAccountId);
+          if (t.toAccountId) setValue("toAccountId", t.toAccountId);
+          if (t.categoryId) setValue("categoryId", t.categoryId);
+          setValue("splitMode", false);
+          setValue("description", t.description ?? t.name);
+          setValue("tags", t.tags.join(", "));
+        }}
+        items={options.templates.map((t) => ({ value: t.id, label: t.name }))}
+      >
+        <SelectTrigger id={id} className="w-full">
+          <SelectValue placeholder="Choose a recurring template" />
+        </SelectTrigger>
+        <SelectContent>
+          {options.templates.map((t) => (
+            <SelectItem key={t.id} value={t.id}>
+              <span className="flex w-full justify-between gap-4">
+                <span>{t.name}</span>
+                <span className="text-muted-foreground capitalize">{t.kind}</span>
+              </span>
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </FormField>
+  );
 
   if (options.accounts.length === 0) {
     return (
@@ -674,61 +857,64 @@ function QuickAddForm({
       className="flex min-h-0 flex-1 flex-col"
     >
       <div className="grid gap-4 overflow-y-auto px-4 pb-4">
+        {/* Templates: first on desktop; phones put them last (amount first, docs/07 §5). */}
         {!editing && options.templates.length ? (
-          <FormField id="qa-template" label="From template (optional)">
-            <Select
-              value=""
-              onValueChange={(v) => {
-                const t = options.templates.find((x) => x.id === String(v));
-                if (!t) return;
-                // Fills the form only; the recurring rule itself is confirmed on /recurring.
-                setValue("type", t.kind);
-                setValue("amountMinor", t.amountMinor);
-                if (t.fromAccountId) setValue("fromAccountId", t.fromAccountId);
-                if (t.toAccountId) setValue("toAccountId", t.toAccountId);
-                if (t.categoryId) setValue("categoryId", t.categoryId);
-                setValue("splitMode", false);
-                setValue("description", t.description ?? t.name);
-                setValue("tags", t.tags.join(", "));
-              }}
-              items={options.templates.map((t) => ({ value: t.id, label: t.name }))}
-            >
-              <SelectTrigger id="qa-template" className="w-full">
-                <SelectValue placeholder="Choose a recurring template" />
-              </SelectTrigger>
-              <SelectContent>
-                {options.templates.map((t) => (
-                  <SelectItem key={t.id} value={t.id}>
-                    <span className="flex w-full justify-between gap-4">
-                      <span>{t.name}</span>
-                      <span className="text-muted-foreground capitalize">{t.kind}</span>
-                    </span>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </FormField>
+          <div className="hidden md:contents">{templateField("qa-template")}</div>
         ) : null}
         <Controller
           control={control}
           name="type"
           render={({ field }) => (
-            <Tabs
-              value={field.value}
-              onValueChange={(v) => {
-                if (!editing) carryAccounts(v as QuickAddType);
-                field.onChange(v);
-              }}
-            >
-              <TabsList className="grid w-full grid-cols-3 group-data-horizontal/tabs:h-auto md:group-data-horizontal/tabs:h-auto">
-                <TabsTrigger value="expense">Expense</TabsTrigger>
-                <TabsTrigger value="income">Income</TabsTrigger>
-                <TabsTrigger value="transfer">Transfer</TabsTrigger>
-                <TabsTrigger value="invest">Invest</TabsTrigger>
-                <TabsTrigger value="redeem">Redeem</TabsTrigger>
-                <TabsTrigger value="investment_income">Inv. income</TabsTrigger>
-              </TabsList>
-            </Tabs>
+            // Phones: one row of type chips that scrolls sideways, with "Debt pay" at the end.
+            // The grid item is a plain block: its height follows the content (a scroll container
+            // as grid item collapses) and min-w-0 keeps the wide row from widening the form.
+            <div className="-mx-4 min-w-0 md:mx-0">
+              <div className="flex [scrollbar-width:none] gap-2 overflow-x-auto px-4 md:block md:overflow-visible md:px-0">
+                <Tabs
+                  value={field.value}
+                  onValueChange={(v) => {
+                    if (!editing) carryAccounts(v as QuickAddType);
+                    field.onChange(v);
+                  }}
+                >
+                  <TabsList className="flex w-max group-data-horizontal/tabs:h-auto md:grid md:w-full md:grid-cols-3 md:group-data-horizontal/tabs:h-auto">
+                    {(
+                      [
+                        ["expense", "Expense"],
+                        ["income", "Income"],
+                        ["transfer", "Transfer"],
+                        ["invest", "Invest"],
+                        ["redeem", "Redeem"],
+                        ["investment_income", "Inv. income"],
+                      ] as const
+                    ).map(([value, label]) => (
+                      <TabsTrigger key={value} value={value} className="shrink-0 px-3 md:px-1.5">
+                        {label}
+                      </TabsTrigger>
+                    ))}
+                  </TabsList>
+                </Tabs>
+                {!editing && isMobile && loans.length ? (
+                  <ActionSheet
+                    title="Pay a loan"
+                    description="Opens the loan with Record payment ready."
+                    trigger={
+                      <Button type="button" variant="outline" className="shrink-0 rounded-lg">
+                        <Landmark aria-hidden /> Debt pay
+                      </Button>
+                    }
+                    actions={loans.map((l) => ({
+                      label: l.name,
+                      icon: Landmark,
+                      onSelect: () => {
+                        onDone();
+                        router.push(`/debts/by-account/${l.id}`);
+                      },
+                    }))}
+                  />
+                ) : null}
+              </div>
+            </div>
           )}
         />
 
@@ -771,7 +957,8 @@ function QuickAddForm({
                   onBlur={field.onBlur}
                   ref={field.ref}
                   autoFocus
-                  className="h-11 text-lg md:h-11"
+                  size={isMobile ? "lg" : "default"}
+                  className={isMobile ? undefined : "h-11 text-lg md:h-11"}
                   {...fieldAria("qa-amount", err("amountMinor"))}
                 />
               )}
@@ -988,14 +1175,22 @@ function QuickAddForm({
               control={control}
               name="categoryId"
               render={({ field }) => (
-                <CategorySelect
-                  id="qa-category"
-                  tree={options.categories}
-                  kind={type === "income" ? "income" : "expense"}
-                  value={field.value}
-                  onChange={field.onChange}
-                  {...fieldAria("qa-category", err("categoryId"))}
-                />
+                <>
+                  <RecentCategoryGrid
+                    tree={options.categories}
+                    kind={type === "income" ? "income" : "expense"}
+                    value={field.value}
+                    onPick={field.onChange}
+                  />
+                  <CategorySelect
+                    id="qa-category"
+                    tree={options.categories}
+                    kind={type === "income" ? "income" : "expense"}
+                    value={field.value}
+                    onChange={field.onChange}
+                    {...fieldAria("qa-category", err("categoryId"))}
+                  />
+                </>
               )}
             />
           </FormField>
@@ -1160,16 +1355,30 @@ function QuickAddForm({
         <FormField id="qa-notes" label="Notes (optional)" error={err("notes")}>
           <Textarea id="qa-notes" rows={2} {...register("notes")} />
         </FormField>
+        {!editing && options.templates.length ? (
+          <div className="md:hidden">{templateField("qa-template-mobile")}</div>
+        ) : null}
         {errors.root ? (
           <p role="alert" className="text-sm text-destructive">
             {errors.root.message}
           </p>
         ) : null}
       </div>
-      <SheetFooter className="border-t">
+      <SheetFooter className="border-t pb-[calc(1rem+env(safe-area-inset-bottom)+var(--drawer-keyboard-inset,0px))] md:pb-4">
         <Button type="submit" disabled={isSubmitting} className="w-full">
           {isSubmitting ? "Saving…" : editing ? "Save changes" : "Save"}
         </Button>
+        {!editing ? (
+          <Button
+            type="submit"
+            variant="outline"
+            disabled={isSubmitting}
+            className="w-full md:hidden"
+            data-add-another="1"
+          >
+            Save &amp; add another
+          </Button>
+        ) : null}
       </SheetFooter>
       <DipConfirmDialog
         warnings={confirm?.warnings ?? null}
@@ -1178,7 +1387,7 @@ function QuickAddForm({
           if (!confirm) return;
           const pending = confirm;
           setConfirm(null);
-          await save(pending.values, pending.input, flags);
+          await save(pending.values, pending.input, flags, pending.again);
         }}
       />
     </form>
@@ -1225,37 +1434,54 @@ export function QuickAddSheet({
   const formKey = current?.key ?? 0;
 
   const title = request.mode === "edit" ? "Edit transaction" : "Quick add";
+  const isMobile = useIsMobile();
 
+  const body = (
+    <>
+      <SheetHeader className="pt-2 md:pt-4">
+        <SheetTitle>{title}</SheetTitle>
+        <SheetDescription>
+          {request.mode === "edit"
+            ? "Saving replaces the original (it is kept as void)."
+            : "Record an expense, income or transfer. Press N anywhere to open this."}
+        </SheetDescription>
+      </SheetHeader>
+      {loadError ? (
+        <p role="alert" className="px-4 text-sm text-destructive">
+          {loadError}
+        </p>
+      ) : options && formKey > 0 ? (
+        <QuickAddForm
+          key={formKey}
+          request={request}
+          options={options}
+          onDone={() => onOpenChange(false)}
+        />
+      ) : (
+        <div className="grid gap-4 px-4" aria-busy="true" aria-label="Loading">
+          <Skeleton className="h-8 w-full" />
+          <Skeleton className="h-11 w-full" />
+          <Skeleton className="h-8 w-full" />
+          <Skeleton className="h-8 w-full" />
+        </div>
+      )}
+    </>
+  );
+
+  // Phones (docs/07 §5): a full-height bottom sheet (swipe down to close); desktop: side sheet.
+  if (isMobile) {
+    return (
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent mobileLayout="fill" showCloseButton={false}>
+          {body}
+        </DialogContent>
+      </Dialog>
+    );
+  }
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="flex w-full flex-col gap-0 p-0 sm:max-w-md">
-        <SheetHeader>
-          <SheetTitle>{title}</SheetTitle>
-          <SheetDescription>
-            {request.mode === "edit"
-              ? "Saving replaces the original (it is kept as void)."
-              : "Record an expense, income or transfer. Press N anywhere to open this."}
-          </SheetDescription>
-        </SheetHeader>
-        {loadError ? (
-          <p role="alert" className="px-4 text-sm text-destructive">
-            {loadError}
-          </p>
-        ) : options && formKey > 0 ? (
-          <QuickAddForm
-            key={formKey}
-            request={request}
-            options={options}
-            onDone={() => onOpenChange(false)}
-          />
-        ) : (
-          <div className="grid gap-4 px-4" aria-busy="true" aria-label="Loading">
-            <Skeleton className="h-8 w-full" />
-            <Skeleton className="h-11 w-full" />
-            <Skeleton className="h-8 w-full" />
-            <Skeleton className="h-8 w-full" />
-          </div>
-        )}
+        {body}
       </SheetContent>
     </Sheet>
   );

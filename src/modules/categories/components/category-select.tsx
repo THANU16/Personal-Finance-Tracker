@@ -7,6 +7,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ResponsiveSelect } from "@/components/shared/mobile/responsive-select";
+import { useIsMobile } from "@/hooks/use-mobile";
 import type { CategoryKind } from "@/modules/categories/model";
 import type { CategoryNode } from "@/modules/categories/schemas";
 
@@ -50,7 +52,34 @@ export function CategorySelect({
   /** When there is no visible <label for={id}> (filters). */
   "aria-label"?: string;
 }) {
+  const isMobile = useIsMobile();
   const options = flattenCategories(tree, kind);
+  if (isMobile) {
+    // docs/07 §3: a searchable bottom-sheet picker on phones, grouped by parent category.
+    const picker = tree
+      .filter((c) => c.kind === kind)
+      .flatMap((root) => [
+        { value: root.id, label: root.name, group: root.name },
+        ...root.children.map((c) => ({
+          value: c.id,
+          label: `${root.name} › ${c.name}`,
+          group: root.name,
+        })),
+      ]);
+    return (
+      <ResponsiveSelect
+        id={id}
+        value={value || null}
+        onValueChange={onChange}
+        options={[...(allowAll ? [{ value: "", label: "All categories" }] : []), ...picker]}
+        placeholder={allowAll ? "All categories" : placeholder}
+        title={allowAll ? "Category" : placeholder}
+        aria-label={ariaLabel}
+        aria-invalid={ariaInvalid}
+        aria-describedby={ariaDescribedBy}
+      />
+    );
+  }
   const items = [
     ...(allowAll ? [{ value: "", label: "All categories" }] : []),
     ...options.map((o) => ({ value: o.id, label: o.label })),

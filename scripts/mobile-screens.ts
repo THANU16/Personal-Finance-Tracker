@@ -144,6 +144,19 @@ const OVERLAYS: Overlay[] = [
     },
   })),
   {
+    // Quick add "Debt pay" chip (phones): the list of loans to pay.
+    name: "quick-add-debt-pay",
+    route: "/dashboard",
+    mobileOnly: true,
+    open: async (page) => {
+      await page.getByRole("button", { name: "Quick add", exact: true }).click();
+      const sheet = page.getByRole("dialog", { name: "Quick add" });
+      await sheet.getByLabel("Amount").first().waitFor({ timeout: 60_000 });
+      await sheet.getByRole("button", { name: "Debt pay" }).click();
+      await page.waitForTimeout(500);
+    },
+  },
+  {
     name: "add-account-dialog",
     route: "/accounts",
     open: async (page) => {
