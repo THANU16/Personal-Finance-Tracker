@@ -33,7 +33,7 @@ Med = breaks a docs/07 rule but usable. Low = polish.
 | Route | Overflow 375 / 393 / 430 / 360 / 1440 (px) | Taps < 44px | Inputs < 16px | Worst | Phase |
 |---|---|---|---|---|---|
 | /dashboard | 0 / 0 / 0 / 0 / 0 | 43 | 0 | Med | M3 |
-| /onboarding | 0 | 10 | 1 | Low | M7 |
+| /onboarding | 0 | 10 | 1 | Low | M7 ✅ |
 | /transactions | 0 | 44 | 0 | Med | M4 |
 | /transactions/import | 0 | 8 | 0 | Low | M4 |
 | /transactions/import/money-manager/[batchId] | captured from M4 (fixture upload) | – | – | Med | M4 ✅ |
@@ -50,16 +50,16 @@ Med = breaks a docs/07 rule but usable. Low = polish.
 | /sip/history | 0 | 31 | 0 | Med | M6 |
 | /rebalancing | 0 | 35 | 0 | Med | M6 |
 | /opportunity-fund | 0 | 42 | 0 | **High** | M6 |
-| /debts | 0 | 8 | 0 | **High** | M7 |
-| /debts/[id] | 0 | 8 | 0 | **High** | M7 |
-| /recurring | 0 | 22 | 0 | **High** | M7 |
-| /budgets | 0 | 15 | 0 | Low | M7 |
-| /goals | 0 | 12 | 0 | Low | M7 |
-| /essentials | **300 / 282 / 245 / 315 / 75** | 19 | 0 | **High** | M7 |
-| /forecast | 0 | 16 | 0 | **High** | M7 |
-| /reports | 0 | 17 | 0 | **High** | M7 |
-| /notifications | 0 | 24 | 0 | Med | M7 |
-| /settings | 0 | 32 | 0 | Med | M7 |
+| /debts | 0 | 8 | 0 | **High** | M7 ✅ |
+| /debts/[id] | 0 | 8 | 0 | **High** | M7 ✅ |
+| /recurring | 0 | 22 | 0 | **High** | M7 ✅ |
+| /budgets | 0 | 15 | 0 | Low | M7 ✅ |
+| /goals | 0 | 12 | 0 | Low | M7 ✅ |
+| /essentials | **300 / 282 / 245 / 315 / 75** | 19 | 0 | **High** | M7 ✅ |
+| /forecast | 0 | 16 | 0 | **High** | M7 ✅ |
+| /reports | 0 | 17 | 0 | **High** | M7 ✅ |
+| /notifications | 0 | 24 | 0 | Med | M7 ✅ |
+| /settings | 0 | 32 | 0 | Med | M7 ✅ |
 | @quick-add | 0 | 62 | 0 | Med | M3 |
 | @add-account-dialog | 0 | 37 | 0 | Med | M2 ✅ (bottom sheet, sticky footer; 12 small targets left) |
 | @more-menu | 0 | 59 | 0 | Med | M1 ✅ (replaced by `/more`, 0 small targets) |
@@ -178,59 +178,59 @@ the overflow check cannot see. Those are listed per page below.
 ### Debts — `/debts`, `/debts/[id]` (M7)
 | ID | Sev | What's wrong | Rule | Proposed fix |
 |---|---|---|---|---|
-| DEBT-01 | **High** | Loans table squeezes: "Toyota Aqua lease · Leasing · LB Finance" wraps to 6 lines, Rate column cut at the edge; Next due, Payoff and Repaid are hidden. | X-06 | Loan cards with progress. |
-| DEBT-02 | Med | Three stat cards before the list. | X-11 | Compact strip. |
-| DEBT-03 | **High** | Detail: amortisation schedule is a 60-row table showing only # / Date / Payment / Interest — Principal and Balance columns clipped; ~4 screens long. | §5 Debts | Schedule grouped by year (collapsible), card rows. |
-| DEBT-04 | Med | Detail: five stat cards; Record payment / Prepayment / Edit loan buttons 32px at the top. | §2 | Header numbers block, sticky Record payment. |
+| DEBT-01 | **High** | Loans table squeezes: "Toyota Aqua lease · Leasing · LB Finance" wraps to 6 lines, Rate column cut at the edge; Next due, Payoff and Repaid are hidden. | X-06 | Loan cards with progress. **✅ M7 (rows stack with labels: Outstanding · EMI · Rate · Next due · Payoff · Repaid)** |
+| DEBT-02 | Med | Three stat cards before the list. | X-11 | Compact strip. **⬜ kept (stat cards; 2 columns since M5)** |
+| DEBT-03 | **High** | Detail: amortisation schedule is a 60-row table showing only # / Date / Payment / Interest — Principal and Balance columns clipped; ~4 screens long. | §5 Debts | Schedule grouped by year (collapsible), card rows. **🟡 M7 (rows stack with labels, every column visible; year grouping deferred by owner)** |
+| DEBT-04 | Med | Detail: five stat cards; Record payment / Prepayment / Edit loan buttons 32px at the top. | §2 | Header numbers block, sticky Record payment. **🟡 M7 (buttons 44px via M2 primitives; sticky Record payment not done)** |
 
 ### Recurring — `/recurring` (M7)
 | ID | Sev | What's wrong | Rule | Proposed fix |
 |---|---|---|---|---|
-| REC-01 | **High** | Raw table: each row ~140px tall, Account column clipped mid-word ("Commerci"); Frequency, Next due, Status and the actions column are off the right edge (reachable only via an unhinted inner scroll). | X-06 | Card list with confirm sheet. |
+| REC-01 | **High** | Raw table: each row ~140px tall, Account column clipped mid-word ("Commerci"); Frequency, Next due, Status and the actions column are off the right edge (reachable only via an unhinted inner scroll). | X-06 | Card list with confirm sheet. **✅ M7 (rows stack with labels; Confirm/Skip/Pause/Edit 44px)** |
 
 ### Budgets — `/budgets` (M7)
 | ID | Sev | What's wrong | Rule | Proposed fix |
 |---|---|---|---|---|
-| BUD-01 | Low | Layout works; month arrows, Edit and trash are 32px; budgets list fine. | §2 | 44px controls; Edit/Delete in action sheet. |
+| BUD-01 | Low | Layout works; month arrows, Edit and trash are 32px; budgets list fine. | §2 | 44px controls; Edit/Delete in action sheet. **✅ M7 (month arrows are 44px links; Edit/Delete 44px)** |
 
 ### Goals — `/goals` (M7)
 | ID | Sev | What's wrong | Rule | Proposed fix |
 |---|---|---|---|---|
-| GOAL-01 | Low | Goal cards read well; Edit / Archive and "Linked items" disclosure are small. | §2 | 44px actions. |
+| GOAL-01 | Low | Goal cards read well; Edit / Archive and "Linked items" disclosure are small. | §2 | 44px actions. **✅ M7 (44px actions and Linked items disclosure)** |
 
 ### Essentials — `/essentials` (M7)
 | ID | Sev | What's wrong | Rule | Proposed fix |
 |---|---|---|---|---|
-| ESS-01 | **High** | Insurance policies table (`essentials-client.tsx` ~L752) widens the page: +300px at 375, and **+75px at 1440 (desktop bug)**. The `overflow-x-auto` wrapper sits in a grid cell that still grows to the table's min width, so the whole page pans sideways and the policies table is clipped ("Prem…"). | §2 | `min-w-0` on the grid cell (fixes desktop too) + card list on mobile. **Changes desktop rendering — owner to confirm.** |
-| ESS-02 | Low | Health score gauge and component list fine; "What counts" two-column boxes tight. | §5 | Stack. |
+| ESS-01 | **High** | Insurance policies table (`essentials-client.tsx` ~L752) widens the page: +300px at 375, and **+75px at 1440 (desktop bug)**. The `overflow-x-auto` wrapper sits in a grid cell that still grows to the table's min width, so the whole page pans sideways and the policies table is clipped ("Prem…"). | §2 | `min-w-0` on the grid cell (fixes desktop too) + card list on mobile. **Changes desktop rendering — owner to confirm.** **✅ M7 (`min-w-0` card + `relative` wrapper, desktop fixed too — owner approved; policies stack on phones)** |
+| ESS-02 | Low | Health score gauge and component list fine; "What counts" two-column boxes tight. | §5 | Stack. **⬜ kept (reads fine at 360–393)** |
 
 ### Forecast — `/forecast` (M7)
 | ID | Sev | What's wrong | Rule | Proposed fix |
 |---|---|---|---|---|
-| FC-01 | **High** | Account balances table clipped: the third (projected) column is cut ("LKR 2,69…"). | X-06 | Card list. |
-| FC-02 | Low | Cash forecast + projection charts stack correctly; axis labels wide (X-10). | §5 | Compact axes. |
+| FC-01 | **High** | Account balances table clipped: the third (projected) column is cut ("LKR 2,69…"). | X-06 | Card list. **✅ M7 (rows stack with labels; 44px range links)** |
+| FC-02 | Low | Cash forecast + projection charts stack correctly; axis labels wide (X-10). | §5 | Compact axes. **✅ M2 (compact chart axes)** |
 
 ### Reports — `/reports` (M7)
 | ID | Sev | What's wrong | Rule | Proposed fix |
 |---|---|---|---|---|
-| RPT-01 | Med | Seven report tabs wrap to 4 rows. | X-09 | Scrollable segmented chips or a report picker sheet. |
-| RPT-02 | **High** | Category and income tables clip their last column (Share %, previous-month); investing "by holding" table squeezes names. | X-06 | Lists. |
-| RPT-03 | Low | Export CSV is an inline button; donuts fine. | §5 export via share | Share sheet on mobile. |
+| RPT-01 | Med | Seven report tabs wrap to 4 rows. | X-09 | Scrollable segmented chips or a report picker sheet. **✅ M7 (one sideways-scrolling row of 44px chips)** |
+| RPT-02 | **High** | Category and income tables clip their last column (Share %, previous-month); investing "by holding" table squeezes names. | X-06 | Lists. **✅ M7 (every report table stacks with labels)** |
+| RPT-03 | Low | Export CSV is an inline button; donuts fine. | §5 export via share | Share sheet on mobile. **🟡 M7 (Export CSV is a 44px download link; share sheet not done)** |
 
 ### Notifications — `/notifications` (M7)
 | ID | Sev | What's wrong | Rule | Proposed fix |
 |---|---|---|---|---|
-| NOT-01 | Med | Mark-read ✓ and snooze 🕒 are unlabeled 32px icon buttons per row. | §2, §9 labels | Swipe actions + action sheet; labelled 44px buttons. |
+| NOT-01 | Med | Mark-read ✓ and snooze 🕒 are unlabeled 32px icon buttons per row. | §2, §9 labels | Swipe actions + action sheet; labelled 44px buttons. **🟡 M7 (labelled 44px buttons, 44px title links; swipe actions deferred by owner)** |
 
 ### Settings — `/settings` (M7)
 | ID | Sev | What's wrong | Rule | Proposed fix |
 |---|---|---|---|---|
-| SET-01 | Med | Section tabs scroll sideways with the active "Preferences" tab cut off on load; one long form; "Save preferences" at the end. | §5 Settings | Grouped list rows that push to sub-pages; sticky save per sub-page. |
+| SET-01 | Med | Section tabs scroll sideways with the active "Preferences" tab cut off on load; one long form; "Save preferences" at the end. | §5 Settings | Grouped list rows that push to sub-pages; sticky save per sub-page. **🟡 M7 (tabs start-aligned so Preferences is visible, Save preferences pinned; sub-pages deferred by owner)** |
 
 ### Onboarding — `/onboarding` (M7)
 | ID | Sev | What's wrong | Rule | Proposed fix |
 |---|---|---|---|---|
-| ONB-01 | Low | Native timezone `<select>` is 14px (iOS will zoom on focus); step pills wrap to 2 rows. | §4 ≥16px | 16px select (or picker sheet); scrollable step indicator. |
+| ONB-01 | Low | Native timezone `<select>` is 14px (iOS will zoom on focus); step pills wrap to 2 rows. | §4 ≥16px | 16px select (or picker sheet); scrollable step indicator. **✅ M7 (timezone select 16px / 44px)** |
 
 ## 4. Plan mapping and proposed plan changes
 

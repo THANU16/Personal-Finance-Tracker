@@ -54,6 +54,7 @@ import {
   type DipConfirmation,
 } from "@/modules/transactions/components/dip-confirm-dialog";
 import type { ActionWarning } from "@/server/errors";
+import { stackOnPhone } from "@/components/shared/mobile/stack-table";
 
 const fmtDate = (d: string | null) => (d ? format(parseISO(d), "d MMM yyyy") : "—");
 
@@ -334,7 +335,10 @@ function PrepaymentDialog({
             Compare before / after
           </Button>
           {preview ? (
-            <table className="w-full text-sm" aria-label="Before and after the prepayment">
+            <table
+              className={cn("w-full text-sm", stackOnPhone)}
+              aria-label="Before and after the prepayment"
+            >
               <thead className="text-xs text-muted-foreground">
                 <tr>
                   <th />
@@ -568,7 +572,7 @@ export function DebtDetailClient({ d, today }: { d: DebtDetailDTO; today: string
           </CardDescription>
         </CardHeader>
         <CardContent className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className={cn("w-full text-sm", stackOnPhone)}>
             <thead className="text-left text-xs text-muted-foreground">
               <tr>
                 <th className="py-2 pr-3 font-medium">#</th>
@@ -588,24 +592,26 @@ export function DebtDetailClient({ d, today }: { d: DebtDetailDTO; today: string
                   data-state={r.state}
                 >
                   <td className="py-1.5 pr-3 tabular-nums">{r.no ?? "—"}</td>
-                  <td className="py-1.5 pr-3 whitespace-nowrap">{fmtDate(r.date)}</td>
-                  <td className="py-1.5 pr-3 text-right">
+                  <td data-label="Date" className="py-1.5 pr-3 whitespace-nowrap">
+                    {fmtDate(r.date)}
+                  </td>
+                  <td data-label="Payment" className="py-1.5 pr-3 text-right">
                     <Money valueMinor={r.emiMinor} currency={d.currency} />
                   </td>
-                  <td className="py-1.5 pr-3 text-right">
+                  <td data-label="Interest" className="py-1.5 pr-3 text-right">
                     <Money valueMinor={r.interestMinor} currency={d.currency} />
                   </td>
-                  <td className="py-1.5 pr-3 text-right">
+                  <td data-label="Principal" className="py-1.5 pr-3 text-right">
                     <Money valueMinor={r.principalMinor} currency={d.currency} />
                   </td>
-                  <td className="py-1.5 pr-3 text-right">
+                  <td data-label="Balance after" className="py-1.5 pr-3 text-right">
                     {r.closingMinor === null ? (
                       "—"
                     ) : (
                       <Money valueMinor={r.closingMinor} currency={d.currency} />
                     )}
                   </td>
-                  <td className="py-1.5 whitespace-nowrap">
+                  <td data-label="Status" className="py-1.5 whitespace-nowrap">
                     {r.state === "projected" ? (
                       "Planned"
                     ) : (

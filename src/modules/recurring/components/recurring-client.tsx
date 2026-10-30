@@ -44,6 +44,8 @@ import {
   type DipConfirmation,
 } from "@/modules/transactions/components/dip-confirm-dialog";
 import type { ActionWarning } from "@/server/errors";
+import { stackOnPhone } from "@/components/shared/mobile/stack-table";
+import { cn } from "@/lib/utils";
 
 export interface RecurringOptions {
   todayKey: string;
@@ -464,7 +466,7 @@ export function RecurringClient({
       {rules.length ? (
         <Card>
           <CardContent className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className={cn("w-full text-sm", stackOnPhone)}>
               <thead className="text-left text-xs text-muted-foreground">
                 <tr>
                   <th className="py-2 pr-3 font-medium">Name</th>
@@ -496,7 +498,7 @@ export function RecurringClient({
                           : (r.fromAccount ?? r.toAccount)?.name}
                     </td>
                     <td className="py-2 pr-3">{frequencyLabel(r)}</td>
-                    <td className="py-2 pr-3 whitespace-nowrap">
+                    <td data-label="Next due" className="py-2 pr-3 whitespace-nowrap">
                       {fmtDate(r.nextDueDate)}
                       {r.overdue ? (
                         <span className="block text-xs text-destructive">Overdue</span>
@@ -536,6 +538,7 @@ export function RecurringClient({
                             <Button
                               size="sm"
                               variant="ghost"
+                              className="max-md:min-w-11"
                               aria-label={`Pause ${r.name}`}
                               onClick={() =>
                                 run(() => setRuleStatusAction(r.id, "paused"), "Paused")

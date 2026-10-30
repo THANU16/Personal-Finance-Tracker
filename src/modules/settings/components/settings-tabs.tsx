@@ -3,8 +3,9 @@
 import { ImportHistoryList } from "@/modules/imports/components/import-history-list";
 import type { ImportHistoryItem } from "@/modules/imports/valuation-service";
 import Link from "next/link";
+import { cn } from "@/lib/utils";
 import { Upload } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AssetClassesManager } from "@/modules/asset-classes/components/asset-classes-manager";
 import type { AssetClassDTO } from "@/modules/asset-classes/schemas";
@@ -59,7 +60,7 @@ export function SettingsTabs({
   );
   return (
     <Tabs defaultValue="preferences">
-      <TabsList className="max-w-full overflow-x-auto">
+      <TabsList className="max-w-full overflow-x-auto max-md:justify-start">
         <TabsTrigger value="profile">Profile</TabsTrigger>
         <TabsTrigger value="preferences">Preferences</TabsTrigger>
         <TabsTrigger value="categories">Categories</TabsTrigger>
@@ -97,9 +98,12 @@ export function SettingsTabs({
             A bank statement (CSV) or the Excel export of the Money Manager app: map it, preview it
             and import it in one step. Every import can be undone.
           </p>
-          <Button className="mt-3" variant="outline" render={<Link href="/transactions/import" />}>
+          <Link
+            href="/transactions/import"
+            className={cn(buttonVariants({ variant: "outline" }), "mt-3")}
+          >
             <Upload aria-hidden /> Import data
-          </Button>
+          </Link>
         </div>
         <div className="max-w-xl rounded-lg border p-4">
           <h2 className="font-medium">Import valuation history</h2>
@@ -107,13 +111,12 @@ export function SettingsTabs({
             Past values of a holding from a CSV (one file per asset), with deposits and withdrawals
             marked from the jumps.
           </p>
-          <Button
-            className="mt-3"
-            variant="outline"
-            render={<Link href="/assets/import-valuations" />}
+          <Link
+            href="/assets/import-valuations"
+            className={cn(buttonVariants({ variant: "outline" }), "mt-3")}
           >
             <Upload aria-hidden /> Import values
-          </Button>
+          </Link>
         </div>
         <div className="max-w-3xl space-y-2">
           <h2 className="font-medium">Import history</h2>

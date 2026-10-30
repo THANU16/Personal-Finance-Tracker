@@ -9,7 +9,7 @@ import { toast } from "sonner";
 import { FormField } from "@/components/shared/form-field";
 import { Money } from "@/components/shared/money";
 import { MoneyInput } from "@/components/shared/money-input";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
@@ -160,23 +160,21 @@ export function BudgetsClient({ data }: { data: BudgetMonthDTO }) {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <nav aria-label="Month" className="flex items-center gap-1">
-          <Button
-            variant="ghost"
-            size="icon"
+          <Link
+            href={`/budgets?month=${previousMonth(data.month)}`}
             aria-label="Previous month"
-            render={<Link href={`/budgets?month=${previousMonth(data.month)}`} />}
+            className={buttonVariants({ variant: "ghost", size: "icon" })}
           >
             <ChevronLeft aria-hidden />
-          </Button>
+          </Link>
           <span className="min-w-36 text-center font-medium">{monthLabel(data.month)}</span>
-          <Button
-            variant="ghost"
-            size="icon"
+          <Link
+            href={`/budgets?month=${nextMonth(data.month)}`}
             aria-label="Next month"
-            render={<Link href={`/budgets?month=${nextMonth(data.month)}`} />}
+            className={buttonVariants({ variant: "ghost", size: "icon" })}
           >
             <ChevronRight aria-hidden />
-          </Button>
+          </Link>
         </nav>
         <div className="flex flex-wrap gap-2">
           <Button

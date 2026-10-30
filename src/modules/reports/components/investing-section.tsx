@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import type { MonthlyReview } from "@/domain/reports";
 import { cn } from "@/lib/utils";
+import { stackOnPhone } from "@/components/shared/mobile/stack-table";
 
 // Monthly summary → Investing (owner request): money in and out, investment income (paid out and
 // reinvested), how the portfolio value moved, and each holding's month.
@@ -110,7 +111,10 @@ export function InvestingSection({ review: r }: { review: MonthlyReview }) {
           <p className="text-xs text-muted-foreground">
             {inv.staleCount} holding{inv.staleCount === 1 ? " has" : "s have"} an old value, so
             {inv.staleCount === 1 ? " its" : " their"} market change shows as 0.{" "}
-            <Link href="/assets" className="underline underline-offset-4">
+            <Link
+              href="/assets"
+              className="underline underline-offset-4 max-md:-my-3.5 max-md:py-3.5"
+            >
               Update values
             </Link>
           </p>
@@ -121,7 +125,7 @@ export function InvestingSection({ review: r }: { review: MonthlyReview }) {
         ) : (
           <div className="grid gap-2">
             <div className="overflow-x-auto rounded-lg border">
-              <table className="w-full text-sm">
+              <table className={cn("w-full text-sm", stackOnPhone)}>
                 <caption className="sr-only">Investing by holding</caption>
                 <thead className="bg-muted text-xs text-muted-foreground">
                   <tr>
@@ -149,15 +153,28 @@ export function InvestingSection({ review: r }: { review: MonthlyReview }) {
                   {rows.map((h) => (
                     <tr key={h.holdingId} className="border-t">
                       <td className="px-3 py-2">
-                        <Link href={`/assets/${h.holdingId}`} className="hover:underline">
+                        <Link
+                          href={`/assets/${h.holdingId}`}
+                          className="hover:underline max-md:-my-3.5 max-md:py-3.5"
+                        >
                           {h.name}
                         </Link>
                       </td>
-                      <td className={NUM}>{m(h.boughtMinor)}</td>
-                      <td className={NUM}>{m(h.soldMinor)}</td>
-                      <td className={NUM}>{m(h.incomeMinor)}</td>
-                      <td className={NUM}>{m(h.feesMinor)}</td>
-                      <td className={NUM}>{m(h.endValueMinor)}</td>
+                      <td data-label="Bought" className={NUM}>
+                        {m(h.boughtMinor)}
+                      </td>
+                      <td data-label="Sold" className={NUM}>
+                        {m(h.soldMinor)}
+                      </td>
+                      <td data-label="Income" className={NUM}>
+                        {m(h.incomeMinor)}
+                      </td>
+                      <td data-label="Fees" className={NUM}>
+                        {m(h.feesMinor)}
+                      </td>
+                      <td data-label="Value at month end" className={NUM}>
+                        {m(h.endValueMinor)}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

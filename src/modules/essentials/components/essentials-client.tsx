@@ -61,6 +61,7 @@ import {
 } from "@/modules/essentials/actions";
 import type { PolicyType, PremiumFrequency } from "@/modules/essentials/model";
 import type { EssentialsDTO, PolicyDTO } from "@/modules/essentials/service";
+import { stackOnPhone } from "@/components/shared/mobile/stack-table";
 
 type Option = { id: string; label: string };
 type AccountOption = { id: string; name: string; currency: string };
@@ -464,7 +465,10 @@ function EmergencyCard({
                   className="flex items-center justify-between gap-2 px-3 py-2"
                 >
                   <span className="min-w-0">
-                    <Link href={s.href} className="underline-offset-4 hover:underline">
+                    <Link
+                      href={s.href}
+                      className="underline-offset-4 hover:underline max-md:-my-3.5 max-md:py-3.5"
+                    >
                       {s.name}
                     </Link>{" "}
                     <span className="text-xs text-muted-foreground">
@@ -704,7 +708,7 @@ function InsuranceCard({ data }: { data: EssentialsDTO }) {
     });
   }
   return (
-    <Card>
+    <Card className="min-w-0">
       <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-2">
         <div>
           <CardTitle>Insurance</CardTitle>
@@ -739,7 +743,10 @@ function InsuranceCard({ data }: { data: EssentialsDTO }) {
             ins.healthTargetMinor === null ? (
               <>
                 Set a health cover target in{" "}
-                <Link href="/settings" className="underline underline-offset-4">
+                <Link
+                  href="/settings"
+                  className="underline underline-offset-4 max-md:-my-3.5 max-md:py-3.5"
+                >
                   Settings
                 </Link>
                 .
@@ -755,8 +762,9 @@ function InsuranceCard({ data }: { data: EssentialsDTO }) {
             description="Add life, health and other policies to track cover and renewals."
           />
         ) : (
-          <div className="overflow-x-auto rounded-lg border">
-            <table className="w-full text-sm">
+          <div className="relative min-w-0 overflow-x-auto rounded-lg border max-md:px-3">
+            {/* relative: the sr-only caption is absolutely positioned and must be clipped here */}
+            <table className={cn("w-full text-sm", stackOnPhone)}>
               <caption className="sr-only">Insurance policies</caption>
               <thead className="bg-muted text-xs text-muted-foreground">
                 <tr>
@@ -791,16 +799,16 @@ function InsuranceCard({ data }: { data: EssentialsDTO }) {
                         {p.status === "lapsed" ? " · lapsed" : ""}
                       </div>
                     </td>
-                    <td className="px-3 py-2 text-right tabular-nums">
+                    <td data-label="Cover" className="px-3 py-2 text-right tabular-nums">
                       <Money valueMinor={p.coverMinor} currency={ccy} />
                     </td>
-                    <td className="px-3 py-2 text-right tabular-nums">
+                    <td data-label="Premium" className="px-3 py-2 text-right tabular-nums">
                       <Money valueMinor={p.premiumMinor} currency={ccy} />
                       <div className="text-xs text-muted-foreground">
                         {FREQ_LABEL[p.premiumFrequency]}
                       </div>
                     </td>
-                    <td className="px-3 py-2">
+                    <td data-label="Renews" className="px-3 py-2">
                       {fmtDate(p.renewalDate)}
                       {p.status === "active" && p.daysToRenewal >= 0 && p.daysToRenewal <= 30 ? (
                         <Badge variant="outline" className="ml-2">
@@ -883,7 +891,10 @@ function DebtCard({ data }: { data: EssentialsDTO }) {
         <p className="text-xs text-muted-foreground">
           Up to 30% scores full points; 60% or more scores none.
         </p>
-        <Link href="/debts" className="text-sm underline underline-offset-4">
+        <Link
+          href="/debts"
+          className="text-sm underline underline-offset-4 max-md:-my-3.5 max-md:py-3.5"
+        >
           Debts
         </Link>
       </CardContent>

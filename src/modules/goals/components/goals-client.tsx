@@ -317,7 +317,7 @@ export function GoalsClient({ data }: { data: GoalsOverviewDTO }) {
                   </dd>
                 </dl>
                 <details>
-                  <summary className="cursor-pointer text-muted-foreground">
+                  <summary className="cursor-pointer text-muted-foreground max-md:py-3.5">
                     Linked items ({g.links.length})
                   </summary>
                   <ul className="mt-1 space-y-0.5">

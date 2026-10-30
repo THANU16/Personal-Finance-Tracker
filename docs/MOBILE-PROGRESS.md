@@ -8,8 +8,8 @@
 | M3 Home & Quick add | ✅ | 2026-10-29 | 01c0dfd |
 | M4 Activity & Accounts | ✅ | 2026-10-29 | 123a99c |
 | M5 Assets & valuations | ✅ | 2026-10-30 | 860929b |
-| M6 SIP, Rebalancing, Opportunity Fund | ✅ | 2026-10-30 | feat(mobile-M6) |
-| M7 Remaining pages | ⬜ | | |
+| M6 SIP, Rebalancing, Opportunity Fund | ✅ | 2026-10-30 | e13fbc9 |
+| M7 Remaining pages | ✅ | 2026-10-30 | feat(mobile-M7) |
 | M8 PWA, performance, a11y, QA | ⬜ | | |
 
 Status values: ⬜ not started · 🟡 in progress · ✅ done
@@ -150,8 +150,30 @@ Status values: ⬜ not started · 🟡 in progress · ✅ done
   `stackOnPhone` (the 640px minimum width applies from md only).
 - **M6 — Opportunity Fund gauge deferred** (owner decision, 2026-10-30): drawdown stays a stat card
   plus the levels chart.
+- **M7 — `stackOnPhone` labels:** cells with `data-label="EMI"` show the label before the value on
+  phones (the header row is hidden there); desktop ignores the attribute. Debts, loan schedule and
+  prepayment preview, recurring, essentials policies, forecast balances and every report table
+  stack this way (no sideways scrolling on any M7 page at 360/375/393).
+- **M7 — ESS-01 fixed on desktop too** (owner decision, 2026-10-30): the insurance card is `min-w-0`
+  and the table wrapper `relative`. Lesson: an absolutely positioned `sr-only` caption escapes an
+  `overflow-x-auto` wrapper that is not `relative` and widens the page (that was the 75px at 1440).
+  The essentials page is now 1440 wide on desktop (was 1515); content inside 1440 is identical.
+- **M7 — inline text links** (notifications, debts, essentials, forecast, reports) get a 44px hit
+  area on phones with `max-md:-my-3.5 max-md:py-3.5` (layout unchanged).
+- **M7 — reports:** the seven report links are one 44px row that scrolls sideways; Export CSV is a
+  real `<a>` styled with `buttonVariants`.
+- **M7 — settings:** section tabs are start-aligned on phones (the active tab is no longer cut off)
+  and Save preferences / Discard are pinned above the tab bar (`PinnedOnPhone`). Budgets month
+  arrows and other link-buttons on the touched pages are real links (fewer `nativeButton` warnings).
+- **M7 — onboarding:** timezone `<select>` is 16px / 44px on phones (no iOS zoom).
+- **M7 — desktop check:** pixel diff against a same-day run of the M6 code — identical except
+  notification times and the essentials width above.
 
 ## Deviations from docs
+- M7 (owner: deferred, 2026-10-30): loan schedule is not grouped by year (rows stack, all columns
+  visible); Settings keeps tabs instead of grouped rows pushing to sub-pages; notifications have no
+  swipe actions (labelled 44px buttons instead). Debts keeps its stat cards and Record payment is
+  not sticky; Export CSV downloads directly rather than via a share sheet.
 - M6: no Opportunity Fund drawdown gauge on phones yet (owner: deferred).
 - M3: Quick add keeps "Paid from"/"Received into" before Category (DOM order kept so keyboard
   focus follows the screen); docs/07 lists category before account. The recent-categories grid
@@ -160,8 +182,6 @@ Status values: ⬜ not started · 🟡 in progress · ✅ done
   batch). Proposed for M4: upload the e2e Money Manager fixture during `npm run screens`.
 
 ## Open questions for the owner
-- ESS-01: the essentials insurance table also scrolls the page 75px sideways at 1440. Fixing it
-  changes desktop rendering — OK to fix in M7?
 - OPP-03: `/opportunity-fund` logs a server→client serialisation error (not a mobile issue). Fix it
   now as a separate change, or later?
 
@@ -174,14 +194,15 @@ Status values: ⬜ not started · 🟡 in progress · ✅ done
 - Screenshot runs on `next dev` can log a hydration warning about `caret-color: transparent` on a
   focused input: Playwright hides the caret while the page is still hydrating. Not an app issue.
 - Pre-existing, date-dependent e2e failures (not mobile): `tests/e2e/allocation.spec.ts` "Tilt next
-  period" and `tests/e2e/sip.spec.ts` "Execute Monthly funds" fail on the 29th–31st. A new SIP plan defaults to day `min(28, today)` starting today, so
+  period", `tests/e2e/sip.spec.ts` "Execute Monthly funds" and `tests/e2e/onboarding.spec.ts`
+  (SIP execute step) fail on the 29th–31st. A new SIP plan defaults to day `min(28, today)` starting today, so
   its first period is ~30 days out, beyond `GENERATE_AHEAD_DAYS = 7`; no `due` execution exists and
   the rebalance panel shows "No SIP plan has an upcoming period". Fix belongs in the test (set the
   day) or a product decision on the default day — owner to decide.
 - The screens check counts Switch (32×18) and checkbox/radio controls as small: their 44px touch
   area is a pseudo-element the check cannot measure.
 - Dev-only: the Next dev-tools badge appears bottom-left over the tab bar in screenshots.
-- Base UI `nativeButton` warning remains on 8 pages (other `Button render={<Link>}` uses); X-17.
+- Base UI `nativeButton` warning remains on a few pages (other `Button render={<Link>}` uses); X-17.
 - Detail pages still show their in-page "← Accounts"/"← Assets" link under the new top-bar back
   chevron (ACC-03, HLD); removed in their page phases.
 - Sub-pages (`/sip/history`, `/sip/plans/new`, `/assets/update-values`, `/assets/import-valuations`,

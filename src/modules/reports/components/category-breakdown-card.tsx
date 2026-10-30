@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { ReviewCategory } from "@/domain/reports";
 import { formatPercentBp } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { stackOnPhone } from "@/components/shared/mobile/stack-table";
 
 // Monthly summary (owner request): every income / expense category, top 5 first, with a donut of
 // the top 5 + "Other". Colours follow the fixed categorical order; the table is the legend.
@@ -130,7 +131,7 @@ export function CategoryBreakdownCard({
               </figcaption>
             </figure>
             <div className="overflow-x-auto rounded-lg border">
-              <table className="w-full text-sm">
+              <table className={cn("w-full text-sm", stackOnPhone)}>
                 <caption className="sr-only">{title}</caption>
                 <thead className="bg-muted text-xs text-muted-foreground">
                   <tr>
@@ -164,10 +165,12 @@ export function CategoryBreakdownCard({
                       <td className={NUM}>
                         <Money valueMinor={c.amountMinor} currency={currency} />
                       </td>
-                      <td className={cn(NUM, "text-muted-foreground")}>
+                      <td data-label="Share" className={cn(NUM, "text-muted-foreground")}>
                         {c.shareBp === null ? "—" : formatPercentBp(c.shareBp)}
                       </td>
-                      <td className={NUM}>{changeText(c)}</td>
+                      <td data-label="vs previous" className={NUM}>
+                        {changeText(c)}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

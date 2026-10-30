@@ -7,7 +7,7 @@ import { Check, Database, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { FormField } from "@/components/shared/form-field";
 import { Money } from "@/components/shared/money";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -132,7 +132,7 @@ export function OnboardingWizard(p: Props) {
               <FormField id="ob-timezone" label="Timezone" error={err("timezone")}>
                 <select
                   id="ob-timezone"
-                  className="h-9 w-full rounded-md border bg-background px-2 text-sm"
+                  className="h-11 w-full rounded-md border bg-background px-2 text-base md:h-9 md:text-sm"
                   value={timezone}
                   onChange={(e) => setTimezone(e.target.value)}
                 >
@@ -253,9 +253,9 @@ export function OnboardingWizard(p: Props) {
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-wrap gap-2">
-            <Button variant="outline" render={<Link href="/sip/plans/new" />}>
+            <Link href="/sip/plans/new" className={buttonVariants({ variant: "outline" })}>
               Create a SIP plan
-            </Button>
+            </Link>
             <Button onClick={() => setStep(4)}>Continue</Button>
           </CardContent>
         </Card>

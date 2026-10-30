@@ -51,7 +51,10 @@ function Row({ n }: { n: Item }) {
           onClick={() => {
             if (!n.read) void markReadAction(n.id);
           }}
-          className={cn("underline-offset-4 hover:underline", !n.read && "font-semibold")}
+          className={cn(
+            "underline-offset-4 hover:underline max-md:-my-3.5 max-md:py-3.5",
+            !n.read && "font-semibold",
+          )}
         >
           {n.title}
         </Link>

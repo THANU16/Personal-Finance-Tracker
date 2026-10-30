@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Download } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { utcToBusinessDate } from "@/domain/dates";
 import { cn } from "@/lib/utils";
 import { getPortfolio } from "@/modules/holdings/queries";
@@ -139,7 +139,7 @@ export async function ReportsContent({ searchParams }: { searchParams: SearchPar
     <div className="grid gap-4">
       <nav
         aria-label="Reports"
-        className="flex w-fit max-w-full flex-wrap rounded-lg bg-muted p-0.5 text-sm"
+        className="flex w-fit max-w-full min-w-0 flex-wrap rounded-lg bg-muted p-0.5 text-sm max-md:flex-nowrap max-md:overflow-x-auto"
       >
         {REPORTS.map((key) => (
           <Link
@@ -147,7 +147,7 @@ export async function ReportsContent({ searchParams }: { searchParams: SearchPar
             href={key === "monthly" ? "/reports" : `/reports?tab=${key}`}
             aria-current={key === tab ? "page" : undefined}
             className={cn(
-              "rounded-md px-3 py-1",
+              "rounded-md px-3 py-1 max-md:inline-flex max-md:min-h-11 max-md:shrink-0 max-md:items-center max-md:whitespace-nowrap",
               key === tab
                 ? "bg-background font-medium shadow-sm"
                 : "text-muted-foreground hover:text-foreground",
@@ -161,9 +161,13 @@ export async function ReportsContent({ searchParams }: { searchParams: SearchPar
         <h2 className="text-lg font-medium">{LABELS[tab]}</h2>
         <div className="flex flex-wrap items-center gap-2">
           {picker}
-          <Button variant="outline" size="sm" render={<a href={exportHref} download />}>
+          <a
+            href={exportHref}
+            download
+            className={buttonVariants({ variant: "outline", size: "sm" })}
+          >
             <Download aria-hidden /> Export CSV
-          </Button>
+          </a>
         </div>
       </div>
       {body}

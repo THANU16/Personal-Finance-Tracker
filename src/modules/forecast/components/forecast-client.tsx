@@ -33,6 +33,7 @@ import type { Insight } from "@/domain/insights";
 import { formatPercentBp } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { ForecastDTO, ProjectionDTO } from "@/modules/forecast/service";
+import { stackOnPhone } from "@/components/shared/mobile/stack-table";
 
 const S1 = "var(--viz-series-1)";
 const S2 = "var(--viz-series-2)";
@@ -66,7 +67,7 @@ function HorizonNav({ horizon }: { horizon: number }) {
           href={h === 30 ? "/forecast" : `/forecast?days=${h}`}
           aria-current={h === horizon ? "page" : undefined}
           className={cn(
-            "rounded-md px-3 py-1",
+            "rounded-md px-3 py-1 max-md:inline-flex max-md:min-h-11 max-md:items-center",
             h === horizon
               ? "bg-background font-medium shadow-sm"
               : "text-muted-foreground hover:text-foreground",
@@ -214,7 +215,7 @@ function ForecastCard({ f }: { f: ForecastDTO }) {
         <BalanceChart f={f} />
         {f.accounts.length ? (
           <div className="overflow-x-auto rounded-lg border">
-            <table className="w-full text-sm">
+            <table className={cn("w-full text-sm", stackOnPhone)}>
               <caption className="sr-only">Lowest point per account</caption>
               <thead className="bg-muted text-xs text-muted-foreground">
                 <tr>
@@ -241,22 +242,22 @@ function ForecastCard({ f }: { f: ForecastDTO }) {
                     <td className="px-3 py-2">
                       <Link
                         href={`/accounts/${a.id}`}
-                        className="underline-offset-4 hover:underline"
+                        className="underline-offset-4 hover:underline max-md:-my-3.5 max-md:py-3.5"
                       >
                         {a.name}
                       </Link>
                     </td>
-                    <td className="px-3 py-2 text-right tabular-nums">
+                    <td data-label="Today" className="px-3 py-2 text-right tabular-nums">
                       <Money valueMinor={a.startMinor} currency={f.currency} />
                     </td>
-                    <td className="px-3 py-2 text-right tabular-nums">
+                    <td data-label="Lowest" className="px-3 py-2 text-right tabular-nums">
                       <Money valueMinor={a.lowestMinor} currency={f.currency} />
                       <div className="text-xs text-muted-foreground">{fmtDay(a.lowestDate)}</div>
                     </td>
-                    <td className="px-3 py-2 text-right tabular-nums">
+                    <td data-label="End" className="px-3 py-2 text-right tabular-nums">
                       <Money valueMinor={a.endMinor} currency={f.currency} />
                     </td>
-                    <td className="px-3 py-2">
+                    <td data-label="Status" className="px-3 py-2">
                       <BreachBadge breach={a.breach} />
                     </td>
                   </tr>

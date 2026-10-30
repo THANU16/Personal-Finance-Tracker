@@ -38,6 +38,7 @@ import type { FlowPoint } from "@/domain/analytics";
 import { CategoryBreakdownCard } from "@/modules/reports/components/category-breakdown-card";
 import { InvestingSection } from "@/modules/reports/components/investing-section";
 import { formatPercentBp } from "@/lib/format";
+import { stackOnPhone } from "@/components/shared/mobile/stack-table";
 import { cn } from "@/lib/utils";
 import type { Portfolio } from "@/modules/holdings/queries";
 import type {
@@ -71,8 +72,8 @@ function Table({
   foot?: React.ReactNode;
 }) {
   return (
-    <div className="overflow-x-auto rounded-lg border">
-      <table className="w-full text-sm">
+    <div className="overflow-x-auto rounded-lg border max-md:px-3">
+      <table className={cn("w-full text-sm", stackOnPhone)}>
         <caption className="sr-only">{caption}</caption>
         <thead className="bg-muted text-xs text-muted-foreground">{head}</thead>
         <tbody>{children}</tbody>
@@ -406,24 +407,28 @@ export function CategoriesView({ data }: { data: CategoriesReport }) {
           <td className={cn(TD, "font-medium")}>
             <Link
               href={`/transactions?category=${r.categoryId}&from=${data.from}-01`}
-              className="underline-offset-4 hover:underline"
+              className="underline-offset-4 hover:underline max-md:-my-3.5 max-md:py-3.5"
             >
               {r.name}
             </Link>
           </td>
-          <td className={NUM}>
+          <td data-label="Spent" className={NUM}>
             <Money valueMinor={r.amountMinor} currency={ccy} />
           </td>
-          <td className={NUM}>{pct(r.shareBp)}</td>
-          <td className={NUM}>
+          <td data-label="Share" className={NUM}>
+            {pct(r.shareBp)}
+          </td>
+          <td data-label="Previous" className={NUM}>
             <Money valueMinor={r.previousMinor} currency={ccy} />
           </td>
-          <td className={NUM}>{r.changeBp === null ? "—" : signedPct(r.changeBp)}</td>
+          <td data-label="Change" className={NUM}>
+            {r.changeBp === null ? "—" : signedPct(r.changeBp)}
+          </td>
         </tr>,
         ...r.children.map((c) => (
           <tr key={`${r.categoryId}-${c.categoryId}`} className="text-muted-foreground">
             <td className={cn(TD, "pl-8")}>{c.name}</td>
-            <td className={NUM}>
+            <td data-label="Spent" className={NUM}>
               <Money valueMinor={c.amountMinor} currency={ccy} />
             </td>
             <td colSpan={3} />
@@ -495,18 +500,20 @@ export function PerformanceView({ data }: { data: Portfolio }) {
         {data.classes.flatMap((c) => [
           <tr key={c.id} className="border-t bg-muted/30 font-medium">
             <td className={TD}>{c.name}</td>
-            <td className={NUM}>
+            <td data-label="Invested" className={NUM}>
               <Money valueMinor={c.investedMinor} currency={t.currency} />
             </td>
-            <td className={NUM}>
+            <td data-label="Value" className={NUM}>
               <Money valueMinor={c.valueMinor} currency={t.currency} />
             </td>
-            <td className={NUM}>
+            <td data-label="Unrealised" className={NUM}>
               <Money valueMinor={c.unrealizedGainMinor} currency={t.currency} signed />
             </td>
-            <td className={NUM} />
-            <td className={NUM} />
-            <td className={NUM}>{pct(c.xirrBp)}</td>
+            <td data-label="Realised" className={NUM} />
+            <td data-label="Income" className={NUM} />
+            <td data-label="XIRR" className={NUM}>
+              {pct(c.xirrBp)}
+            </td>
           </tr>,
           ...c.holdings.map((h) => (
             <tr
@@ -514,7 +521,10 @@ export function PerformanceView({ data }: { data: Portfolio }) {
               className={cn("border-t", h.status === "closed" && "text-muted-foreground")}
             >
               <td className={cn(TD, "pl-6")}>
-                <Link href={`/assets/${h.id}`} className="underline-offset-4 hover:underline">
+                <Link
+                  href={`/assets/${h.id}`}
+                  className="underline-offset-4 hover:underline max-md:-my-3.5 max-md:py-3.5"
+                >
                   {h.name}
                 </Link>
                 {h.status === "closed" ? " (closed)" : ""}
@@ -582,16 +592,16 @@ export function RealisedView({ data }: { data: RealisedReport }) {
           <td className={TD} colSpan={2}>
             Total {data.year}
           </td>
-          <td className={NUM}>
+          <td data-label="Redeemed" className={NUM}>
             <Money valueMinor={data.totals.amountMinor} currency={ccy} />
           </td>
-          <td className={NUM}>
+          <td data-label="Fee" className={NUM}>
             <Money valueMinor={data.totals.feeMinor} currency={ccy} />
           </td>
-          <td className={NUM}>
+          <td data-label="Cost removed" className={NUM}>
             <Money valueMinor={data.totals.costRemovedMinor} currency={ccy} />
           </td>
-          <td className={NUM}>
+          <td data-label="Realised gain" className={NUM}>
             <Money valueMinor={data.totals.realizedGainMinor} currency={ccy} signed />
           </td>
         </tr>
@@ -601,20 +611,23 @@ export function RealisedView({ data }: { data: RealisedReport }) {
         <tr key={l.id} className="border-t">
           <td className={TD}>{format(parseISO(l.date), "d MMM yyyy")}</td>
           <td className={TD}>
-            <Link href={`/assets/${l.holdingId}`} className="underline-offset-4 hover:underline">
+            <Link
+              href={`/assets/${l.holdingId}`}
+              className="underline-offset-4 hover:underline max-md:-my-3.5 max-md:py-3.5"
+            >
               {l.holdingName}
             </Link>
           </td>
-          <td className={NUM}>
+          <td data-label="Redeemed" className={NUM}>
             <Money valueMinor={l.amountMinor} currency={ccy} />
           </td>
-          <td className={NUM}>
+          <td data-label="Fee" className={NUM}>
             <Money valueMinor={l.feeMinor} currency={ccy} />
           </td>
-          <td className={NUM}>
+          <td data-label="Cost removed" className={NUM}>
             <Money valueMinor={l.costRemovedMinor} currency={ccy} />
           </td>
-          <td className={NUM}>
+          <td data-label="Realised gain" className={NUM}>
             <Money valueMinor={l.realizedGainMinor} currency={ccy} signed />
           </td>
         </tr>
@@ -651,16 +664,16 @@ export function IncomeView({ data }: { data: IncomeReport }) {
       foot={
         <tr>
           <td className={TD}>Total {data.year}</td>
-          <td className={NUM}>
+          <td data-label="Gross" className={NUM}>
             <Money valueMinor={data.totals.grossMinor} currency={ccy} />
           </td>
-          <td className={NUM}>
+          <td data-label="Tax withheld" className={NUM}>
             <Money valueMinor={data.totals.taxMinor} currency={ccy} />
           </td>
-          <td className={NUM}>
+          <td data-label="Net" className={NUM}>
             <Money valueMinor={data.totals.netMinor} currency={ccy} />
           </td>
-          <td className={NUM}>
+          <td data-label="Reinvested" className={NUM}>
             <Money valueMinor={data.totals.reinvestedMinor} currency={ccy} />
           </td>
         </tr>
@@ -669,7 +682,10 @@ export function IncomeView({ data }: { data: IncomeReport }) {
       {data.rows.map((r) => (
         <tr key={r.holdingId} className="border-t">
           <td className={TD}>
-            <Link href={`/assets/${r.holdingId}`} className="underline-offset-4 hover:underline">
+            <Link
+              href={`/assets/${r.holdingId}`}
+              className="underline-offset-4 hover:underline max-md:-my-3.5 max-md:py-3.5"
+            >
               {r.holdingName}
             </Link>
             <span className="block text-xs text-muted-foreground">

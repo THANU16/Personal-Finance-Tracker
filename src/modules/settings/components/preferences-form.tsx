@@ -23,6 +23,7 @@ import { PercentInput } from "@/components/shared/percent-input";
 import { COMMON_CURRENCIES, LOCALES } from "@/lib/constants";
 import { updateSettingsAction } from "@/modules/settings/actions";
 import { updateSettingsSchema, type SettingsDTO } from "@/modules/settings/schemas";
+import { PinnedOnPhone } from "@/components/shared/mobile/pinned-on-phone";
 
 const formSchema = updateSettingsSchema
   .required()
@@ -514,7 +515,7 @@ export function PreferencesForm({
         </FormField>
       </Section>
 
-      <div className="flex justify-end gap-2">
+      <PinnedOnPhone className="flex justify-end gap-2">
         <Button
           type="button"
           variant="outline"
@@ -526,7 +527,7 @@ export function PreferencesForm({
         <Button type="submit" disabled={!isDirty || isSubmitting}>
           {isSubmitting ? "Saving…" : "Save preferences"}
         </Button>
-      </div>
+      </PinnedOnPhone>
     </form>
   );
 }

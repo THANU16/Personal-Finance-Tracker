@@ -42,6 +42,7 @@ import {
   type DipConfirmation,
 } from "@/modules/transactions/components/dip-confirm-dialog";
 import type { ActionWarning } from "@/server/errors";
+import { stackOnPhone } from "@/components/shared/mobile/stack-table";
 
 const KIND_LABEL = {
   bank_loan: "Bank loan",
@@ -456,7 +457,7 @@ export function DebtsClient({ data }: { data: DebtsOverviewDTO }) {
             <CardTitle>Loans</CardTitle>
           </CardHeader>
           <CardContent className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className={cn("w-full text-sm", stackOnPhone)}>
               <thead className="text-left text-xs text-muted-foreground">
                 <tr>
                   <th className="py-2 pr-3 font-medium">Loan</th>
@@ -475,7 +476,10 @@ export function DebtsClient({ data }: { data: DebtsOverviewDTO }) {
                     className={cn("border-t", d.status === "closed" && "text-muted-foreground")}
                   >
                     <td className="py-2 pr-3">
-                      <Link href={`/debts/${d.id}`} className="font-medium hover:underline">
+                      <Link
+                        href={`/debts/${d.id}`}
+                        className="font-medium hover:underline max-md:-my-3.5 max-md:py-3.5"
+                      >
                         {d.name}
                       </Link>
                       <span className="block text-xs text-muted-foreground">
@@ -484,18 +488,22 @@ export function DebtsClient({ data }: { data: DebtsOverviewDTO }) {
                         {d.status === "closed" ? " · repaid" : ""}
                       </span>
                     </td>
-                    <td className="py-2 pr-3 text-right">
+                    <td data-label="Outstanding" className="py-2 pr-3 text-right">
                       <Money valueMinor={d.outstandingMinor} currency={d.currency} />
                     </td>
-                    <td className="py-2 pr-3 text-right">
+                    <td data-label="EMI" className="py-2 pr-3 text-right">
                       <Money valueMinor={d.emiMinor} currency={d.currency} />
                     </td>
-                    <td className="py-2 pr-3 text-right">{formatPercentBp(d.annualRateBp)}</td>
-                    <td className="py-2 pr-3 whitespace-nowrap">{fmtDate(d.nextDueDate)}</td>
-                    <td className="py-2 pr-3 whitespace-nowrap">
+                    <td data-label="Rate" className="py-2 pr-3 text-right">
+                      {formatPercentBp(d.annualRateBp)}
+                    </td>
+                    <td data-label="Next due" className="py-2 pr-3 whitespace-nowrap">
+                      {fmtDate(d.nextDueDate)}
+                    </td>
+                    <td data-label="Payoff" className="py-2 pr-3 whitespace-nowrap">
                       {fmtDate(d.projectedPayoffDate)}
                     </td>
-                    <td className="w-40 py-2">
+                    <td data-label="Repaid" className="w-40 py-2">
                       <div
                         className="h-2 rounded-full bg-muted"
                         role="img"
