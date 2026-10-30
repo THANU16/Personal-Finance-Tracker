@@ -25,7 +25,7 @@ import {
   useChartAxes,
 } from "@/components/charts/chart-kit";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -69,13 +69,13 @@ export function ExecutionActions({ id, label }: { id: string; label: string }) {
 
   return (
     <div className="flex gap-2">
-      <Button
-        size="sm"
-        render={<Link href={`/sip/execute/${id}`} />}
+      <Link
+        href={`/sip/execute/${id}`}
         aria-label={`Execute ${label}`}
+        className={buttonVariants({ size: "sm" })}
       >
         Execute
-      </Button>
+      </Link>
       <Button
         size="sm"
         variant="outline"

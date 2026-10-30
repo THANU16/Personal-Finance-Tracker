@@ -3,7 +3,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { Plus } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SipContent } from "@/modules/sip/components/sip-content";
 
@@ -16,9 +16,9 @@ export default function SipPage({ searchParams }: PageProps<"/sip">) {
         title="SIP planner"
         description="Regular investments: plan, execute, and see how consistent you are."
         actions={
-          <Button render={<Link href="/sip/plans/new" />}>
+          <Link href="/sip/plans/new" className={buttonVariants()}>
             <Plus aria-hidden /> New plan
-          </Button>
+          </Link>
         }
       />
       <Suspense fallback={<Skeleton className="h-72 rounded-xl" />}>

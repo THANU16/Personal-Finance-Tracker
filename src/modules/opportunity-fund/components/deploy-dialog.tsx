@@ -29,6 +29,8 @@ import {
   recordDeploymentAction,
 } from "@/modules/opportunity-fund/actions";
 import type { OpportunityOverviewDTO } from "@/modules/opportunity-fund/schemas";
+import { stackOnPhone } from "@/components/shared/mobile/stack-table";
+import { cn } from "@/lib/utils";
 
 interface Line {
   assetClassId: string;
@@ -176,8 +178,8 @@ export function DeployDialog({
             </Button>
 
             {lines.length ? (
-              <div className="overflow-x-auto rounded-lg border">
-                <table className="w-full text-sm">
+              <div className="overflow-x-auto rounded-lg border max-md:px-3">
+                <table className={cn("w-full text-sm", stackOnPhone)}>
                   <thead className="bg-muted/50 text-left text-xs text-muted-foreground">
                     <tr>
                       <th className="px-3 py-2 font-medium">Holding</th>

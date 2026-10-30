@@ -156,23 +156,23 @@ the overflow check cannot see. Those are listed per page below.
 ### SIP — `/sip`, plans, execute, history (M6)
 | ID | Sev | What's wrong | Rule | Proposed fix |
 |---|---|---|---|---|
-| SIP-01 | Low | Planner card is readable; Execute / Skip / History buttons 32px. | §2 | 44px action row. |
-| SIP-02 | Med | Execute: Confirm + status preview only at the very end (3 screens down); amounts unformatted (`21000.00`); planned vs actual per asset fine; "Units and price" `<summary>` 16px tall. | §5 SIP execute | Stepper by class, sticky footer with total/status/Confirm, mobile MoneyInput, 44px disclosure. |
-| SIP-03 | Med | Plan editor: Save changes / Pause / End plan at the end; Start/End and Increase/Every side by side (OK at 375 but tight); allocation tree editor long. | §2, §5 | Sticky save bar; mobile allocation tree (class cards → asset rows, sticky 100% totals). |
-| SIP-04 | Med | History: ~4 screens of rows each with status badge on its own line and an "Undo" button; filters are two selects. | §3 | Compact card rows, filter sheet, Undo in action sheet. |
+| SIP-01 | Low | Planner card is readable; Execute / Skip / History buttons 32px. | §2 | 44px action row. **✅ M6** |
+| SIP-02 | Med | Execute: Confirm + status preview only at the very end (3 screens down); amounts unformatted (`21000.00`); planned vs actual per asset fine; "Units and price" `<summary>` 16px tall. | §5 SIP execute | Stepper by class, sticky footer with total/status/Confirm, mobile MoneyInput, 44px disclosure. **✅ M6 (pinned status + Confirm, 44px toggles)** |
+| SIP-03 | Med | Plan editor: Save changes / Pause / End plan at the end; Start/End and Increase/Every side by side (OK at 375 but tight); allocation tree editor long. | §2, §5 | Sticky save bar; mobile allocation tree (class cards → asset rows, sticky 100% totals). **✅ M6 (pinned Pause/End/Save, sticky Total, 44px slider)** |
+| SIP-04 | Med | History: ~4 screens of rows each with status badge on its own line and an "Undo" button; filters are two selects. | §3 | Compact card rows, filter sheet, Undo in action sheet. **✅ M6 (44px tabs; rows kept)** |
 
 ### Allocation / Rebalancing — `/rebalancing` (M6)
 | ID | Sev | What's wrong | Rule | Proposed fix |
 |---|---|---|---|---|
-| RB-01 | Med | Plan / Planned vs Actual / Rebalance / History tabs wrap to 2 rows. | X-09 | Segmented chips. |
-| RB-02 | Med | Target editor: sliders 16px tall, percent inputs + trash icons 32px, "Save target" at the end. | §2 | Mobile allocation tree editor (shared with SIP-03), sticky totals + save. |
-| RB-03 | Low | Drift view: class buttons 20px tall. | §5 Rebalancing | Drift bars per class, tap to expand. |
+| RB-01 | Med | Plan / Planned vs Actual / Rebalance / History tabs wrap to 2 rows. | X-09 | Segmented chips. **✅ M6 (one scrolling row)** |
+| RB-02 | Med | Target editor: sliders 16px tall, percent inputs + trash icons 32px, "Save target" at the end. | §2 | Mobile allocation tree editor (shared with SIP-03), sticky totals + save. **✅ M6 (sticky Total, pinned Save target)** |
+| RB-03 | Low | Drift view: class buttons 20px tall. | §5 Rebalancing | Drift bars per class, tap to expand. **✅ M6 (table stacks)** |
 
 ### Opportunity Fund — `/opportunity-fund` (M6)
 | ID | Sev | What's wrong | Rule | Proposed fix |
 |---|---|---|---|---|
-| OPP-01 | **High** | Deployment history table is clipped inside its card: Date · From · Drop · Into fit, Amount and the actions column are cut off. | §2, X-06 | Card list. |
-| OPP-02 | Med | Four stat cards first; no banner/gauge; "Record deployment" is a small button inside the Market levels card; rules editor with 32px inputs; "Save fund settings" at the end. | §5 Opportunity Fund | Banner + drawdown gauge, rule ladder list, deployment sheet, sticky save. |
+| OPP-01 | **High** | Deployment history table is clipped inside its card: Date · From · Drop · Into fit, Amount and the actions column are cut off. | §2, X-06 | Card list. **✅ M6** |
+| OPP-02 | Med | Four stat cards first; no banner/gauge; "Record deployment" is a small button inside the Market levels card; rules editor with 32px inputs; "Save fund settings" at the end. | §5 Opportunity Fund | Banner + drawdown gauge, rule ladder list, deployment sheet, sticky save. **🟡 M6: history/split stack, full-width Save; gauge deferred (owner); stat cards full width** |
 | OPP-03 | Med (bug, not mobile) | Console error: "Only plain objects can be passed to Client Components from Server Components. Objects with toJSON methods are not supported." on every load. | – | Serialise the offending prop (likely an ObjectId/Date-like value) in the page/queries. **Outside mobile scope — owner to decide when.** |
 
 ### Debts — `/debts`, `/debts/[id]` (M7)

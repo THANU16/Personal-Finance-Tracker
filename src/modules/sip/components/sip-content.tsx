@@ -4,7 +4,7 @@ import { CalendarClock, Plus, Repeat } from "lucide-react";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Money } from "@/components/shared/money";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatPercentBp } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -50,14 +50,17 @@ function StatusChip({ status }: { status: string }) {
 
 function TabNav({ tab }: { tab: Tab }) {
   return (
-    <nav aria-label="SIP sections" className="mb-4 flex w-fit rounded-lg bg-muted p-0.5 text-sm">
+    <nav
+      aria-label="SIP sections"
+      className="mb-4 flex w-fit rounded-lg bg-muted p-0.5 text-sm max-md:max-w-full max-md:overflow-x-auto"
+    >
       {TABS.map(([key, label]) => (
         <Link
           key={key}
           href={key === "planner" ? "/sip" : `/sip?tab=${key}`}
           aria-current={tab === key ? "page" : undefined}
           className={cn(
-            "rounded-md px-3 py-1",
+            "rounded-md px-3 py-1 max-md:inline-flex max-md:min-h-11 max-md:shrink-0 max-md:items-center",
             tab === key
               ? "bg-background font-medium shadow-sm"
               : "text-muted-foreground hover:text-foreground",
@@ -94,9 +97,9 @@ export async function SipContent({ searchParams }: { searchParams: SearchParams 
             title="No SIP plans yet"
             description="Set up a monthly or weekly investment. It follows your target allocation unless you give it its own split."
             action={
-              <Button render={<Link href="/sip/plans/new" />}>
+              <Link href="/sip/plans/new" className={buttonVariants()}>
                 <Plus aria-hidden /> New plan
-              </Button>
+              </Link>
             }
           />
         ) : (
@@ -105,7 +108,10 @@ export async function SipContent({ searchParams }: { searchParams: SearchParams 
               <Card key={c.plan.id}>
                 <CardHeader>
                   <CardTitle className="flex items-center justify-between gap-2">
-                    <Link href={`/sip/plans/${c.plan.id}`} className="truncate hover:underline">
+                    <Link
+                      href={`/sip/plans/${c.plan.id}`}
+                      className="truncate hover:underline max-md:-my-3 max-md:py-3"
+                    >
                       {c.plan.name}
                     </Link>
                     <Badge variant={c.plan.status === "active" ? "secondary" : "outline"}>
@@ -158,13 +164,12 @@ export async function SipContent({ searchParams }: { searchParams: SearchParams 
                         label={`${c.plan.name} ${c.nextDue.dueDate}`}
                       />
                     ) : null}
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      render={<Link href={`/sip?tab=history&plan=${c.plan.id}`} />}
+                    <Link
+                      href={`/sip?tab=history&plan=${c.plan.id}`}
+                      className={buttonVariants({ size: "sm", variant: "ghost" })}
                     >
                       History
-                    </Button>
+                    </Link>
                   </div>
                 </CardContent>
               </Card>

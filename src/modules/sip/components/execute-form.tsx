@@ -26,6 +26,7 @@ import {
   type DipConfirmation,
 } from "@/modules/transactions/components/dip-confirm-dialog";
 import type { ActionWarning } from "@/server/errors";
+import { PinnedOnPhone } from "@/components/shared/mobile/pinned-on-phone";
 
 interface LineState {
   holdingId: string | null;
@@ -205,7 +206,7 @@ export function ExecuteForm({ view, todayKey }: { view: ExecuteView; todayKey: s
               type="button"
               aria-pressed={mode === m}
               onClick={() => switchMode(m)}
-              className={`rounded-md px-3 py-1 ${mode === m ? "bg-background font-medium shadow-sm" : "text-muted-foreground"}`}
+              className={`rounded-md px-3 py-1 max-md:min-h-11 ${mode === m ? "bg-background font-medium shadow-sm" : "text-muted-foreground"}`}
             >
               {m === "normal" ? "Normal split" : "Drift-tilted split"}
             </button>
@@ -289,7 +290,7 @@ export function ExecuteForm({ view, todayKey }: { view: ExecuteView; todayKey: s
                       />
                     </div>
                     <details className="grid gap-1 text-xs sm:col-span-4">
-                      <summary className="cursor-pointer text-muted-foreground">
+                      <summary className="cursor-pointer text-muted-foreground max-md:py-3.5">
                         Units and price (optional)
                       </summary>
                       <div className="mt-2 grid gap-2 sm:grid-cols-2">
@@ -331,7 +332,7 @@ export function ExecuteForm({ view, todayKey }: { view: ExecuteView; todayKey: s
           {error}
         </p>
       ) : null}
-      <div className="flex flex-wrap items-center justify-end gap-3">
+      <PinnedOnPhone className="flex flex-wrap items-center justify-end gap-3 max-md:flex-nowrap max-md:justify-between">
         <span className="text-sm text-muted-foreground" aria-live="polite">
           {status === null
             ? "Enter at least one amount (or skip this period)"
@@ -343,7 +344,7 @@ export function ExecuteForm({ view, todayKey }: { view: ExecuteView; todayKey: s
         <Button onClick={() => void submit()} disabled={pending || status === null}>
           {pending ? "Executing…" : "Confirm"}
         </Button>
-      </div>
+      </PinnedOnPhone>
       <DipConfirmDialog
         warnings={warnings}
         onCancel={() => setWarnings(null)}

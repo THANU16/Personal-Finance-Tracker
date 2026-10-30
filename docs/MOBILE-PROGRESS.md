@@ -7,8 +7,8 @@
 | M2 Component kit | ✅ | 2026-10-29 | 27a0b7e + 3b357b8 |
 | M3 Home & Quick add | ✅ | 2026-10-29 | 01c0dfd |
 | M4 Activity & Accounts | ✅ | 2026-10-29 | 123a99c |
-| M5 Assets & valuations | ✅ | 2026-10-30 | feat(mobile-M5) |
-| M6 SIP, Rebalancing, Opportunity Fund | ⬜ | | |
+| M5 Assets & valuations | ✅ | 2026-10-30 | 860929b |
+| M6 SIP, Rebalancing, Opportunity Fund | ✅ | 2026-10-30 | feat(mobile-M6) |
 | M7 Remaining pages | ⬜ | | |
 | M8 PWA, performance, a11y, QA | ⬜ | | |
 
@@ -139,8 +139,20 @@ Status values: ⬜ not started · 🟡 in progress · ✅ done
   keyboard (`useKeyboardInset`).
 - **M5 — same-day desktop baseline:** holdings content depends on today's date ("30d ago", XIRR), so
   the desktop diff compares against a run of the committed code (changes stashed) on the same day.
+- **M6 — `PinnedOnPhone`** (`src/components/shared/mobile/pinned-on-phone.tsx`): wraps an existing
+  action row; md+ keeps the row's own classes (desktop identical), below md it is pinned above the
+  tab bar / keyboard with a spacer. Used for SIP execute (status + Confirm), the plan editor
+  (Pause / End plan / Save) and Save target.
+- **M6 — allocation tree editor** (phones): the Total row is sticky just above the pinned save bar;
+  sliders and class toggles have 44px touch areas.
+- **M6 — tabs:** SIP sections and Allocation sections are one 44px row that scrolls sideways.
+- **M6 — tables:** Planned vs Actual, deployment history and the deploy-sheet split use
+  `stackOnPhone` (the 640px minimum width applies from md only).
+- **M6 — Opportunity Fund gauge deferred** (owner decision, 2026-10-30): drawdown stays a stat card
+  plus the levels chart.
 
 ## Deviations from docs
+- M6: no Opportunity Fund drawdown gauge on phones yet (owner: deferred).
 - M3: Quick add keeps "Paid from"/"Received into" before Category (DOM order kept so keyboard
   focus follows the screen); docs/07 lists category before account. The recent-categories grid
   keeps the expense at ≤ 3 taps after the amount.
@@ -154,15 +166,15 @@ Status values: ⬜ not started · 🟡 in progress · ✅ done
   now as a separate change, or later?
 
 ## Known issues
-- **Perf gate failing since 2026-10-30, environmental (owner decision: commit and log).**
+- **Perf gate failed on 2026-10-30 (M5), environmental; passed again during M6 the same day.**
   `tests/perf/perf-10k.test.ts` measures dashboard queries at ~1.54 s against a 1 s budget. It fails
   the same on the committed M4 code; no query/service/domain/server file changed since the mobile
   work began; the machine ran 2–3× slower that day (e2e timings). Re-run `npm run verify` in normal
   power mode; investigate the queries only if it still fails.
 - Screenshot runs on `next dev` can log a hydration warning about `caret-color: transparent` on a
   focused input: Playwright hides the caret while the page is still hydrating. Not an app issue.
-- Pre-existing, date-dependent e2e failure (not mobile): `tests/e2e/allocation.spec.ts` "Tilt next
-  period" fails on the 29th–31st. A new SIP plan defaults to day `min(28, today)` starting today, so
+- Pre-existing, date-dependent e2e failures (not mobile): `tests/e2e/allocation.spec.ts` "Tilt next
+  period" and `tests/e2e/sip.spec.ts` "Execute Monthly funds" fail on the 29th–31st. A new SIP plan defaults to day `min(28, today)` starting today, so
   its first period is ~30 days out, beyond `GENERATE_AHEAD_DAYS = 7`; no `due` execution exists and
   the rebalance panel shows "No SIP plan has an upcoming period". Fix belongs in the test (set the
   day) or a product decision on the default day — owner to decide.

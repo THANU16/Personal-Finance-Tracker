@@ -13,6 +13,7 @@ import { TargetEditor } from "@/modules/allocation/components/target-editor";
 import { RebalancePanel } from "@/modules/rebalancing/components/rebalance-panel";
 import { getAllocationView, getTargetHistory } from "@/modules/rebalancing/service";
 import { getCurrentUser } from "@/server/auth/require-user";
+import { stackOnPhone } from "@/components/shared/mobile/stack-table";
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 const TABS = [
@@ -46,7 +47,7 @@ function TabNav({
     <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
       <nav
         aria-label="Allocation sections"
-        className="flex w-fit flex-wrap rounded-lg bg-muted p-0.5 text-sm"
+        className="flex w-fit flex-wrap rounded-lg bg-muted p-0.5 text-sm max-md:max-w-full max-md:flex-nowrap max-md:overflow-x-auto"
       >
         {TABS.map(([key, label]) => (
           <Link
@@ -54,7 +55,7 @@ function TabNav({
             href={hrefOf(key, include)}
             aria-current={tab === key ? "page" : undefined}
             className={cn(
-              "rounded-md px-3 py-1",
+              "rounded-md px-3 py-1 max-md:inline-flex max-md:min-h-11 max-md:shrink-0 max-md:items-center max-md:whitespace-nowrap",
               tab === key
                 ? "bg-background font-medium shadow-sm"
                 : "text-muted-foreground hover:text-foreground",
@@ -351,7 +352,7 @@ export async function AllocationContent({ searchParams }: { searchParams: Search
           </CardDescription>
         </CardHeader>
         <CardContent className="overflow-x-auto">
-          <table className="w-full min-w-[640px] text-sm">
+          <table className={cn("w-full min-w-[640px] text-sm max-md:min-w-0", stackOnPhone)}>
             <thead className="text-xs text-muted-foreground">
               <tr>
                 <th scope="col" className="pr-3 pb-2 text-left font-medium">

@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import type { AllocationTree } from "@/domain/allocation";
 import { saveTargetAction } from "@/modules/allocation/actions";
 import type { TargetDTO, TreeOptions } from "@/modules/allocation/schemas";
+import { PinnedOnPhone } from "@/components/shared/mobile/pinned-on-phone";
 
 /** /rebalancing → Plan: the single planned (target) allocation (docs/04 §6). */
 export function TargetEditor({ target, options }: { target: TargetDTO; options: TreeOptions }) {
@@ -86,11 +87,11 @@ export function TargetEditor({ target, options }: { target: TargetDTO; options: 
             {error}
           </p>
         ) : null}
-        <div className="flex justify-end">
+        <PinnedOnPhone className="flex justify-end">
           <Button onClick={() => void save()} disabled={!valid || pending}>
             {pending ? "Saving…" : "Save target"}
           </Button>
-        </div>
+        </PinnedOnPhone>
       </CardContent>
     </Card>
   );

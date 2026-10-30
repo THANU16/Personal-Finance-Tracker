@@ -103,7 +103,7 @@ export function AllocationTreeEditor({
               <div className="flex flex-wrap items-center gap-x-3 gap-y-2 p-3">
                 <button
                   type="button"
-                  className="flex min-w-36 flex-1 items-center gap-2 text-left font-medium"
+                  className="flex min-w-36 flex-1 items-center gap-2 text-left font-medium max-md:min-h-11"
                   aria-expanded={expanded}
                   onClick={() => setOpen((o) => ({ ...o, [c.assetClassId]: !expanded }))}
                 >
@@ -127,7 +127,7 @@ export function AllocationTreeEditor({
                   value={c.percentBp}
                   onChange={(e) => update(i, { percentBp: Number(e.target.value) })}
                   aria-label={`${cls?.name ?? "Class"} share`}
-                  className="w-32 accent-[var(--viz-series-1)]"
+                  className="w-32 accent-[var(--viz-series-1)] max-md:h-11"
                 />
                 <PercentInput
                   aria-label={`${cls?.name ?? "Class"} percent`}
@@ -331,6 +331,8 @@ export function AllocationTreeEditor({
         aria-live="polite"
         className={cn(
           "flex items-center justify-between rounded-lg px-3 py-2 text-sm font-medium",
+          // Phones (docs/07 §5): the 100% status stays in view, just above the pinned save bar.
+          "max-md:sticky max-md:bottom-[calc(8rem+env(safe-area-inset-bottom))] max-md:z-20 max-md:shadow-sm max-md:backdrop-blur",
           sum === 10_000 ? "bg-muted" : "bg-destructive/10 text-destructive",
         )}
       >

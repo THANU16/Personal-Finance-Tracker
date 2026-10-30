@@ -213,7 +213,7 @@ export function FundSettings({
         ) : null}
       </fieldset>
 
-      <Button onClick={save} disabled={pending}>
+      <Button onClick={save} disabled={pending} className="max-md:w-full">
         {pending ? "Saving…" : "Save fund settings"}
       </Button>
     </div>

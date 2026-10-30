@@ -26,6 +26,7 @@ import { DeployDialog } from "@/modules/opportunity-fund/components/deploy-dialo
 import { FundSettings } from "@/modules/opportunity-fund/components/fund-settings";
 import { LevelsChart } from "@/modules/opportunity-fund/components/levels-chart";
 import type { OpportunityOverviewDTO } from "@/modules/opportunity-fund/schemas";
+import { stackOnPhone } from "@/components/shared/mobile/stack-table";
 
 const fmtLevel = (v: number) => v.toLocaleString(undefined, { maximumFractionDigits: 2 });
 const fmtDate = (d: string) => format(parseISO(d), "d MMM yyyy");
@@ -246,7 +247,7 @@ export function OpportunityClient({
             />
             {data.levels.length ? (
               <details>
-                <summary className="cursor-pointer text-sm text-muted-foreground">
+                <summary className="cursor-pointer text-sm text-muted-foreground max-md:py-3.5">
                   All levels ({data.levels.length})
                 </summary>
                 <ul className="mt-2 divide-y text-sm">
@@ -295,7 +296,7 @@ export function OpportunityClient({
         <CardContent>
           {data.deployments.length ? (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className={cn("w-full text-sm", stackOnPhone)}>
                 <thead className="text-left text-xs text-muted-foreground">
                   <tr>
                     <th className="py-2 pr-3 font-medium">Date</th>

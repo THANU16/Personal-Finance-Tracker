@@ -28,6 +28,7 @@ import { formatPercentBp } from "@/lib/format";
 import { vizColor } from "@/lib/viz-palette";
 import { createPlanAction, setPlanStatusAction, updatePlanAction } from "@/modules/sip/actions";
 import type { PlanEditorData } from "@/modules/sip/queries";
+import { PinnedOnPhone } from "@/components/shared/mobile/pinned-on-phone";
 
 const DAYS = [
   ...Array.from({ length: 28 }, (_, i) => ({ value: String(i + 1), label: `Day ${i + 1}` })),
@@ -464,7 +465,7 @@ export function PlanEditor({ data, todayKey }: { data: PlanEditorData; todayKey:
         </CardContent>
       </Card>
 
-      <div className="flex flex-wrap justify-between gap-2">
+      <PinnedOnPhone className="flex flex-wrap justify-between gap-2">
         <div className="flex gap-2">
           {p && p.status !== "ended" ? (
             <>
@@ -498,7 +499,7 @@ export function PlanEditor({ data, todayKey }: { data: PlanEditorData; todayKey:
             {pending ? "Saving…" : p ? "Save changes" : "Create plan"}
           </Button>
         )}
-      </div>
+      </PinnedOnPhone>
     </div>
   );
 }
