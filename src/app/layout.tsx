@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Providers } from "@/components/shared/providers";
 import { hideAmountsScript } from "@/lib/hide-amounts-script";
+import { SPLASH_SCREENS } from "@/lib/splash-screens";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -19,7 +20,12 @@ export const metadata: Metadata = {
   description: "Personal finance and portfolio tracker",
   applicationName: "WealthTrack",
   icons: { apple: "/apple-touch-icon.png" },
-  appleWebApp: { capable: true, title: "WealthTrack", statusBarStyle: "default" },
+  appleWebApp: {
+    capable: true,
+    title: "WealthTrack",
+    statusBarStyle: "default",
+    startupImage: SPLASH_SCREENS.map((s) => ({ url: `/splash/${s.file}`, media: s.media })),
+  },
 };
 
 export const viewport: Viewport = {

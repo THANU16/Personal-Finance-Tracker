@@ -428,8 +428,21 @@ function measure(limits: { minTap: number; minFont: number }) {
       "a[href], button, input:not([type=hidden]), select, textarea, summary, [role=button], [role=tab], [role=option], [role=checkbox], [role=switch], [role=radio], [role=menuitem], [role=combobox], [role=link]",
     ),
   ).filter(visible);
+  // Small controls (Switch, Radio, Checkbox) reach 44px with an absolutely positioned ::after
+  // (negative insets); count that hit area instead of the visible box.
+  const hitArea = (el: Element) => {
+    const r = el.getBoundingClientRect();
+    const a = getComputedStyle(el, "::after");
+    if (a.content === "none" || a.position !== "absolute") return r;
+    const px = (v: string) => (v.endsWith("px") ? parseFloat(v) : 0);
+    const left = Math.min(0, px(a.left));
+    const top = Math.min(0, px(a.top));
+    const right = Math.min(0, px(a.right));
+    const bottom = Math.min(0, px(a.bottom));
+    return { width: r.width - left - right, height: r.height - top - bottom };
+  };
   const smallTaps = tappable
-    .map((el) => ({ el, r: el.getBoundingClientRect() }))
+    .map((el) => ({ el, r: hitArea(el) }))
     .filter(({ r }) => r.width < limits.minTap || r.height < limits.minTap)
     .map(({ el, r }) => ({ el: describe(el), w: Math.round(r.width), h: Math.round(r.height) }));
 

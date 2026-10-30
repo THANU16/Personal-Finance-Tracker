@@ -129,6 +129,18 @@
   }
 }
 
+/* docs/07 §9: with "Reduce motion" on, sheets, dialogs, skeleton pulses and transitions end at once. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 /* "Hide amounts": <html data-hide-amounts> blurs every <Money> (see components/shared/hide-amounts.tsx) */
 @layer utilities {
   [data-hide-amounts] [data-money] {

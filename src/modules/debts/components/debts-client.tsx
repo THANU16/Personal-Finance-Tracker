@@ -182,7 +182,7 @@ function AddLoanDialog({ data }: { data: DebtsOverviewDTO }) {
                 aria-checked={existing === v}
                 onClick={() => setExisting(v as boolean)}
                 className={cn(
-                  "flex-1 rounded-md px-3 py-1",
+                  "flex-1 rounded-md px-3 py-1 max-md:min-h-11",
                   existing === v && "bg-background font-medium shadow-sm",
                 )}
               >

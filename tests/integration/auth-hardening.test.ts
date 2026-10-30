@@ -183,6 +183,17 @@ describe("email verification (REQUIRE_EMAIL_VERIFICATION)", () => {
   });
 });
 
+describe("session lifetime (docs/07 §7)", () => {
+  it("a new session lasts 30 days", async () => {
+    const email = await signUp(auth);
+    const headers = new Headers({ cookie: await sessionCookie(auth, email) });
+    const session = await auth.api.getSession({ headers });
+    const days = (session!.session.expiresAt.getTime() - Date.now()) / 86_400_000;
+    expect(days).toBeGreaterThan(29.9);
+    expect(days).toBeLessThanOrEqual(30);
+  });
+});
+
 async function enrol(email: string) {
   const headers = new Headers({ cookie: await sessionCookie(auth, email) });
   const enabled = await auth.api.enableTwoFactor({

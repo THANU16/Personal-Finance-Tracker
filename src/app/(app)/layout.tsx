@@ -4,6 +4,7 @@ import { InvestHubNav } from "@/components/layout/invest-hub-nav";
 import { MobileTabBar } from "@/components/layout/mobile-tab-bar";
 import { PullToRefresh } from "@/components/layout/pull-to-refresh";
 import { Topbar } from "@/components/layout/topbar";
+import { OfflineBanner } from "@/components/shared/pwa";
 import { QuickAddProvider } from "@/modules/transactions/components/quick-add-context";
 
 // The shell is static; only the user menu (inside Topbar) reads the session, behind <Suspense>.
@@ -18,6 +19,7 @@ export default function AppLayout({ children }: LayoutProps<"/">) {
           <Topbar />
           <PullToRefresh />
           <div className="mx-auto w-full max-w-[1400px] flex-1 px-4 pt-6 pb-[calc(6rem+env(safe-area-inset-bottom))] md:px-6 md:pb-8">
+            <OfflineBanner />
             <InvestHubNav />
             {children}
           </div>

@@ -39,7 +39,15 @@ export default function DashboardPage({ searchParams }: PageProps<"/dashboard">)
   return (
     <>
       <PageHeader title="Dashboard" description="Where you stand, and how it is changing." />
-      <Suspense fallback={<Skeleton className="mb-4 h-9 w-full max-w-3xl" />}>
+      {/* Phones: the bar is a 48px preset row + the Options row, so reserve both (no shift). */}
+      <Suspense
+        fallback={
+          <div className="mb-4 grid gap-2 md:block">
+            <Skeleton className="h-12 w-full max-w-3xl md:h-9" />
+            <Skeleton className="h-11 w-56 md:hidden" />
+          </div>
+        }
+      >
         <DashboardRangeBar searchParams={searchParams} />
       </Suspense>
       <div className="grid gap-4">

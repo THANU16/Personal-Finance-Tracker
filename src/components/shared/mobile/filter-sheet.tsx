@@ -11,7 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { useIsMobile } from "@/hooks/use-mobile";
+import { useIsMobileOrUnknown } from "@/hooks/use-mobile";
 
 // docs/07 §3 — filter bars become a "Filter" chip that opens a bottom sheet on phones; the active
 // filters show as removable chips under the page title. md+: the filter controls render inline.
@@ -34,22 +34,35 @@ export function FilterSheet({
   title = "Filters",
   label = "Filter",
 }: FilterSheetProps) {
-  const isMobile = useIsMobile();
+  const isMobile = useIsMobileOrUnknown();
   const [open, setOpen] = React.useState(false);
+  const chip = (
+    <Button
+      type="button"
+      variant={activeCount ? "secondary" : "outline"}
+      className={isMobile === null ? "rounded-full md:hidden" : "rounded-full"}
+      onClick={() => setOpen(true)}
+      aria-haspopup="dialog"
+    >
+      <SlidersHorizontal aria-hidden />
+      {label}
+      {activeCount ? ` (${activeCount})` : ""}
+    </Button>
+  );
+  // Before hydration (server HTML): the chip on phones, the inline controls from md, so neither
+  // layout shifts when React decides (docs/07 §8).
+  if (isMobile === null) {
+    return (
+      <>
+        {chip}
+        <div className="contents max-md:hidden">{children}</div>
+      </>
+    );
+  }
   if (!isMobile) return <>{children}</>;
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <Button
-        type="button"
-        variant={activeCount ? "secondary" : "outline"}
-        className="rounded-full"
-        onClick={() => setOpen(true)}
-        aria-haspopup="dialog"
-      >
-        <SlidersHorizontal aria-hidden />
-        {label}
-        {activeCount ? ` (${activeCount})` : ""}
-      </Button>
+      {chip}
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>

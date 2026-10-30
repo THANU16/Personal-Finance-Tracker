@@ -47,7 +47,17 @@ const nextConfig: NextConfig = {
     return [{ source: "/", destination: "/dashboard", permanent: false }];
   },
   async headers() {
-    return [{ source: "/:path*", headers: securityHeaders }];
+    return [
+      { source: "/:path*", headers: securityHeaders },
+      // docs/07 §7: the service worker must never be served stale, or updates would not reach phones.
+      {
+        source: "/sw.js",
+        headers: [
+          { key: "Content-Type", value: "application/javascript; charset=utf-8" },
+          { key: "Cache-Control", value: "no-cache, no-store, must-revalidate" },
+        ],
+      },
+    ];
   },
 };
 

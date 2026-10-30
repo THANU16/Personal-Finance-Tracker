@@ -121,7 +121,7 @@ export function RebalancePanel({
             type="button"
             aria-pressed={tab === k}
             onClick={() => setTab(k)}
-            className={`rounded-md px-3 py-1 ${tab === k ? "bg-background font-medium shadow-sm" : "text-muted-foreground"}`}
+            className={`rounded-md px-3 py-1 max-md:min-h-11 ${tab === k ? "bg-background font-medium shadow-sm" : "text-muted-foreground"}`}
           >
             {label}
           </button>

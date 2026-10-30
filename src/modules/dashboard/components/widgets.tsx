@@ -21,7 +21,7 @@ import {
   NetWorthSparkline,
   SavingsRateChart,
   TopCategoriesList,
-} from "@/components/charts/dashboard-charts";
+} from "@/components/charts/dashboard-charts-lazy";
 import { BucketBar } from "@/components/shared/bucket-bar";
 import { HideAmountsToggle } from "@/components/shared/hide-amounts";
 import { Money } from "@/components/shared/money";
@@ -90,7 +90,7 @@ function ChangeChip({
         deltaMinor < 0
           ? "text-destructive"
           : deltaMinor > 0
-            ? "text-emerald-600 dark:text-emerald-400"
+            ? "text-emerald-700 dark:text-emerald-400"
             : "text-muted-foreground",
       )}
     >
@@ -199,7 +199,7 @@ export async function StandingCards({ searchParams }: { searchParams: SearchPara
         {s.healthScore ? (
           <Link
             href="/essentials"
-            className="mt-2 flex flex-wrap items-center gap-2 text-xs hover:underline"
+            className="mt-2 flex flex-wrap items-center gap-2 text-xs hover:underline max-md:min-h-11"
           >
             <Badge variant="secondary">Health {s.healthScore.score}/100</Badge>
             <span className="text-muted-foreground">
@@ -792,7 +792,10 @@ export async function OpportunityCard({ searchParams }: { searchParams: SearchPa
               ? `${o.settings.benchmarkName} ${o.cycle.drawdownBp ? `−${formatPercentBp(o.cycle.drawdownBp)}` : "at its high"} from the high`
               : `Add ${o.settings.benchmarkName} levels to track drawdown`}
           </p>
-          <Link href="/opportunity-fund" className="text-sm text-primary hover:underline">
+          <Link
+            href="/opportunity-fund"
+            className="text-sm text-primary hover:underline max-md:inline-flex max-md:min-h-11 max-md:w-fit max-md:items-center"
+          >
             {o.suggestion.amountMinor > 0 ? "Deploy now →" : "Open →"}
           </Link>
         </div>
@@ -835,7 +838,10 @@ export async function GoalsCard({ searchParams }: { searchParams: SearchParams }
         ) : (
           <p className="text-sm text-muted-foreground">No goals yet.</p>
         )}
-        <Link href="/goals" className="mt-3 inline-block text-sm text-primary hover:underline">
+        <Link
+          href="/goals"
+          className="mt-3 inline-block text-sm text-primary hover:underline max-md:inline-flex max-md:min-h-11 max-md:w-fit max-md:items-center"
+        >
           {goals.length ? "All goals →" : "Add a goal →"}
         </Link>
       </Widget>
@@ -879,7 +885,10 @@ export async function EssentialsCard({ searchParams }: { searchParams: SearchPar
               {e.score.reasons.map((r) => r.text).join(" · ")}
             </p>
           ) : null}
-          <Link href="/essentials" className="text-sm text-primary hover:underline">
+          <Link
+            href="/essentials"
+            className="text-sm text-primary hover:underline max-md:inline-flex max-md:min-h-11 max-md:w-fit max-md:items-center"
+          >
             Essentials →
           </Link>
         </div>

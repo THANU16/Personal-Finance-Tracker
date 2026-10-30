@@ -1,19 +1,13 @@
 "use client";
 
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
 import {
   Area,
   Bar,
   BarChart,
   CartesianGrid,
-  Cell,
   ComposedChart,
   Line,
   LineChart,
-  Pie,
-  PieChart,
   ReferenceLine,
   ResponsiveContainer,
   Tooltip,
@@ -34,13 +28,7 @@ import {
 } from "@/components/charts/chart-kit";
 import type { Granularity } from "@/domain/date-range";
 import { formatMoney, formatPercentBp } from "@/lib/format";
-import { vizColor } from "@/lib/viz-palette";
-import type {
-  Allocation,
-  CashflowBucket,
-  NetWorthBucket,
-  TopCategories,
-} from "@/modules/dashboard/queries";
+import type { CashflowBucket, NetWorthBucket } from "@/modules/dashboard/queries";
 
 const S1 = "var(--viz-series-1)";
 const S2 = "var(--viz-series-2)";
@@ -533,162 +521,5 @@ export function SavingsRateChart({
         </LineChart>
       </ResponsiveContainer>
     </ChartFrame>
-  );
-}
-
-// ------------------------------------------------------------------------------- allocation
-
-/** Allocation donut by class (fixed class colours; 2px surface ring between slices). */
-export function AllocationDonut({ allocation }: { allocation: Allocation }) {
-  const router = useRouter();
-  const [open, setOpen] = useState<string | null>(null);
-  const { classes, currency } = allocation;
-  if (classes.length === 0) {
-    return <NoData>Add holdings to see your allocation.</NoData>;
-  }
-  return (
-    <div className="grid items-center gap-4 sm:grid-cols-[176px_1fr]">
-      <figure
-        aria-label={`Allocation by asset class: ${classes.map((c) => `${c.name} ${formatPercentBp(c.shareBp)}`).join(", ")}`}
-        className="mx-auto size-44"
-      >
-        <ResponsiveContainer width="100%" height="100%">
-          <PieChart>
-            <Pie
-              data={classes}
-              dataKey="valueMinor"
-              nameKey="name"
-              innerRadius="62%"
-              outerRadius="100%"
-              stroke="var(--card)"
-              strokeWidth={2}
-              isAnimationActive={false}
-              onClick={(_, index) => {
-                const c = classes[index];
-                if (c) router.push(`/assets?class=${c.id}`);
-              }}
-              className="cursor-pointer"
-            >
-              {classes.map((c) => (
-                <Cell key={c.id} fill={vizColor(c.color)} />
-              ))}
-            </Pie>
-            <Tooltip
-              content={({ active, payload }) => {
-                const c = active
-                  ? (payload?.[0]?.payload as (typeof classes)[number] | undefined)
-                  : undefined;
-                if (!c) return null;
-                return (
-                  <TooltipShell title={c.name}>
-                    <TooltipRow
-                      color={vizColor(c.color)}
-                      label={formatPercentBp(c.shareBp)}
-                      value={<Amount minor={c.valueMinor} currency={currency} />}
-                    />
-                  </TooltipShell>
-                );
-              }}
-            />
-          </PieChart>
-        </ResponsiveContainer>
-      </figure>
-      <ul className="grid gap-1 text-sm" aria-label="Asset classes">
-        {classes.map((c) => (
-          <li key={c.id}>
-            <div className="flex items-center justify-between gap-3">
-              <button
-                type="button"
-                className="flex min-w-0 items-center gap-2 text-left hover:underline"
-                aria-expanded={open === c.id}
-                onClick={() => setOpen((o) => (o === c.id ? null : c.id))}
-              >
-                <span
-                  className="size-2.5 shrink-0 rounded-sm"
-                  style={{ background: vizColor(c.color) }}
-                  aria-hidden
-                />
-                <span className="truncate">{c.name}</span>
-              </button>
-              <span className="flex items-baseline gap-2 tabular-nums">
-                <span className="text-xs text-muted-foreground">{formatPercentBp(c.shareBp)}</span>
-                <Amount minor={c.valueMinor} currency={currency} />
-              </span>
-            </div>
-            {open === c.id ? (
-              <ul className="mt-1 mb-2 grid gap-0.5 border-l pl-4 text-xs text-muted-foreground">
-                {c.holdings.map((h) => (
-                  <li key={h.id} className="flex justify-between gap-3">
-                    <Link href={`/assets/${h.id}`} className="truncate hover:underline">
-                      {h.name}
-                    </Link>
-                    <span className="tabular-nums">
-                      {formatPercentBp(h.shareBp)} ·{" "}
-                      <Amount minor={h.valueMinor} currency={currency} />
-                    </span>
-                  </li>
-                ))}
-                <li>
-                  <Link href={`/assets?class=${c.id}`} className="underline underline-offset-4">
-                    Open in Assets
-                  </Link>
-                </li>
-              </ul>
-            ) : null}
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-// --------------------------------------------------------------------------- top categories
-
-/** Top expense categories — direct-labelled bars; each opens Transactions with the same range. */
-export function TopCategoriesList({
-  data,
-  from,
-  to,
-}: {
-  data: TopCategories;
-  from: string;
-  to: string;
-}) {
-  if (data.categories.length === 0) return <NoData>No expenses in this range.</NoData>;
-  const max = Math.max(...data.categories.map((c) => c.valueMinor));
-  const href = (id: string) =>
-    id === "uncategorised"
-      ? `/transactions?preset=custom&from=${from}&to=${to}&types=expense`
-      : `/transactions?preset=custom&from=${from}&to=${to}&category=${id}`;
-  return (
-    <ul className="grid gap-2.5" aria-label="Top expense categories">
-      {data.categories.map((c) => (
-        <li key={c.id}>
-          <Link href={href(c.id)} className="group grid gap-1">
-            <span className="flex items-baseline justify-between gap-3 text-sm">
-              <span className="truncate group-hover:underline">{c.name}</span>
-              <span className="tabular-nums">
-                <span className="mr-2 text-xs text-muted-foreground">
-                  {formatPercentBp(c.shareBp)}
-                </span>
-                <Amount minor={c.valueMinor} currency={data.currency} />
-              </span>
-            </span>
-            <span className="h-1.5 w-full overflow-hidden rounded-full bg-muted" aria-hidden>
-              <span
-                className="block h-full rounded-full"
-                style={{ width: `${(c.valueMinor / max) * 100}%`, background: S1 }}
-              />
-            </span>
-          </Link>
-        </li>
-      ))}
-      {data.otherMinor > 0 ? (
-        <li className="flex justify-between text-xs text-muted-foreground">
-          <span>Everything else</span>
-          <Amount minor={data.otherMinor} currency={data.currency} />
-        </li>
-      ) : null}
-    </ul>
   );
 }

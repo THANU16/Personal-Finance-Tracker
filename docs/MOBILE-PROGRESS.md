@@ -9,8 +9,8 @@
 | M4 Activity & Accounts | ✅ | 2026-10-29 | 123a99c |
 | M5 Assets & valuations | ✅ | 2026-10-30 | 860929b |
 | M6 SIP, Rebalancing, Opportunity Fund | ✅ | 2026-10-30 | e13fbc9 |
-| M7 Remaining pages | ✅ | 2026-10-30 | feat(mobile-M7) |
-| M8 PWA, performance, a11y, QA | ⬜ | | |
+| M7 Remaining pages | ✅ | 2026-10-30 | fea06a2 |
+| M8 PWA, performance, a11y, QA | ✅ | 2026-10-30 | feat(mobile-M8) |
 
 Status values: ⬜ not started · 🟡 in progress · ✅ done
 
@@ -168,8 +168,43 @@ Status values: ⬜ not started · 🟡 in progress · ✅ done
 - **M7 — onboarding:** timezone `<select>` is 16px / 44px on phones (no iOS zoom).
 - **M7 — desktop check:** pixel diff against a same-day run of the M6 code — identical except
   notification times and the essentials width above.
+- **M8 — owner decisions (2026-10-30):** sessions last 30 days, renewed daily
+  (`SESSION_TTL_SECONDS` in `src/server/auth/auth.ts`, tested); no Web Push; no iPhone-profile e2e.
+- **M8 — service worker** (`public/sw.js`, registered in production only by
+  `ServiceWorkerRegistration` in `src/components/shared/pwa.tsx`): caches `/_next/static/*` and the
+  icons only (cache-first, 300 entries max). Pages, RSC payloads, server actions and API responses
+  always go to the network, so no financial data is stored on the device or shared between users.
+  A navigation that fails offline gets a built-in offline page (inline HTML in the worker, light and
+  dark, "Try again"). `sw.js` is served `no-store` (next.config.ts). Bump `VERSION` to drop caches.
+- **M8 — offline banner** under the top bar while `navigator.onLine` is false (`useOnline`).
+- **M8 — iOS launch screens:** `/splash/<w>x<h>-<theme>.png` drawn in code like the icons
+  (`src/lib/app-icon.tsx`, sizes in `src/lib/splash-screens.ts`), light and dark for 11 iPhone
+  screen sizes, linked via `metadata.appleWebApp.startupImage`. The app icons already existed as
+  code-drawn route handlers (no change needed).
+- **M8 — lazy charts:** the dashboard's Recharts plots load as a separate chunk
+  (`dashboard-charts-lazy.tsx`, placeholders of the same height); the allocation legend and top
+  categories render at once, only the pie is lazy (`allocation-pie.tsx`, fixed 176px box).
+- **M8 — no layout shift:** `FilterSheet` renders both the chip (below md) and the inline controls
+  (md+) until hydration (`useIsMobileOrUnknown`), so the server HTML is already right for phones;
+  the dashboard range-bar placeholder is phone-sized. Measured CLS 0.08 → 0.
+- **M8 — loading states:** every tab page already streams page-shaped Suspense skeletons under a
+  static shell, so no extra `loading.tsx` files (they would never show).
+- **M8 — accessibility:** global `prefers-reduced-motion` rule; phone hero change chip darkened to
+  pass contrast; axe runs on a 393px phone in light and dark (`tests/e2e/accessibility.spec.ts`).
+- **M8 — tap targets:** radio and checkbox hit areas are 44px below md (they were 32×40); dashboard
+  legend rows, top categories, "All goals / Essentials / Open →" links and earmark segment buttons
+  are 44px on phones. `npm run screens` measures `::after` hit areas.
+- **M8 — `npm run perf:mobile`** (`scripts/mobile-perf.ts`): production build + in-memory database,
+  Lighthouse-style mobile throttling, dashboard LCP/CLS/JS and tab-switch times → `screens/perf.json`.
+  Results 2026-10-30: LCP 1.06–1.28 s, load 3.4–3.5 s, CLS 0, JS 399 KB (before: LCP 1.16 s,
+  load 3.9 s, CLS 0.08, JS 529 KB); tab switches 0.2–1.8 s under 4× CPU throttling.
 
 ## Deviations from docs
+- M8 (owner, 2026-10-30): no Web Push reminders and no iPhone-profile Playwright e2e (docs/08 M8
+  asked for login → quick add → SIP → dashboard on iPhone 15); phones are covered by
+  `npm run screens`, the phone axe audit and manual testing on the owner's iPhone.
+- M8: iOS status bar stays `default` (light bar in dark mode); `black-translucent` would put white
+  status text over the light top bar.
 - M7 (owner: deferred, 2026-10-30): loan schedule is not grouped by year (rows stack, all columns
   visible); Settings keeps tabs instead of grouped rows pushing to sub-pages; notifications have no
   swipe actions (labelled 44px buttons instead). Debts keeps its stat cards and Record payment is
@@ -199,8 +234,6 @@ Status values: ⬜ not started · 🟡 in progress · ✅ done
   its first period is ~30 days out, beyond `GENERATE_AHEAD_DAYS = 7`; no `due` execution exists and
   the rebalance panel shows "No SIP plan has an upcoming period". Fix belongs in the test (set the
   day) or a product decision on the default day — owner to decide.
-- The screens check counts Switch (32×18) and checkbox/radio controls as small: their 44px touch
-  area is a pseudo-element the check cannot measure.
 - Dev-only: the Next dev-tools badge appears bottom-left over the tab bar in screenshots.
 - Base UI `nativeButton` warning remains on a few pages (other `Button render={<Link>}` uses); X-17.
 - Detail pages still show their in-page "← Accounts"/"← Assets" link under the new top-bar back

@@ -81,7 +81,7 @@ function TabNav({
                 href={hrefOf(tab, value as boolean)}
                 aria-current={include === value ? "page" : undefined}
                 className={cn(
-                  "rounded-md px-3 py-1",
+                  "rounded-md px-3 py-1 max-md:min-h-11",
                   include === value
                     ? "bg-background font-medium shadow-sm"
                     : "text-muted-foreground hover:text-foreground",

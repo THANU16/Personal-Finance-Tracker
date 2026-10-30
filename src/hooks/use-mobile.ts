@@ -17,3 +17,16 @@ export function useIsMobile() {
     () => false,
   );
 }
+
+/**
+ * Like `useIsMobile`, but `null` until hydrated (the server cannot know the width). Use it to
+ * render both variants with CSS (`md:hidden` / `max-md:hidden`) before hydration, so phones get
+ * the phone layout in the server HTML and nothing shifts when React takes over.
+ */
+export function useIsMobileOrUnknown(): boolean | null {
+  return React.useSyncExternalStore(
+    subscribe,
+    () => window.matchMedia(QUERY).matches,
+    () => null,
+  );
+}

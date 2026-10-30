@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import { ThemeProvider } from "next-themes";
+import { ServiceWorkerRegistration } from "@/components/shared/pwa";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -15,6 +16,7 @@ export function Providers({ children }: { children: ReactNode }) {
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
       <TooltipProvider>
         {children}
+        <ServiceWorkerRegistration />
         <Toaster
           richColors
           position={isMobile ? "bottom-center" : "top-right"}

@@ -454,7 +454,7 @@ function BucketChoice({
                 aria-checked={field.value === c.value}
                 onClick={() => field.onChange(c.value)}
                 className={cn(
-                  "rounded-md px-3 py-1",
+                  "rounded-md px-3 py-1 max-md:min-h-11",
                   field.value === c.value
                     ? "bg-background font-medium shadow-sm"
                     : "text-muted-foreground hover:text-foreground",

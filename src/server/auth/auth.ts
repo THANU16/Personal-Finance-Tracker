@@ -12,6 +12,8 @@ import { resetPasswordEmail, verifyEmailEmail } from "@/server/mail/templates";
 export const APP_NAME = "WealthTrack";
 export const RESET_TOKEN_TTL_SECONDS = 60 * 60;
 export const VERIFY_TOKEN_TTL_SECONDS = 24 * 60 * 60;
+export const SESSION_TTL_SECONDS = 30 * 24 * 60 * 60;
+export const SESSION_UPDATE_AGE_SECONDS = 24 * 60 * 60;
 
 export interface CreateAuthOptions {
   db: Db;
@@ -68,7 +70,13 @@ export function createAuth(opts: CreateAuthOptions) {
     },
     user: { modelName: "auth_users" },
     // freshAge 0: listing sessions works on any session; sensitive actions still ask for the password.
-    session: { modelName: "auth_sessions", freshAge: 0 },
+    // docs/07 §7: 30 days, renewed daily while the app is used, so the home-screen app rarely logs out.
+    session: {
+      modelName: "auth_sessions",
+      freshAge: 0,
+      expiresIn: SESSION_TTL_SECONDS,
+      updateAge: SESSION_UPDATE_AGE_SECONDS,
+    },
     account: { modelName: "auth_accounts" },
     verification: { modelName: "auth_verifications" },
     rateLimit: {
