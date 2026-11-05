@@ -12,12 +12,15 @@ import {
   GRANULARITIES,
   MAX_BUCKETS_WARNING,
   type Granularity,
+  type RangePreset,
   type RangeView,
 } from "@/domain/date-range";
 import { useTimeRange } from "@/lib/use-time-range";
 import { cn } from "@/lib/utils";
 
-const PRESETS = [
+type Preset = Exclude<RangePreset, "custom">;
+
+const PRESETS: readonly (readonly [Preset, string])[] = [
   ["today", "Today"],
   ["7d", "7D"],
   ["30d", "30D"],
@@ -26,7 +29,7 @@ const PRESETS = [
   ["ytd", "YTD"],
   ["1y", "1Y"],
   ["all", "All"],
-] as const;
+];
 
 const G_LABEL: Record<Granularity, string> = { day: "Day", week: "Week", month: "Month" };
 
@@ -72,9 +75,18 @@ function SegButton({
 
 /**
  * docs/05 §2 / docs/04 §22 — drives every chart on the page through the URL
- * (presets, custom range, Day/Week/Month, compare with the previous period).
+ * (presets, custom range, Day/Week/Month, compare with the previous period). `presets` and
+ * `options={false}` narrow it for charts with their own ranges (Invested vs value, docs/04 §24).
  */
-export function TimeRangeBar({ view }: { view: RangeView }) {
+export function TimeRangeBar({
+  view,
+  presets = PRESETS,
+  options = true,
+}: {
+  view: RangeView;
+  presets?: readonly (readonly [Preset, string])[];
+  options?: boolean;
+}) {
   const { pending, setPreset, setCustom, setGranularity, setCompare } = useTimeRange();
   const [open, setOpen] = useState(false);
   const [from, setFrom] = useState(view.range.from);
@@ -87,7 +99,7 @@ export function TimeRangeBar({ view }: { view: RangeView }) {
       data-testid="time-range-bar"
     >
       <Segmented label="Time range">
-        {PRESETS.map(([key, text]) => (
+        {presets.map(([key, text]) => (
           <SegButton key={key} active={view.preset === key} onClick={() => setPreset(key)}>
             {text}
           </SegButton>
@@ -140,26 +152,28 @@ export function TimeRangeBar({ view }: { view: RangeView }) {
       </Segmented>
 
       {/* Phones: granularity and compare live behind an "Options" chip; md+: inline as before. */}
-      <FilterSheet label="Options" title="Chart options" activeCount={view.compare ? 1 : 0}>
-        <Segmented label="Granularity">
-          {GRANULARITIES.map((g) => (
-            <SegButton key={g} active={view.granularity === g} onClick={() => setGranularity(g)}>
-              {G_LABEL[g]}
-            </SegButton>
-          ))}
-        </Segmented>
+      {options ? (
+        <FilterSheet label="Options" title="Chart options" activeCount={view.compare ? 1 : 0}>
+          <Segmented label="Granularity">
+            {GRANULARITIES.map((g) => (
+              <SegButton key={g} active={view.granularity === g} onClick={() => setGranularity(g)}>
+                {G_LABEL[g]}
+              </SegButton>
+            ))}
+          </Segmented>
 
-        <div className="flex items-center gap-2">
-          <Switch
-            id="range-compare"
-            checked={view.compare}
-            onCheckedChange={(on) => setCompare(on)}
-          />
-          <Label htmlFor="range-compare" className="font-normal">
-            Compare with previous period
-          </Label>
-        </div>
-      </FilterSheet>
+          <div className="flex items-center gap-2">
+            <Switch
+              id="range-compare"
+              checked={view.compare}
+              onCheckedChange={(on) => setCompare(on)}
+            />
+            <Label htmlFor="range-compare" className="font-normal">
+              Compare with previous period
+            </Label>
+          </div>
+        </FilterSheet>
+      ) : null}
 
       <span className="text-xs text-muted-foreground tabular-nums" aria-live="polite">
         {view.range.from} – {view.range.to} · {view.bucketCount}{" "}

@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { saveTarget } from "@/modules/allocation/service";
 import { setEarmark } from "@/modules/earmarks/service";
 import { EarmarkModel } from "@/modules/earmarks/model";
-import { OpportunityDeploymentModel } from "@/modules/opportunity-fund/model";
+import { MarketLevelModel, OpportunityDeploymentModel } from "@/modules/opportunity-fund/model";
 import {
   addMarketLevel,
   deleteMarketLevel,
@@ -277,5 +277,50 @@ describe("opportunity fund", () => {
       expect.arrayContaining(["rules.1.drawdownBp", "rules.1.deployPercentBp", "allocation"]),
     );
     await expect(addMarketLevel(ctx, { date: "2999-01-01", level: 1 })).rejects.toThrow(/future/);
+  });
+});
+
+describe("market levels with date and time (owner request, docs/04 §15)", () => {
+  it("keeps several levels on one day, orders them by time and drops the old unique index", async () => {
+    const { ctx } = await setup();
+    // A database created before this change still has the one-per-day unique index.
+    await MarketLevelModel.init();
+    await MarketLevelModel.collection
+      .createIndex(
+        { userId: 1, benchmarkName: 1, date: 1 },
+        { unique: true, name: "userId_1_benchmarkName_1_date_1" },
+      )
+      .catch(() => undefined);
+
+    await addMarketLevel(ctx, { date: "2026-02-10", time: "14:30", level: 10_500 });
+    await addMarketLevel(ctx, { date: "2026-02-10", time: "09:15", level: 10_000 });
+    await addMarketLevel(ctx, { date: "2026-02-10", level: 10_200 }); // no time: the day's close
+
+    const o = await getOpportunityOverview(ctx);
+    expect(o.levels.map((l) => [l.date, l.time, l.level])).toEqual([
+      ["2026-02-10", "09:15", 10_000],
+      ["2026-02-10", "14:30", 10_500],
+      ["2026-02-10", "23:59", 10_200],
+    ]);
+    expect(o.cycle.referenceHigh).toBe(10_500);
+    expect(o.cycle.latest).toEqual({
+      date: "2026-02-10",
+      level: 10_200,
+      atMs: o.levels[2]!.atMs,
+    });
+    const names = (await MarketLevelModel.collection.indexes()).map((i) => i.name);
+    expect(names).not.toContain("userId_1_benchmarkName_1_date_1");
+  });
+
+  it("rejects a time later than now", async () => {
+    const { ctx } = await setup();
+    const today = new Intl.DateTimeFormat("en-CA", { timeZone: ctx.tz }).format(new Date());
+    const now = new Date();
+    if (now.getUTCHours() < 18) {
+      await expect(addMarketLevel(ctx, { date: today, time: "23:59", level: 1 })).rejects.toThrow(
+        /future/,
+      );
+    }
+    await expect(addMarketLevel(ctx, { date: today, time: "25:00", level: 1 })).rejects.toThrow();
   });
 });

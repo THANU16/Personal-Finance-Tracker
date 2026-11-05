@@ -59,8 +59,10 @@ export interface MarketLevelDoc {
   _id: Types.ObjectId;
   userId: Types.ObjectId;
   benchmarkName: string;
-  /** Business date `YYYY-MM-DD` (a level is a daily close, not an instant). */
+  /** Business date `YYYY-MM-DD` of the entry. */
   date: string;
+  /** When the level was seen (date + time); several per day are kept. Older entries: null (a close). */
+  recordedAt: Date | null;
   level: number;
   note: string | null;
   createdAt: Date;
@@ -71,12 +73,18 @@ const levelSchema = new Schema<MarketLevelDoc>(
     userId: { type: Schema.Types.ObjectId, required: true },
     benchmarkName: { type: String, required: true },
     date: { type: String, required: true },
+    recordedAt: { type: Date, default: null },
     level: { type: Number, required: true, min: 0 },
     note: { type: String, default: null },
   },
   { timestamps: { createdAt: true, updatedAt: false } },
 );
-levelSchema.index({ userId: 1, benchmarkName: 1, date: 1 }, { unique: true });
+// Several levels per day (owner request, 2026-11-05): no longer unique by date. The old unique index
+// `userId_1_benchmarkName_1_date_1` is dropped by the service before the first insert.
+levelSchema.index(
+  { userId: 1, benchmarkName: 1, date: 1, recordedAt: 1 },
+  { name: "levels_by_time" },
+);
 
 export const MarketLevelModel = userScopedModel<MarketLevelDoc>(
   "MarketLevel",

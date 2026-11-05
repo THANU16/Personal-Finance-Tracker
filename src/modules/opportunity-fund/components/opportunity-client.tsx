@@ -75,9 +75,30 @@ function DrawdownGauge({
   );
 }
 
-function AddLevelForm({ todayKey, benchmarkName }: { todayKey: string; benchmarkName: string }) {
+/** Current wall-clock `HH:mm` in the user's timezone (event handlers only, never during render). */
+const timeNow = (timeZone: string) =>
+  new Intl.DateTimeFormat("en-GB", {
+    timeZone,
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).format(new Date());
+
+function AddLevelForm({
+  todayKey,
+  nowTime,
+  timezone,
+  benchmarkName,
+}: {
+  todayKey: string;
+  nowTime: string;
+  timezone: string;
+  benchmarkName: string;
+}) {
   const router = useRouter();
   const [date, setDate] = useState<string | null>(todayKey);
+  // Defaults to the current time (owner request); several levels per day are kept.
+  const [time, setTime] = useState(nowTime);
   const [level, setLevel] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -85,17 +106,23 @@ function AddLevelForm({ todayKey, benchmarkName }: { todayKey: string; benchmark
     e.preventDefault();
     const value = Number(level.replace(/,/g, ""));
     start(async () => {
-      const res = await addMarketLevelAction({ date, level: level.trim() ? value : Number.NaN });
+      const res = await addMarketLevelAction({
+        date,
+        time: time || null,
+        level: level.trim() ? value : Number.NaN,
+      });
       if (!res.ok) {
         setError(
           res.error.fieldErrors?.level?.[0] ??
             res.error.fieldErrors?.date?.[0] ??
+            res.error.fieldErrors?.time?.[0] ??
             res.error.message,
         );
         return;
       }
       setError(null);
       setLevel("");
+      setTime(timeNow(timezone));
       setDate(todayKey);
       toast.success("Level saved");
       router.refresh();
@@ -104,11 +131,14 @@ function AddLevelForm({ todayKey, benchmarkName }: { todayKey: string; benchmark
   return (
     <form
       onSubmit={submit}
-      className="grid gap-3 sm:grid-cols-[12rem_1fr_auto] sm:items-end"
+      className="grid gap-3 sm:grid-cols-[12rem_8rem_1fr_auto] sm:items-end"
       noValidate
     >
       <FormField id="lvl-date" label="Date">
         <DatePicker id="lvl-date" value={date} onChange={setDate} />
+      </FormField>
+      <FormField id="lvl-time" label="Time">
+        <Input id="lvl-time" type="time" value={time} onChange={(e) => setTime(e.target.value)} />
       </FormField>
       <FormField id="lvl-value" label={`${benchmarkName} level`} error={error ?? undefined}>
         <Input
@@ -230,7 +260,8 @@ export function OpportunityClient({
             <div>
               <CardTitle>Market levels</CardTitle>
               <CardDescription>
-                Enter {data.settings.benchmarkName} closes by hand. A new high starts a new cycle.
+                Enter {data.settings.benchmarkName} levels by hand, as often as you like (each keeps
+                its date and time). A new high starts a new cycle.
               </CardDescription>
             </div>
             <Button variant="outline" onClick={() => setDeployOpen(true)}>
@@ -238,7 +269,12 @@ export function OpportunityClient({
             </Button>
           </CardHeader>
           <CardContent className="space-y-4">
-            <AddLevelForm todayKey={data.todayKey} benchmarkName={data.settings.benchmarkName} />
+            <AddLevelForm
+              todayKey={data.todayKey}
+              nowTime={data.nowTime}
+              timezone={data.timezone}
+              benchmarkName={data.settings.benchmarkName}
+            />
             <LevelsChart
               levels={data.levels}
               referenceHigh={c.referenceHigh}
@@ -254,12 +290,13 @@ export function OpportunityClient({
                   {[...data.levels].reverse().map((l) => (
                     <li key={l.id} className="flex items-center justify-between gap-2 py-1.5">
                       <span className="tabular-nums">
-                        {fmtDate(l.date)} · {fmtLevel(l.level)}
+                        {fmtDate(l.date)}
+                        {l.time ? ` ${l.time}` : ""} · {fmtLevel(l.level)}
                       </span>
                       <Button
                         variant="ghost"
                         size="icon"
-                        aria-label={`Delete level of ${fmtDate(l.date)}`}
+                        aria-label={`Delete level of ${fmtDate(l.date)}${l.time ? ` ${l.time}` : ""}`}
                         onClick={() =>
                           start(async () => {
                             const res = await deleteMarketLevelAction(l.id);

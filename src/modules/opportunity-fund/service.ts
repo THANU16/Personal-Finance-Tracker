@@ -1,7 +1,8 @@
 import "server-only";
+import { formatInTimeZone } from "date-fns-tz";
 import { Types, type ClientSession } from "mongoose";
 import { splitByTree, type AllocationTree } from "@/domain/allocation";
-import { businessDateToUtc, utcToBusinessDate } from "@/domain/dates";
+import { businessDateTimeToUtc, businessDateToUtc, utcToBusinessDate } from "@/domain/dates";
 import { dedicatedBucket } from "@/domain/earmarks";
 import {
   DEFAULT_RULES,
@@ -91,11 +92,33 @@ async function loadFund(
     .lean<OpportunityFundDoc>())!;
 }
 
+/** Older levels have no time: they count as that day's close (23:59 local). */
+const levelInstant = (l: MarketLevelDoc, tz: string): Date =>
+  l.recordedAt ?? businessDateTimeToUtc(l.date, "23:59", tz);
+
+/** Levels oldest first (date, then entry time), each with the instant used for order and plots. */
 async function loadLevels(ctx: Ctx, benchmarkName: string, session: ClientSession | null = null) {
-  return MarketLevelModel.find({ userId: uid(ctx), benchmarkName })
-    .sort({ date: 1 })
+  const docs = await MarketLevelModel.find({ userId: uid(ctx), benchmarkName })
     .session(session)
     .lean<MarketLevelDoc[]>();
+  return docs
+    .map((l) => ({ ...l, atMs: levelInstant(l, ctx.tz).getTime() }))
+    .sort((a, b) => a.date.localeCompare(b.date) || a.atMs - b.atMs);
+}
+
+/**
+ * Before several levels per day were allowed, `(userId, benchmarkName, date)` was unique. Drop that
+ * index if it is still there (index changes cannot run inside a transaction). Adding a level is
+ * rare, so the check runs every time rather than trusting a per-process flag.
+ */
+async function dropLegacyLevelIndex(): Promise<void> {
+  await connectDb();
+  const indexes = await MarketLevelModel.collection.indexes().catch(() => []);
+  if (indexes.some((i) => i.name === "userId_1_benchmarkName_1_date_1")) {
+    await MarketLevelModel.collection
+      .dropIndex("userId_1_benchmarkName_1_date_1")
+      .catch(() => undefined); // a concurrent request dropped it first
+  }
 }
 
 async function fundBalance(ctx: Ctx): Promise<{ balanceMinor: number; fxMissing: number }> {
@@ -286,6 +309,8 @@ export async function getOpportunityOverview(ctx: Ctx): Promise<OpportunityOverv
   return {
     baseCurrency: ctx.baseCurrency,
     todayKey: utcToBusinessDate(new Date(), ctx.tz),
+    nowTime: formatInTimeZone(new Date(), ctx.tz, "HH:mm"),
+    timezone: ctx.tz,
     settings: {
       benchmarkName: fund.benchmarkName,
       targetSizeMinor: fund.targetSizeMinor,
@@ -306,7 +331,10 @@ export async function getOpportunityOverview(ctx: Ctx): Promise<OpportunityOverv
       fundBalanceAtStartMinor: cycle.fundBalanceAtStartMinor,
       referenceHigh: state.referenceHigh,
       referenceHighDate: state.referenceHighDate,
-      latest: state.latest,
+      // Plain values only: the replayed point is a database document (ObjectId, Date).
+      latest: state.latest
+        ? { date: state.latest.date, level: state.latest.level, atMs: state.latest.atMs }
+        : null,
       drawdownBp: state.drawdownBp,
       maxDrawdownBp: state.maxDrawdownBp,
       triggered: state.triggered,
@@ -319,7 +347,14 @@ export async function getOpportunityOverview(ctx: Ctx): Promise<OpportunityOverv
       deployedThisCycleMinor: deployed,
       fundBalanceMinor: balance.balanceMinor,
     }),
-    levels: levels.map((l) => ({ id: String(l._id), date: l.date, level: l.level, note: l.note })),
+    levels: levels.map((l) => ({
+      id: String(l._id),
+      date: l.date,
+      time: l.recordedAt ? formatInTimeZone(l.recordedAt, ctx.tz, "HH:mm") : null,
+      atMs: l.atMs,
+      level: l.level,
+      note: l.note,
+    })),
     sources: [...sources.map((s) => s.dto), ...(await sourceHoldings(ctx)).map((s) => s.dto)],
     deployments: deployments.map((d) => toDeploymentDTO(d, names)),
     allocationInUse: allocation,
@@ -394,23 +429,41 @@ export async function saveFundSettings(ctx: Ctx, input: unknown): Promise<{ save
 
 // --------------------------------------------------------------------------- market levels
 
-/** Adds (or replaces, same date) a benchmark level and updates the cycle. */
+/**
+ * Adds a benchmark level with its date and time (docs/04 §15): several per day are kept, never
+ * replaced. No time: now for today, 23:59 (the close) for a past day.
+ */
 export async function addMarketLevel(ctx: Ctx, input: unknown): Promise<{ id: string }> {
   const data = parseInput(marketLevelSchema, input);
-  if (data.date > utcToBusinessDate(new Date(), ctx.tz)) {
+  const now = new Date();
+  const today = utcToBusinessDate(now, ctx.tz);
+  const recordedAt = data.time
+    ? businessDateTimeToUtc(data.date, data.time, ctx.tz)
+    : data.date === today
+      ? now
+      : businessDateTimeToUtc(data.date, "23:59", ctx.tz);
+  if (data.date > today || recordedAt.getTime() > now.getTime() + 60_000) {
     throw new AppError("VALIDATION", "A level cannot be in the future", {
-      date: ["Pick today or earlier"],
+      [data.date > today ? "date" : "time"]: ["Pick a time up to now"],
     });
   }
+  await dropLegacyLevelIndex();
   const balance = (await fundBalance(ctx)).balanceMinor;
   return withTransaction(async (session) => {
     const fund = await loadFund(ctx, session);
-    const userId = uid(ctx);
-    const doc = await MarketLevelModel.findOneAndUpdate(
-      { userId, benchmarkName: fund.benchmarkName, date: data.date },
-      { $set: { level: data.level, note: data.note ?? null } },
-      { upsert: true, returnDocument: "after", session },
-    ).lean<MarketLevelDoc>();
+    const [doc] = await MarketLevelModel.create(
+      [
+        {
+          userId: uid(ctx),
+          benchmarkName: fund.benchmarkName,
+          date: data.date,
+          recordedAt,
+          level: data.level,
+          note: data.note ?? null,
+        },
+      ],
+      { session },
+    );
     const state = replayCycle(await loadLevels(ctx, fund.benchmarkName, session), fund.rules);
     await syncCycle(ctx, fund, state, balance, session);
     return { id: String(doc!._id) };

@@ -16,6 +16,7 @@
     "screens": "tsx scripts/mobile-screens.ts",
     "perf:mobile": "tsx --conditions=react-server scripts/mobile-perf.ts",
     "seed": "tsx --conditions=react-server scripts/seed.ts",
+    "convert:reconcile": "tsx --conditions=react-server scripts/convert-reconcile.ts",
     "repair:categories": "tsx --conditions=react-server scripts/repair-categories.ts",
     "recompute": "tsx --conditions=react-server scripts/recompute-all.ts",
     "db:check": "tsx --conditions=react-server scripts/db-check.ts",

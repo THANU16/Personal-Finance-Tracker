@@ -12,6 +12,8 @@ export interface MarketLevelPoint {
   /** Business date `YYYY-MM-DD`. */
   date: string;
   level: number;
+  /** Entry instant (ms) — orders several levels on one day; older levels have none. */
+  atMs?: number;
 }
 
 export const DEFAULT_RULES: readonly OpportunityRule[] = [
@@ -72,7 +74,10 @@ export function replayCycle(
   levels: readonly MarketLevelPoint[],
   rules: readonly OpportunityRule[],
 ): CycleState {
-  const sorted = [...levels].sort((a, b) => a.date.localeCompare(b.date));
+  // Date order; within a day, by entry time (several levels per day are kept, docs/04 §15).
+  const sorted = [...levels].sort(
+    (a, b) => a.date.localeCompare(b.date) || (a.atMs ?? 0) - (b.atMs ?? 0),
+  );
   const state: CycleState = {
     cycleStart: null,
     referenceHigh: null,

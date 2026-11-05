@@ -57,6 +57,11 @@ export const marketLevelSchema = z
       .positive("Enter a level above zero")
       .max(1e9)
       .finite(),
+    /** Wall-clock time `HH:mm` in the user's timezone; default now (today) or 23:59 (a past close). */
+    time: z
+      .string()
+      .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Enter a time like 14:30")
+      .nullish(),
     note: z.string().trim().max(200).nullish(),
   })
   .strict();
@@ -120,6 +125,9 @@ export interface DeploymentDTO {
 export interface OpportunityOverviewDTO {
   baseCurrency: string;
   todayKey: string;
+  /** `HH:mm` in the user's timezone when the page was rendered (the level form's default time). */
+  nowTime: string;
+  timezone: string;
   settings: {
     benchmarkName: string;
     targetSizeMinor: number | null;
@@ -136,14 +144,22 @@ export interface OpportunityOverviewDTO {
     fundBalanceAtStartMinor: number;
     referenceHigh: number | null;
     referenceHighDate: string | null;
-    latest: { date: string; level: number } | null;
+    latest: { date: string; level: number; atMs?: number } | null;
     drawdownBp: number;
     maxDrawdownBp: number;
     triggered: number[];
     deployedThisCycleMinor: number;
   };
   suggestion: { amountMinor: number; ruleIdx: number | null };
-  levels: { id: string; date: string; level: number; note: string | null }[];
+  /** Oldest first; `time` is `HH:mm` local (null for older entries), `atMs` the instant to plot. */
+  levels: {
+    id: string;
+    date: string;
+    time: string | null;
+    atMs: number;
+    level: number;
+    note: string | null;
+  }[];
   sources: SourceAccountDTO[];
   deployments: DeploymentDTO[];
   /** The tree a deployment uses now (target or custom); empty → set one first. */

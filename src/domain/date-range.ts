@@ -67,6 +67,11 @@ export function nextDayKey(key: string): string {
   return toKey(addDays(toDate(key), 1));
 }
 
+/** The day before a key (a range's baseline). */
+export function prevDayKey(key: string): string {
+  return toKey(addDays(toDate(key), -1));
+}
+
 // ---------------------------------------------------------------------------------------------
 // docs/04 §22 — analytics time ranges: presets, granularity, buckets, compare period.
 
@@ -232,6 +237,7 @@ export function parseRangeView(
   params: Record<string, string | string[] | undefined>,
   todayKey: string,
   earliestKey?: string | null,
+  defaultPreset: RangePreset = DEFAULT_PRESET,
 ): RangeView {
   const r = first(params.r);
   const from = first(params.from);
@@ -240,7 +246,7 @@ export function parseRangeView(
     ? (r as RangePreset)
     : isKey(from) && isKey(to)
       ? "custom"
-      : DEFAULT_PRESET;
+      : defaultPreset;
   const range = resolveRange(preset, todayKey, { from, to, earliestKey });
   const g = first(params.g);
   const pinned = (GRANULARITIES as readonly string[]).includes(g ?? "");

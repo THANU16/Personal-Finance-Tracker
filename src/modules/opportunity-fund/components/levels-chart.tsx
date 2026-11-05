@@ -1,7 +1,7 @@
 "use client";
 
 import { useChartAxes } from "@/components/charts/chart-kit";
-import { format, parse } from "date-fns";
+import { format } from "date-fns";
 import {
   CartesianGrid,
   Line,
@@ -16,7 +16,6 @@ import {
 import { ruleLevel, type OpportunityRule } from "@/domain/opportunity";
 import { formatPercentBp } from "@/lib/format";
 
-const parseKey = (key: string) => parse(key, "yyyy-MM-dd", new Date(2000, 0, 1));
 const fmtLevel = (v: number) => v.toLocaleString(undefined, { maximumFractionDigits: 2 });
 
 // dataviz: one series (the benchmark) in slot 1; reference high and rule lines are recessive
@@ -25,13 +24,16 @@ const LEVEL_COLOR = "var(--viz-series-1)";
 
 function LevelTooltip({ active, payload, high }: TooltipContentProps & { high: number | null }) {
   const p = active
-    ? (payload?.[0]?.payload as { date: string; level: number } | undefined)
+    ? (payload?.[0]?.payload as { t: number; time: string | null; level: number } | undefined)
     : undefined;
   if (!p) return null;
   const dd = high ? Math.max(0, Math.round(((high - p.level) / high) * 10_000)) : 0;
   return (
     <div className="rounded-lg border bg-popover px-3 py-2 text-xs shadow-md">
-      <div className="mb-1 text-muted-foreground">{format(parseKey(p.date), "d MMM yyyy")}</div>
+      <div className="mb-1 text-muted-foreground">
+        {format(p.t, "d MMM yyyy")}
+        {p.time ? ` · ${p.time}` : " · close"}
+      </div>
       <div className="font-semibold text-foreground tabular-nums">{fmtLevel(p.level)}</div>
       {dd ? (
         <div className="text-muted-foreground">−{formatPercentBp(dd)} from the high</div>
@@ -40,14 +42,17 @@ function LevelTooltip({ active, payload, high }: TooltipContentProps & { high: n
   );
 }
 
-/** Benchmark levels with the reference high and each rule's trigger level (docs/05 §8). */
+/**
+ * Benchmark levels with the reference high and each rule's trigger level (docs/05 §8). Every entry
+ * is plotted at its date and time (several per day) on a smooth monotone curve.
+ */
 export function LevelsChart({
   levels,
   referenceHigh,
   rules,
   benchmarkName,
 }: {
-  levels: { date: string; level: number }[];
+  levels: { date: string; time: string | null; atMs: number; level: number }[];
   referenceHigh: number | null;
   rules: OpportunityRule[];
   benchmarkName: string;
@@ -60,7 +65,7 @@ export function LevelsChart({
       </p>
     );
   }
-  const data = levels.map((l) => ({ ...l, t: parseKey(l.date).getTime() }));
+  const data = levels.map((l) => ({ ...l, t: l.atMs }));
   const lines = referenceHigh
     ? rules.map((r) => ({ rule: r, level: ruleLevel(referenceHigh, r) }))
     : [];
@@ -127,7 +132,7 @@ export function LevelsChart({
             content={(props) => <LevelTooltip {...props} high={referenceHigh} />}
           />
           <Line
-            type="linear"
+            type="monotone"
             dataKey="level"
             name={benchmarkName}
             stroke={LEVEL_COLOR}

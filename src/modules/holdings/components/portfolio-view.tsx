@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { Suspense } from "react";
 import { ChartPie, RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
@@ -7,6 +8,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Money } from "@/components/shared/money";
 import { StatCard } from "@/components/shared/stat-card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { utcToBusinessDate } from "@/domain/dates";
 import { formatPercentBp } from "@/lib/format";
 import { vizColor } from "@/lib/viz-palette";
@@ -17,7 +19,8 @@ import {
   type AddHoldingOptions,
 } from "@/modules/holdings/components/add-holding-dialog";
 import { GainCell, HoldingsTable } from "@/modules/holdings/components/holdings-table";
-import { getPortfolio, listActiveClasses } from "@/modules/holdings/queries";
+import { InvestmentChartCard } from "@/modules/holdings/components/investment-chart-card";
+import { getPortfolio, listActiveClasses, parseInvestmentScope } from "@/modules/holdings/queries";
 import { getCurrentUser } from "@/server/auth/require-user";
 import type { Ctx } from "@/server/ctx";
 
@@ -177,6 +180,23 @@ export async function PortfolioView({ searchParams }: { searchParams: SearchPara
           ) : null}
         </div>
       ) : null}
+
+      {/* docs/04 §24 — follows the page's class filter until the chart's own filter is used. */}
+      <Suspense fallback={<Skeleton className="mb-4 h-[30rem] rounded-xl" />}>
+        <InvestmentChartCard
+          searchParams={sp}
+          scope={
+            sp.chart === undefined && classFilter
+              ? { kind: "class", id: classFilter }
+              : parseInvestmentScope(sp.chart)
+          }
+          defaultPreset="1y"
+          excludeEmergency={hideEmergency}
+          title="Invested vs value"
+          description={`What you put in and what it is worth, in ${t.currency}`}
+          filter
+        />
+      </Suspense>
 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <nav aria-label="View" className="inline-flex rounded-lg bg-muted p-1">

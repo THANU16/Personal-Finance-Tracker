@@ -4,6 +4,8 @@ import {
   cashflowOf,
   computeBalance,
   reconcileAdjustment,
+  reconcileDefaultRecordAs,
+  reconcileRecordAllowed,
   runningBalances,
   validateSplits,
   type LedgerTxn,
@@ -213,6 +215,23 @@ describe("reconcileAdjustment", () => {
     [0, 0, null],
   ])("balance %s, real %s → %j", (balance, real, expected) => {
     expect(reconcileAdjustment(balance, real)).toEqual(expected);
+  });
+});
+
+describe("reconcile record choice (docs/04 §1)", () => {
+  it("defaults to expense when lower and income when higher", () => {
+    expect(reconcileDefaultRecordAs("from")).toBe("expense");
+    expect(reconcileDefaultRecordAs("to")).toBe("income");
+  });
+  it.each([
+    ["from", "expense", true],
+    ["from", "income", false],
+    ["from", "adjustment", true],
+    ["to", "income", true],
+    ["to", "expense", false],
+    ["to", "adjustment", true],
+  ] as const)("%s as %s → %s", (direction, recordAs, ok) => {
+    expect(reconcileRecordAllowed(direction, recordAs)).toBe(ok);
   });
 });
 

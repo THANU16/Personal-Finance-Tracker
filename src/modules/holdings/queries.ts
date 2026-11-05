@@ -1,11 +1,17 @@
 import "server-only";
 import { Types } from "mongoose";
 import { utcToBusinessDate } from "@/domain/dates";
-import { fdValue } from "@/domain/fd";
-import { holdingCashFlows, replayHolding, type HoldingEvent } from "@/domain/holdings";
+import { parseRangeView, type RangePreset, type RangeView } from "@/domain/date-range";
+import { holdingCashFlows, type HoldingEvent } from "@/domain/holdings";
+import {
+  computeInvestmentSeries,
+  firstEventDate,
+  type InvestmentSeries,
+} from "@/domain/investment-series";
 import { mulDivRound } from "@/domain/money";
 import { simpleReturnBp, xirrBp, type CashFlow } from "@/domain/returns";
 import { AssetClassModel, type AssetClassDoc } from "@/modules/asset-classes/model";
+import { requestSeriesInput } from "@/modules/dashboard/series-input";
 import { toHoldingDTO, toValuationDTO, type DtoContext } from "@/modules/holdings/dto";
 import { HoldingModel, ValuationModel, type HoldingDoc } from "@/modules/holdings/model";
 import type { HoldingDTO, ValuationDTO } from "@/modules/holdings/schemas";
@@ -18,12 +24,7 @@ import { connectDb } from "@/server/db/connect";
 import { loadToBase } from "@/modules/fx/service";
 import { toObjectId } from "@/server/db/ids";
 import { AppError } from "@/server/errors";
-import {
-  HOLDING_TXN_TYPES,
-  fdTerms,
-  fdValueAt,
-  loadHoldingEvents,
-} from "@/server/ledger/holding-events";
+import { HOLDING_TXN_TYPES, loadHoldingEvents } from "@/server/ledger/holding-events";
 
 async function context(ctx: Ctx): Promise<DtoContext & { classList: AssetClassDoc[] }> {
   const [settings, classList] = await Promise.all([
@@ -262,8 +263,6 @@ export interface HoldingDetail {
   holding: HoldingDTO;
   transactions: TransactionDTO[];
   valuations: ValuationDTO[];
-  /** Invested and value after each day with activity, plus today. */
-  timeline: { date: string; investedMinor: number; valueMinor: number }[];
 }
 
 /** /assets/[id] */
@@ -291,23 +290,10 @@ export async function getHoldingDetail(ctx: Ctx, id: string): Promise<HoldingDet
       : null;
   const holding = { ...base, xirrBp: xirrBp(holdingCashFlows(events, terminal)) };
 
-  const valueAt = fdValueAt(doc, ctx.tz);
-  const { timeline } = replayHolding(events, { trackUnits: doc.trackUnits, valueAt });
-  const last = timeline.at(-1);
-  if (doc.status === "active" && last && last.date < c.today) {
-    const terms = fdTerms(doc, ctx.tz);
-    timeline.push({
-      date: c.today,
-      investedMinor: last.investedMinor,
-      valueMinor: terms ? fdValue(terms, c.today) : last.valueMinor,
-    });
-  }
-
   return {
     holding,
     transactions: txns.map((t) => toTransactionDTO(t, refs, ctx.tz)),
     valuations: valuations.map((v) => toValuationDTO(v, ctx.tz)),
-    timeline,
   };
 }
 
@@ -407,4 +393,90 @@ export async function listActiveClasses(
   return c.classList
     .filter((x) => !x.archivedAt)
     .map((x) => ({ id: String(x._id), name: x.name, color: x.color }));
+}
+
+// ------------------------------------------------------------------------- invested vs value
+
+/** Which holdings the chart adds up (docs/04 §24.6). */
+export type InvestmentScope =
+  { kind: "all" } | { kind: "class"; id: string } | { kind: "holding"; id: string };
+
+export interface InvestmentChartData extends InvestmentSeries {
+  currency: string;
+  view: RangeView;
+  scope: InvestmentScope;
+  /** Filter choices on the Assets page (classes and holdings that have any history). */
+  options: { classes: { id: string; name: string }[]; holdings: { id: string; name: string }[] };
+}
+
+/** `?chart=class:<id>` / `?chart=holding:<id>`; anything else is the whole portfolio. */
+export function parseInvestmentScope(value: string | string[] | undefined): InvestmentScope {
+  const v = Array.isArray(value) ? value[0] : value;
+  const m = /^(class|holding):([a-f0-9]{24})$/.exec(v ?? "");
+  return m ? { kind: m[1] as "class" | "holding", id: m[2]! } : { kind: "all" };
+}
+
+/**
+ * docs/04 §24 — invested vs value for the Assets page or one holding, from the same request-scoped
+ * ledger load as the dashboard. One holding is shown in its own currency; a group in base.
+ */
+export async function getInvestmentChart(
+  ctx: Ctx,
+  opts: {
+    searchParams: Record<string, string | string[] | undefined>;
+    scope: InvestmentScope;
+    defaultPreset: RangePreset;
+    excludeEmergency?: boolean;
+  },
+): Promise<InvestmentChartData> {
+  const [input, classList] = await Promise.all([
+    requestSeriesInput(ctx),
+    AssetClassModel.find({ userId: toObjectId(ctx.userId, "User") })
+      .sort({ sortOrder: 1, name: 1 })
+      .lean<AssetClassDoc[]>(),
+  ]);
+  const { scope } = opts;
+  const withHistory = input.holdingDocs.filter((h) => input.holdingEvents.has(String(h._id)));
+  const included = withHistory.filter((h) => {
+    if (scope.kind === "holding") return String(h._id) === scope.id;
+    if (opts.excludeEmergency && h.countsTowardEmergencyFund) return false;
+    return scope.kind === "all" || String(h.assetClassId) === scope.id;
+  });
+  if (scope.kind === "holding" && included.length === 0) {
+    throw new AppError("NOT_FOUND", "Holding not found");
+  }
+  const ids = new Set(included.map((h) => String(h._id)));
+  const single = scope.kind === "holding" ? included[0]! : null;
+
+  const today = utcToBusinessDate(new Date(), ctx.tz);
+  const view = parseRangeView(
+    opts.searchParams,
+    today,
+    firstEventDate(input.holdingEvents, [...ids]),
+    opts.defaultPreset,
+  );
+  const series = computeInvestmentSeries(
+    {
+      holdings: input.holdings.filter((h) => ids.has(h.id)),
+      holdingEvents: input.holdingEvents,
+      toBase: single ? (m) => m : input.toBase,
+    },
+    view.range,
+    view.granularity,
+  );
+  const usedClasses = new Set(withHistory.map((h) => String(h.assetClassId)));
+  return {
+    ...series,
+    currency: single ? single.currency : ctx.baseCurrency,
+    view,
+    scope,
+    options: {
+      classes: classList
+        .filter((c) => usedClasses.has(String(c._id)))
+        .map((c) => ({ id: String(c._id), name: c.name })),
+      holdings: withHistory
+        .map((h) => ({ id: String(h._id), name: h.name }))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    },
+  };
 }

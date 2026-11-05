@@ -455,6 +455,16 @@ Status values: ⬜ not started · 🟡 in progress · ✅ done
   by-holding table. New holdings enter the bridge at cost (opening_balance), so a gain recorded at opening shows as market
   change. The stale note uses today's staleness. Saved reviews without the section get it from the ledger when opened.
 - [mm] e2e `allocation.spec` raced (`isVisible()` right after navigation); it now waits for the editor first.
+- [invest-chart] "Invested vs value" chart (owner request, 2026-11-05; docs/04 §24, docs/05 §5) on the Assets page (filter:
+  all / one class / one holding via `?chart=`, follows the page's class filter and "Emergency fund: hidden") and on each
+  holding's page (replaces the old step chart). Ranges 1M · 3M · 6M · YTD · 1Y · All · Custom (`TimeRangeBar` with
+  `presets` and `options={false}`); Assets defaults to 1Y, a holding to All. Owner chose a smooth value line: each
+  valuation's market move is spread back to the previous anchor (pure `src/domain/investment-series.ts`), drawn as the
+  dashboard's monotone curve with dots on values entered; a holding's chart jumps vertically on flow days (owner accepted the
+  recommendation). Gain/loss shading follows the curve: the lines and shading are drawn on Recharts' scales in one layer
+  (`src/lib/monotone-path.ts`, same Steffen curve as Recharts "monotone"); invisible series drive the tooltip. Income is a
+  number under the chart. One holding is shown in its own currency. A 0 value recorded on an empty holding is ignored.
+  Holding detail no longer returns `timeline`; `value-chart.tsx` removed.
 
 ## Deviations from docs
 <!-- Claude: anything built differently from the docs, and why. Update the doc too if the user agrees. -->
@@ -543,3 +553,6 @@ Status values: ⬜ not started · 🟡 in progress · ✅ done
 - [3] Fixed during this phase: the shared DatePicker could not navigate past the current year (react-day-picker dropdown captions default to it) — FD maturities were impossible to pick.
 - [2] Recharts tooltip can overlap the y-axis labels near the left edge; cosmetic.
 - [0] `next dev` maintains a managed block in `AGENTS.md` (Next.js agent rules); commit it as-is.
+- [invest-chart] Date-dependent e2e (pre-existing, not this change): `dashboard.spec` "time range" expects 6M = weekly, but 6M
+  is 184 days on some dates (e.g. 2026-11-05: 6 May–5 Nov) and §22 switches to monthly above 183 days. Fix the test or the
+  rule (owner to decide), like the SIP day-29–31 tests.

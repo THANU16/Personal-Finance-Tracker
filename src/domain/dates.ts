@@ -21,6 +21,13 @@ export function businessDateToUtc(dateKey: string, tz: string): Date {
   return fromZonedTime(`${dateKey}T00:00:00`, tz);
 }
 
+/** A business date and wall-clock time (`HH:mm`) in `tz` as a UTC instant. */
+export function businessDateTimeToUtc(dateKey: string, time: string, tz: string): Date {
+  if (!isDateKey(dateKey)) throw new RangeError(`invalid date ${dateKey}`);
+  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) throw new RangeError(`invalid time ${time}`);
+  return fromZonedTime(`${dateKey}T${time}:00`, tz);
+}
+
 /** The business date (`YYYY-MM-DD` in `tz`) of a stored instant. */
 export function utcToBusinessDate(date: Date, tz: string): string {
   return localDateKey(date, tz);

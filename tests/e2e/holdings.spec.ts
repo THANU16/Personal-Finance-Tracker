@@ -79,6 +79,15 @@ test("add holding → buy → redeem (docs/04 example) → big value change need
   await save.click();
   await expect(page.getByText("Ceylon Equity Fund updated")).toBeVisible();
 
+  // Invested vs value (docs/04 §24): today's figures; a range button drives the URL.
+  const chart = page.getByTestId("investment-chart");
+  await expect(chart).toContainText("LKR 40,000.00");
+  await expect(chart).toContainText("LKR 20,100.00");
+  await chart.getByRole("button", { name: "3M", exact: true }).click();
+  await expect(page).toHaveURL(/r=3m/);
+  await page.goto("/assets");
+  await expect(page.getByTestId("investment-chart")).toContainText("LKR 40,000.00");
+
   // Bank received the redemption cash: 100,000 − 10,000 + 19,900
   await page.goto("/accounts");
   await expect(page.getByText("LKR 109,900.00").first()).toBeVisible();

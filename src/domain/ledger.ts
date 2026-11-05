@@ -136,6 +136,24 @@ export function reconcileAdjustment(
     : { direction: "from", amountMinor: -diff };
 }
 
+/** How a reconcile difference is recorded (docs/04 §1). */
+export const RECONCILE_RECORD_AS = ["expense", "income", "adjustment"] as const;
+export type ReconcileRecordAs = (typeof RECONCILE_RECORD_AS)[number];
+
+/** Default: money missing is an expense (bank fees), money extra is income (interest). */
+export function reconcileDefaultRecordAs(direction: "to" | "from"): ReconcileRecordAs {
+  return direction === "from" ? "expense" : "income";
+}
+
+/** Expense only for a decrease, income only for an increase; an adjustment fits both. */
+export function reconcileRecordAllowed(
+  direction: "to" | "from",
+  recordAs: ReconcileRecordAs,
+): boolean {
+  if (recordAs === "adjustment") return true;
+  return recordAs === (direction === "from" ? "expense" : "income");
+}
+
 export type SplitError =
   "too_few_lines" | "non_positive_line" | "sum_mismatch" | "duplicate_category";
 

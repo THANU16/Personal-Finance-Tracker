@@ -39,8 +39,16 @@ card more negative; paying the card is a **transfer** bank → card (never an ex
 A new loan account is created with `openingBalanceMinor = −outstanding`. Loan disbursement into a
 bank is a transfer loan → bank.
 
-**Reconcile:** user enters real balance `R`; post `adjustment` for `R − balance` (to-account if
-positive, from-account if negative) in category "Balance adjustment".
+**Reconcile** (owner decision, 2026-11-05): user enters real balance `R`; the difference `D = R − balance` is
+posted as one transaction with `source.kind = "reconcile"` and description "Reconciliation", recorded as the user
+chooses:
+- **Expense** (default when `D < 0`): from the account, category default "Bank fees" (system).
+- **Income** (default when `D > 0`): to the account, category default "Interest" (the user's active income
+  category of that name, else "Uncategorised" income).
+- **Balance adjustment**: `adjustment` in category "Balance adjustment" (to-account if positive, from-account if
+  negative), excluded from cashflow (§4) — for old mistakes or a wrong opening balance.
+Expense only for a decrease, income only for an increase. Never dip-guarded (§20). Existing reconcile adjustments can
+be converted once by `npm run convert:reconcile` (void + repost as expense/income with the defaults; dry run first).
 
 ## 2. Net worth
 - Convert every account balance (with `includeInNetWorth`) and every active holding value to base
@@ -248,6 +256,11 @@ Crypto 10% → A 20,000; B 10,000; MF 20,000; UT 30,000; Gold 10,000; BTC 10,000
 - Cross-currency transfer stores both amounts; implied rate saved.
 
 ## 15. Opportunity Fund
+- **Levels** (owner request, 2026-11-05): each entry keeps its date **and time** (`recordedAt`); several per day are kept,
+  never replaced. No time given: now for today, 23:59 (the close) for a past day; entries before this change count as
+  their day's close. Levels are replayed in date-then-time order: the latest entry is the current level, and any
+  entry above the reference high (even later the same day) starts a new cycle. A time after now is rejected. The
+  levels chart plots every entry at its instant on a smooth (monotone) curve.
 - `drawdownBp = round((referenceHigh − latestLevel) / referenceHigh × 10000)`.
 - New level > referenceHigh → new cycle: referenceHigh = level, triggered list cleared,
   `fundBalanceAtStartMinor` = current fund balance.
@@ -408,3 +421,37 @@ one file per asset. (Numbered 23 because §20 is Earmarks.)
     "Rebuild net-worth history".
 11. **Undo**: one DB transaction voids the batch's transactions, deletes its valuations, recomputes, and marks the batch
     `reverted` (the hashes are released so the file can be imported again).
+
+## 24. Invested vs value chart (owner decision, 2026-11-05)
+Shown on the Assets page (whole portfolio, or one class, or one holding) and on each holding's page. Display only:
+it never changes holding caches, net worth or snapshots (§22 net worth keeps closing values carried forward).
+1. **Invested** = the holding's `invested` after each day's events, exactly as §3 (redemptions remove `costRemoved`).
+   Drawn as a step line: it moves only on the day of a buy, SIP, redemption, opening balance or reinvested income.
+2. **Value** = the §3 value at the end of the day, plus the **spread market move**: when a valuation changes the value
+   by `M` (value just after the valuation event − value just before it), `M` is spread in a straight line over the days
+   since the previous anchor. For a day `d` between anchor `p` and valuation date `n`:
+   `value(d) = §3 value(d) + round(M × (d − p) ÷ (n − p))`. On `n` itself the §3 value is used (exact), so the line
+   passes through every value entered. Anchors are: the previous valuation, the holding's first event, and the day of
+   a full redemption (a closed position never gets a spread). Several valuations on one day count as one move.
+   Buys, redemptions and reinvested income keep their full value effect on their own day; trade prices of unit-tracked
+   holdings re-price on the trade day as in §3. Never below 0. After the last valuation the value is held (§3) until
+   the next one. FDs use §9 for every day (no spreading needed).
+3. **Points**: bucket ends of the range (granularity per §22) ∪ every valuation date ∪ every flow date in the range,
+   plus the day before the range (baseline). A point is **entered** when an included holding has a valuation that day
+   (shown as a dot). A value of 0 recorded on an empty holding (created with nothing in it) is not a value update: no
+   dot, and "All" starts at the first real event. A single holding is shown in its own currency (like its stat cards); a group converts every
+   holding to the base currency with the rate on that date (§14), and a holding without a rate on a date is left out
+   of that point and counted (`fxMissing`).
+4. **Summary** at the range end: value, invested, gain = value − invested and gain % = gain ÷ invested ("—" when 0).
+   **Market gain in the range** = (value at end − value at the baseline) − Σ value effects of flows in the range
+   (invest `+amount`, reinvested income `+(amount − tax)`, redemption `−amount`, each in base on its date; on a day with
+   an opening balance the holding's whole change that day counts as money in): the change not caused by money going in
+   or out (includes FD interest and currency moves).
+5. **Dividends & interest received in the range** = Σ `investment_income` amounts (gross, paid out or reinvested) of the
+   included holdings dated in the range, in base. Shown as a number, never as a line (paid-out income is already cash).
+6. Scope: every holding type, active and closed (closed ones are 0 after their full redemption). On the Assets page the
+   "Emergency fund: hidden" view leaves emergency-fund holdings out, like the totals.
+7. Ranges: 1M (30 days), 3M, 6M, YTD, 1Y, All (from the first included event), Custom. Assets page defaults to 1Y, a
+   holding's page to All.
+8. Drawing: the Assets chart draws value as a monotone curve through the points; a holding's chart draws the value as
+   a monotone curve between flow days and a vertical jump on each flow day (both lines jump together).

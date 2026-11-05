@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { ACCOUNT_TYPES, type AccountType } from "@/domain/accounts";
 import { isDateKey } from "@/domain/dates";
+import { RECONCILE_RECORD_AS } from "@/domain/ledger";
 import { minorUnitDigits } from "@/domain/money";
 
 export const dateKey = z.string().refine(isDateKey, "Enter a valid date");
@@ -89,7 +90,17 @@ export const updateAccountSchema = z.object(accountFields).partial().strict();
 export type UpdateAccountInput = z.input<typeof updateAccountSchema>;
 
 export const reconcileAccountSchema = z
-  .object({ realBalanceMinor: signedMinor, date: dateKey })
+  .object({
+    realBalanceMinor: signedMinor,
+    date: dateKey,
+    /** docs/04 §1 — default by direction (expense when lower, income when higher). */
+    recordAs: z.enum(RECONCILE_RECORD_AS).optional(),
+    /** Expense / income category; default "Bank fees" / "Interest". */
+    categoryId: z
+      .string()
+      .regex(/^[a-f0-9]{24}$/i, "Choose a category")
+      .nullish(),
+  })
   .strict();
 export type ReconcileAccountInput = z.input<typeof reconcileAccountSchema>;
 

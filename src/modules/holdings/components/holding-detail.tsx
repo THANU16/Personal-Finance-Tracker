@@ -1,12 +1,13 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import { Suspense } from "react";
 import { format, parse } from "date-fns";
 import { ArrowLeft } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Money } from "@/components/shared/money";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatCard } from "@/components/shared/stat-card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { utcToBusinessDate } from "@/domain/dates";
 import { vizColor } from "@/lib/viz-palette";
 import { formatPercentBp, formatPrice, formatUnits } from "@/lib/format";
@@ -15,7 +16,7 @@ import { FdActions } from "@/modules/holdings/components/fd-actions";
 import { GainCell, StaleBadge } from "@/modules/holdings/components/holdings-table";
 import { HoldingHeaderActions, HoldingTabs } from "@/modules/holdings/components/holding-tabs";
 import { INSTRUMENT_LABEL } from "@/modules/holdings/components/holding-meta";
-import { ValueChart } from "@/modules/holdings/components/value-chart";
+import { InvestmentChartCard } from "@/modules/holdings/components/investment-chart-card";
 import {
   getHoldingDetail,
   listActiveClasses,
@@ -30,11 +31,17 @@ const longDate = (key: string) =>
   format(parse(key, "yyyy-MM-dd", new Date(2000, 0, 1)), "d MMM yyyy");
 
 /** /assets/[id] content (docs/05 §5 holding detail). Render inside <Suspense>. */
-export async function HoldingDetailView({ params }: { params: Promise<{ id: string }> }) {
+export async function HoldingDetailView({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const current = await getCurrentUser();
   if (!current) redirect("/login");
   const { ctx, settings } = current;
-  const { id } = await params;
+  const [{ id }, sp] = await Promise.all([params, searchParams]);
   let detail: Detail;
   try {
     detail = await getHoldingDetail(ctx, id);
@@ -42,7 +49,7 @@ export async function HoldingDetailView({ params }: { params: Promise<{ id: stri
     if (err instanceof AppError && err.code === "NOT_FOUND") notFound();
     throw err;
   }
-  const { holding: h, transactions, valuations, timeline } = detail;
+  const { holding: h, transactions, valuations } = detail;
   const todayKey = utcToBusinessDate(new Date(), ctx.tz);
   const [classes, accounts, buckets] = await Promise.all([
     listActiveClasses(ctx),
@@ -172,14 +179,16 @@ export async function HoldingDetailView({ params }: { params: Promise<{ id: stri
         </div>
       ) : null}
 
-      <Card className="mb-4">
-        <CardHeader>
-          <CardTitle>Value vs invested</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <ValueChart points={timeline} currency={h.currency} />
-        </CardContent>
-      </Card>
+      <Suspense fallback={<Skeleton className="mb-4 h-[28rem] rounded-xl" />}>
+        <InvestmentChartCard
+          searchParams={sp}
+          scope={{ kind: "holding", id }}
+          defaultPreset="all"
+          jumps
+          title="Invested vs value"
+          description={`This holding over time, in ${h.currency}`}
+        />
+      </Suspense>
 
       {buckets.active ? (
         <div className="mb-4">

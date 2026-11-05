@@ -120,3 +120,21 @@ test("settings show seeded categories and asset classes", async ({ page }) => {
   await page.getByRole("tab", { name: "Asset classes" }).click();
   await expect(page.getByText("Cash & Equivalents")).toBeVisible();
 });
+
+test("reconcile records a lower balance as a Bank fees expense (docs/04 §1)", async ({ page }) => {
+  await register(page);
+  await addAccount(page, "Bank BOC", "100000");
+  await page.getByRole("button", { name: "Actions for Bank BOC" }).click();
+  await page.getByRole("menuitem", { name: "Reconcile" }).click();
+  const dialog = page.getByRole("dialog", { name: "Reconcile Bank BOC" });
+  await dialog.getByLabel("Actual balance").fill("99428.93");
+  await expect(dialog.getByRole("radio", { name: /^Expense/ })).toBeChecked();
+  await expect(dialog.getByLabel("Category", { exact: true })).toContainText("Bank fees");
+  await dialog.getByRole("button", { name: "Reconcile" }).click();
+  await expect(page.getByText("Balance matched · expense recorded")).toBeVisible();
+
+  await page.goto("/transactions");
+  const row = page.getByRole("row").filter({ hasText: "Reconciliation" }).first();
+  await expect(row).toContainText("Bank fees");
+  await expect(row).toContainText("571.07");
+});

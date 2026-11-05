@@ -1,10 +1,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import type { CategoryDTO } from "@/modules/categories/schemas";
+import type { CategoryDTO, CategoryNode } from "@/modules/categories/schemas";
 import {
   archiveCategory,
   createCategory,
+  getCategoryTree,
   unarchiveCategory,
   updateCategory,
 } from "@/modules/categories/service";
@@ -13,6 +14,11 @@ import { requireUser } from "@/server/auth/require-user";
 import { runAction } from "@/server/run-action";
 
 const refresh = () => revalidatePath("/", "layout");
+
+/** Active categories as a tree, for pickers that open on demand (e.g. Reconcile). */
+export async function getCategoryTreeAction(): Promise<ActionResult<CategoryNode[]>> {
+  return runAction(async () => getCategoryTree(await requireUser()));
+}
 
 export async function createCategoryAction(input: unknown): Promise<ActionResult<CategoryDTO>> {
   return runAction(async () => {

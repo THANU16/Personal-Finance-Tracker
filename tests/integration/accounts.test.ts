@@ -6,6 +6,7 @@ import {
   createAccount,
   getAccount,
   listAccounts,
+  convertReconcileAdjustments,
   reconcileAccount,
   unarchiveAccount,
   updateAccount,
@@ -146,27 +147,79 @@ describe("updateAccount", () => {
   });
 });
 
-describe("reconcileAccount", () => {
+describe("reconcileAccount (docs/04 §1)", () => {
+  const txnsOf = (ctx: { userId: string }) =>
+    TransactionModel.find({ userId: new Types.ObjectId(ctx.userId) })
+      .sort({ createdAt: 1 })
+      .lean<TransactionDoc[]>();
+
   it.each([
-    ["more money than recorded", 100_000, 112_345, 12_345, "toAccountId"],
-    ["less money than recorded", 100_000, 90_000, -10_000, "fromAccountId"],
-  ] as const)("posts an adjustment when there is %s", async (_l, opening, real, expected, side) => {
+    ["more money than recorded", 100_000, 112_345, 12_345, "income", "toAccountId", "Interest"],
+    ["less money than recorded", 100_000, 90_000, -10_000, "expense", "fromAccountId", "Bank fees"],
+  ] as const)(
+    "by default posts %s as %s in the default category",
+    async (_l, opening, real, expected, type, side, category) => {
+      const ctx = await makeUser();
+      const bank = await makeAccount(ctx, { openingBalanceMinor: opening });
+      const res = await reconcileAccount(ctx, bank.id, {
+        realBalanceMinor: real,
+        date: "2026-02-01",
+      });
+      expect(res.adjustmentMinor).toBe(expected);
+      expect(res.account.balanceMinor).toBe(real);
+      const [t] = await txnsOf(ctx);
+      expect(t).toMatchObject({
+        type,
+        amountMinor: Math.abs(expected),
+        description: "Reconciliation",
+        source: { kind: "reconcile" },
+      });
+      expect(String(t?.[side])).toBe(bank.id);
+      expect(String(t?.categoryId)).toBe(await categoryId(ctx, category, type));
+    },
+  );
+
+  it("a balance adjustment stays out of cashflow; a chosen category is used", async () => {
     const ctx = await makeUser();
-    const bank = await makeAccount(ctx, { openingBalanceMinor: opening });
-    const res = await reconcileAccount(ctx, bank.id, {
-      realBalanceMinor: real,
+    const bank = await makeAccount(ctx, { openingBalanceMinor: 100_000 });
+    await reconcileAccount(ctx, bank.id, {
+      realBalanceMinor: 95_000,
       date: "2026-02-01",
+      recordAs: "adjustment",
     });
-    expect(res.adjustmentMinor).toBe(expected);
-    expect(res.account.balanceMinor).toBe(real);
-    const adj = await TransactionModel.findOne({
-      userId: new Types.ObjectId(ctx.userId),
-      type: "adjustment",
-    }).lean<TransactionDoc>();
-    expect(adj?.amountMinor).toBe(Math.abs(expected));
-    expect(String(adj?.[side])).toBe(bank.id);
-    expect(adj?.source.kind).toBe("reconcile");
+    const groceries = await categoryId(ctx, "Groceries");
+    await reconcileAccount(ctx, bank.id, {
+      realBalanceMinor: 94_000,
+      date: "2026-02-02",
+      recordAs: "expense",
+      categoryId: groceries,
+    });
+    const [adj, exp] = await txnsOf(ctx);
+    expect(adj).toMatchObject({ type: "adjustment", amountMinor: 5_000 });
     expect(String(adj?.categoryId)).toBe(await categoryId(ctx, "Balance adjustment"));
+    expect(exp).toMatchObject({ type: "expense", amountMinor: 1_000 });
+    expect(String(exp?.categoryId)).toBe(groceries);
+    expect(await balanceOf(ctx, bank.id)).toBe(94_000);
+  });
+
+  it("rejects income for a lower balance (and expense for a higher one)", async () => {
+    const ctx = await makeUser();
+    const bank = await makeAccount(ctx, { openingBalanceMinor: 100_000 });
+    const err = await reconcileAccount(ctx, bank.id, {
+      realBalanceMinor: 90_000,
+      date: "2026-02-01",
+      recordAs: "income",
+    }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(AppError);
+    expect((err as AppError).fieldErrors).toHaveProperty("recordAs");
+    await expect(
+      reconcileAccount(ctx, bank.id, {
+        realBalanceMinor: 110_000,
+        date: "2026-02-01",
+        recordAs: "expense",
+      }),
+    ).rejects.toBeInstanceOf(AppError);
+    expect(await balanceOf(ctx, bank.id)).toBe(100_000);
   });
 
   it("reconciles a card (liability) and does nothing when balances match", async () => {
@@ -176,19 +229,80 @@ describe("reconcileAccount", () => {
       openingBalanceMinor: -50_000,
       creditCard: { limitMinor: 100_000, statementDay: 1, dueDay: 15 },
     });
+    // Owes more than recorded: a charge on the card (expense from the card).
     const res = await reconcileAccount(ctx, card.id, {
-      realBalanceMinor: -48_000,
+      realBalanceMinor: -52_000,
       date: "2026-02-01",
     });
-    expect(res.account.balanceMinor).toBe(-48_000);
+    expect(res.account.balanceMinor).toBe(-52_000);
+    expect((await txnsOf(ctx))[0]).toMatchObject({ type: "expense", amountMinor: 2_000 });
     const none = await reconcileAccount(ctx, card.id, {
-      realBalanceMinor: -48_000,
+      realBalanceMinor: -52_000,
       date: "2026-02-01",
     });
     expect(none.adjustmentMinor).toBe(0);
     expect(await TransactionModel.countDocuments({ userId: new Types.ObjectId(ctx.userId) })).toBe(
       1,
     );
+  });
+});
+
+describe("convertReconcileAdjustments (owner request, docs/04 §1)", () => {
+  it("dry run lists; apply voids + reposts as expense / income; balances unchanged", async () => {
+    const ctx = await makeUser();
+    const bank = await makeAccount(ctx, { name: "Bank BOC", openingBalanceMinor: 100_000 });
+    const hnb = await makeAccount(ctx, { name: "Bank HNB", openingBalanceMinor: 100_000 });
+    const old = await makeAccount(ctx, { name: "Old", openingBalanceMinor: 100_000 });
+    await reconcileAccount(ctx, bank.id, {
+      realBalanceMinor: 99_429,
+      date: "2026-11-05",
+      recordAs: "adjustment",
+    });
+    await reconcileAccount(ctx, hnb.id, {
+      realBalanceMinor: 100_674,
+      date: "2026-11-05",
+      recordAs: "adjustment",
+    });
+    await reconcileAccount(ctx, old.id, {
+      realBalanceMinor: 100_100,
+      date: "2026-11-05",
+      recordAs: "adjustment",
+    });
+    await archiveAccount(ctx, old.id, { force: true });
+
+    const dry = await convertReconcileAdjustments(ctx, { apply: false });
+    expect(
+      dry.map((r) => [r.accountName, r.amountMinor, r.recordAs, r.categoryName, r.skipped]),
+    ).toEqual([
+      ["Bank BOC", -571, "expense", "Bank fees", null],
+      ["Bank HNB", 674, "income", "Interest", null],
+      ["Old", 100, "income", "Interest", "account is archived"],
+    ]);
+    // A dry run writes nothing.
+    expect(
+      await TransactionModel.countDocuments({
+        userId: new Types.ObjectId(ctx.userId),
+        type: "adjustment",
+        status: "posted",
+      }),
+    ).toBe(3);
+
+    await convertReconcileAdjustments(ctx, { apply: true });
+    const uid = new Types.ObjectId(ctx.userId);
+    const posted = await TransactionModel.find({ userId: uid, status: "posted" })
+      .sort({ createdAt: 1 })
+      .lean<TransactionDoc[]>();
+    expect(posted.map((t) => [t.type, t.amountMinor, t.source.kind])).toEqual([
+      ["adjustment", 100, "reconcile"], // archived account: left as it was
+      ["expense", 571, "reconcile"],
+      ["income", 674, "reconcile"],
+    ]);
+    expect(await TransactionModel.countDocuments({ userId: uid, status: "void" })).toBe(2);
+    expect(await balanceOf(ctx, bank.id)).toBe(99_429);
+    expect(await balanceOf(ctx, hnb.id)).toBe(100_674);
+    // Nothing left to convert (the archived one stays listed as skipped).
+    const again = await convertReconcileAdjustments(ctx, { apply: false });
+    expect(again.filter((r) => !r.skipped)).toEqual([]);
   });
 });
 

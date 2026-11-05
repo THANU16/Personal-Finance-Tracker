@@ -5,7 +5,7 @@ import { HoldingDetailView } from "@/modules/holdings/components/holding-detail"
 
 export const metadata: Metadata = { title: "Holding" };
 
-export default function HoldingPage({ params }: PageProps<"/assets/[id]">) {
+export default function HoldingPage({ params, searchParams }: PageProps<"/assets/[id]">) {
   return (
     <Suspense
       fallback={
@@ -20,7 +20,7 @@ export default function HoldingPage({ params }: PageProps<"/assets/[id]">) {
         </div>
       }
     >
-      <HoldingDetailView params={params} />
+      <HoldingDetailView params={params} searchParams={searchParams} />
     </Suspense>
   );
 }

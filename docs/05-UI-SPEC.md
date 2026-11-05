@@ -58,6 +58,10 @@ list shows "From emergency" / "To opportunity" badges.
 
 ## 5. Assets `/assets`
 - Header totals: value, invested, unrealised gain (%), realised gain, income, portfolio XIRR.
+- **Invested vs value** card (docs/04 §24): filter All investments / one class / one holding (`?chart=`; follows the page's
+  class filter and the emergency switch), range 1M · 3M · 6M · YTD · 1Y · All · Custom (default 1Y), summary (value,
+  invested, gain %, market gain in the range), smooth value curve with dots on values entered, invested step line, gain/loss
+  shading, "Dividends & interest received" as a number, table view.
 - Toggle view: **By class** (accordion per class with class totals, weight, XIRR) / **All holdings** table.
 - "Emergency fund: Included / Hidden" switch (when emergency-fund holdings exist): Hidden leaves them out of totals, weights and
   XIRR and states how much is hidden.
@@ -80,7 +84,9 @@ Entry: Assets header and an "Import CSV" button on the holding's Valuations tab 
 4. **Confirm** → result with a link to the holding, "Rebuild net-worth history" and "Undo import". History in Settings → Data.
 
 ### Holding detail `/assets/[id]`
-Header (value, gain, XIRR, income) · value vs invested line chart · tabs: Transactions · Valuations ·
+Header (value, gain, XIRR, income) · **Invested vs value** card (docs/04 §24: range 1M–All + Custom, default All;
+value, invested, gain, market gain in the range; smooth value curve with a dot per value entered and a vertical jump on
+each buy/redeem day; invested step line; gain/loss shading; dividends & interest as a number; table view) · tabs: Transactions · Valuations ·
 Income · Details (edit, track-units toggle, close). FD variant: maturity countdown, accrued interest,
 Renew / Withdraw actions.
 

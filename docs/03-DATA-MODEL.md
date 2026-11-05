@@ -200,8 +200,10 @@ or deleted levels cannot leave them stale. Only the cycle start and the fund bal
 
 ## marketLevels
 ```
-benchmarkName, date (business date YYYY-MM-DD), level (number), note?
-idx: {userId, benchmarkName, date} unique          # adding a level for an existing date replaces it
+benchmarkName, date (business date YYYY-MM-DD), recordedAt (Date | null), level (number), note?
+idx: {userId, benchmarkName, date, recordedAt}     # several levels per day (owner request, 2026-11-05)
+# The old unique {userId, benchmarkName, date} index is dropped by the service before an insert.
+# recordedAt null = an entry from before; read as that day's close (23:59 local).
 ```
 
 ## opportunityDeployments

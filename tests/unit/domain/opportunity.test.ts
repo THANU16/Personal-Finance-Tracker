@@ -85,6 +85,26 @@ describe("replayCycle", () => {
   });
 });
 
+describe("replayCycle with several levels on one day (docs/04 §15)", () => {
+  it("orders a day's levels by entry time: the later one is latest, a later high resets", () => {
+    const at = (h: number) => Date.UTC(2026, 10, 5, h);
+    const s = replayCycle(
+      [
+        { date: "2026-11-05", level: 9_000, atMs: at(10) },
+        { date: "2026-11-05", level: 10_000, atMs: at(4) },
+        { date: "2026-11-05", level: 8_800, atMs: at(8) },
+      ],
+      DEFAULT_RULES,
+    );
+    expect(s.referenceHigh).toBe(10_000);
+    expect(s.latest).toMatchObject({ level: 9_000 });
+    expect(s.drawdownBp).toBe(1_000);
+    // −12% at 08:00 triggered the first rule; it stays triggered in the cycle.
+    expect(s.triggered).toEqual([0]);
+    expect(s.maxDrawdownBp).toBe(1_200);
+  });
+});
+
 describe("suggestedDeployment (docs/04 §15 worked example)", () => {
   const base = { rules: DEFAULT_RULES, fundBalanceAtStartMinor: 100_000_000 };
 
