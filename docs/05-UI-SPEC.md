@@ -44,6 +44,13 @@ with drill-down, top categories (click filters Transactions with the same range)
 - BucketBar per earmarkable account; "Earmark / Move between buckets" dialog; over-earmarked badge.
 
 ## 4. Transactions `/transactions`
+- **Day-by-day list** (owner request, 2026-11-05, after the owner's reference app): rows grouped by day; each day header
+  shows the day number, a weekday chip, month/year and that day's **income in blue** and **expense in red** (counted
+  like the page totals: income + paid-out investment income; expenses + transfer fees). Rows: category · description
+  with the account under it · amount (income blue, expense red, everything else muted; signs kept). Phones: list with
+  a sticky day header and a detail sheet per row. md+: one table (Category, Description, Account, Amount, ⋯) with a
+  header row per day. The filter bar and summary cards stay as they are (Income blue, Expense red). Blue/red on this
+  page only; account pages and holding tabs keep their lists. Category names only (no icons yet).
 - Filters bar (date presets, type, account, category, holding, tag, amount, search) synced to URL.
 - Table: date · description · type icon · category/holding · account(s) · amount (signed per context) · tags · attachment icon · menu (edit, duplicate, void).
 - Grouped lines (SIP execution, deployment) show a group chip linking to the owner.

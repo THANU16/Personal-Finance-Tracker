@@ -32,7 +32,8 @@ import { TransactionRowActions } from "@/modules/transactions/components/transac
 const dayLabel = (key: string) =>
   format(parse(key, "yyyy-MM-dd", new Date(2000, 0, 1)), "EEE d MMM yyyy");
 
-function Detail({ row, onClose }: { row: LedgerRow; onClose: () => void }) {
+/** Detail sheet body: facts + Edit / Duplicate / Attachments / Void (also used by the Activity list). */
+export function TransactionDetail({ row, onClose }: { row: LedgerRow; onClose: () => void }) {
   const t = row.txn;
   const facts: [string, React.ReactNode][] = [
     ["Date", shortDate(t.date)],
@@ -108,7 +109,7 @@ function Row({ row }: { row: LedgerRow }) {
         </button>
         {open ? (
           <DialogContent>
-            <Detail row={row} onClose={() => setOpen(false)} />
+            <TransactionDetail row={row} onClose={() => setOpen(false)} />
           </DialogContent>
         ) : null}
       </Dialog>

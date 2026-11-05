@@ -47,7 +47,14 @@ export function signedAmount(t: TransactionDTO): number {
   return t.amountMinor;
 }
 
-export function TransactionAmount({ txn }: { txn: TransactionDTO }) {
+export function TransactionAmount({
+  txn,
+  colorNegative = true,
+}: {
+  txn: TransactionDTO;
+  /** false: the caller colours the amount (Transactions page tones). */
+  colorNegative?: boolean;
+}) {
   if (txn.type === "transfer") {
     return (
       <span className="flex flex-col items-end">
@@ -81,7 +88,12 @@ export function TransactionAmount({ txn }: { txn: TransactionDTO }) {
     (txn.feeMinor > 0 || txn.taxMinor > 0);
   return (
     <span className="flex flex-col items-end">
-      <Money valueMinor={signed} currency={txn.currency} signed={signed > 0} />
+      <Money
+        valueMinor={signed}
+        currency={txn.currency}
+        signed={signed > 0}
+        colorNegative={colorNegative}
+      />
       {hasCharges ? (
         <span className="text-xs text-muted-foreground">
           gross <Money valueMinor={txn.amountMinor} currency={txn.currency} />

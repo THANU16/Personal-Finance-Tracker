@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { cashflowSigned, groupByDay } from "@/lib/day-groups";
+import {
+  cashflowParts,
+  cashflowSigned,
+  cashflowTone,
+  dayCashflow,
+  groupByDay,
+} from "@/lib/day-groups";
 
 type Row = {
   id: string;
@@ -70,5 +76,53 @@ describe("groupByDay", () => {
         () => 0,
       ),
     ).toEqual([]);
+  });
+});
+
+describe("Transactions page day totals (owner request, 2026-11-05)", () => {
+  const r = (type: string, amountMinor: number, extra: Record<string, unknown> = {}) => ({
+    type,
+    status: "posted",
+    amountMinor,
+    feeMinor: 0,
+    currency: "LKR",
+    ...extra,
+  });
+
+  it("income (incl. paid-out investment income) blue; expense and transfer fees red", () => {
+    expect(
+      dayCashflow(
+        [
+          r("income", 67_400),
+          r("investment_income", 10_000),
+          r("investment_income", 5_000, { reinvest: true }),
+          r("expense", 33_579),
+          r("transfer", 500_000, { feeMinor: 2_500 }),
+          r("invest", 100_000),
+          r("expense", 9_999, { status: "void" }),
+        ],
+        "LKR",
+      ),
+    ).toEqual({ incomeMinor: 77_400, expenseMinor: 36_079, partial: false });
+  });
+
+  it("marks the day partial for another currency", () => {
+    expect(cashflowParts(r("expense", 100, { currency: "USD" }), "LKR")).toBeNull();
+    expect(dayCashflow([r("expense", 100, { currency: "USD" })], "LKR").partial).toBe(true);
+    expect(cashflowParts(r("transfer", 100, { currency: "USD" }), "LKR")).toEqual({
+      incomeMinor: 0,
+      expenseMinor: 0,
+    });
+  });
+
+  it("tones: income blue, expense red, the rest (and voids) neutral", () => {
+    expect(cashflowTone(r("income", 1))).toBe("income");
+    expect(cashflowTone(r("investment_income", 1))).toBe("income");
+    expect(cashflowTone(r("investment_income", 1, { reinvest: true }))).toBe("neutral");
+    expect(cashflowTone(r("expense", 1))).toBe("expense");
+    expect(cashflowTone(r("expense", 1, { status: "void" }))).toBe("neutral");
+    for (const t of ["transfer", "invest", "redeem", "debt_payment", "adjustment"]) {
+      expect(cashflowTone(r(t, 1))).toBe("neutral");
+    }
   });
 });

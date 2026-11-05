@@ -49,3 +49,58 @@ export function cashflowSigned(
   if (t.currency !== baseCurrency) return null;
   return t.type === "income" ? t.amountMinor : -t.amountMinor;
 }
+
+/** Fields of a ledger row the Activity day totals need. */
+export interface CashflowRow {
+  type: string;
+  status: string;
+  amountMinor: number;
+  feeMinor?: number;
+  reinvest?: boolean | null;
+  currency: string;
+}
+
+/**
+ * Transactions page (owner request, 2026-11-05): what a row adds to the day's income (blue) and
+ * expense (red), counted like the page's totals — income and paid-out investment income are
+ * income; expenses and transfer fees are expense; everything else adds nothing. Null: another
+ * currency (the day is marked partial).
+ */
+export function cashflowParts(
+  t: CashflowRow,
+  baseCurrency: string,
+): { incomeMinor: number; expenseMinor: number } | null {
+  const none = { incomeMinor: 0, expenseMinor: 0 };
+  if (t.status === "void") return none;
+  const income = t.type === "income" || (t.type === "investment_income" && !t.reinvest);
+  const expense =
+    t.type === "expense" ? t.amountMinor : t.type === "transfer" ? (t.feeMinor ?? 0) : 0;
+  if (!income && expense === 0) return none;
+  if (t.currency !== baseCurrency) return null;
+  return { incomeMinor: income ? t.amountMinor : 0, expenseMinor: expense };
+}
+
+/** A day's income and expense totals (both shown, like the reference app). */
+export function dayCashflow(
+  rows: readonly CashflowRow[],
+  baseCurrency: string,
+): { incomeMinor: number; expenseMinor: number; partial: boolean } {
+  const out = { incomeMinor: 0, expenseMinor: 0, partial: false };
+  for (const r of rows) {
+    const p = cashflowParts(r, baseCurrency);
+    if (!p) out.partial = true;
+    else {
+      out.incomeMinor += p.incomeMinor;
+      out.expenseMinor += p.expenseMinor;
+    }
+  }
+  return out;
+}
+
+/** Row colour on the Transactions page: income blue, expense red, everything else neutral. */
+export function cashflowTone(t: CashflowRow): "income" | "expense" | "neutral" {
+  if (t.status === "void") return "neutral";
+  if (t.type === "income" || (t.type === "investment_income" && !t.reinvest)) return "income";
+  if (t.type === "expense") return "expense";
+  return "neutral";
+}

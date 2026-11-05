@@ -7,13 +7,15 @@ import { buttonVariants } from "@/components/ui/button";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Money } from "@/components/shared/money";
 import { StatCard } from "@/components/shared/stat-card";
+import { cn } from "@/lib/utils";
 import { listAccounts } from "@/modules/accounts/service";
 import { getCategoryTree } from "@/modules/categories/service";
 import { listTags, listTransactions, type TransactionsPage } from "@/modules/transactions/queries";
 import { transactionFiltersSchema } from "@/modules/transactions/schemas";
 import { QuickAddButton } from "@/modules/transactions/components/quick-add-context";
 import { TransactionFilters } from "@/modules/transactions/components/transaction-filters";
-import { TransactionsTable } from "@/modules/transactions/components/transactions-table";
+import { ActivityList } from "@/modules/transactions/components/activity-list";
+import { TONE } from "@/modules/transactions/components/tones";
 import { getCurrentUser } from "@/server/auth/require-user";
 import { AppError } from "@/server/errors";
 
@@ -117,7 +119,13 @@ export async function TransactionsContent({
         ).map(([label, minor]) => (
           <div key={label} className="min-w-0 rounded-xl border bg-card p-3">
             <div className="truncate text-xs text-muted-foreground">{label}</div>
-            <div className="mt-1 text-sm leading-tight font-semibold tabular-nums [&_*]:whitespace-normal">
+            <div
+              className={cn(
+                "mt-1 text-sm leading-tight font-semibold tabular-nums [&_*]:whitespace-normal",
+                label === "Income" && TONE.income,
+                label === "Expense" && TONE.expense,
+              )}
+            >
               <Money
                 valueMinor={minor}
                 currency={summary.currency}
@@ -131,12 +139,20 @@ export async function TransactionsContent({
       <div className="mb-4 hidden gap-3 sm:grid-cols-3 md:grid">
         <StatCard
           label="Income"
-          value={<Money valueMinor={summary.incomeMinor} currency={summary.currency} />}
+          value={
+            <span className={TONE.income}>
+              <Money valueMinor={summary.incomeMinor} currency={summary.currency} />
+            </span>
+          }
           hint={rangeLabel(page.range)}
         />
         <StatCard
           label="Expense"
-          value={<Money valueMinor={summary.expenseMinor} currency={summary.currency} />}
+          value={
+            <span className={TONE.expense}>
+              <Money valueMinor={summary.expenseMinor} currency={summary.currency} />
+            </span>
+          }
           hint={rangeLabel(page.range)}
         />
         <StatCard
@@ -196,10 +212,7 @@ export async function TransactionsContent({
               <Download aria-hidden /> Export CSV
             </a>
           </div>
-          <TransactionsTable
-            rows={page.rows.map((txn) => ({ txn }))}
-            baseCurrency={summary.currency}
-          />
+          <ActivityList rows={page.rows.map((txn) => ({ txn }))} currency={summary.currency} />
           <Pagination page={page.page} pageCount={page.pageCount} params={params} />
         </>
       )}

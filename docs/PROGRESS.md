@@ -455,6 +455,16 @@ Status values: ⬜ not started · 🟡 in progress · ✅ done
   by-holding table. New holdings enter the bridge at cost (opening_balance), so a gain recorded at opening shows as market
   change. The stale note uses today's staleness. Saved reviews without the section get it from the ledger when opened.
 - [mm] e2e `allocation.spec` raced (`isVisible()` right after navigation); it now waits for the editor first.
+- [activity-days] Transactions page day-by-day (owner request, 2026-11-05; docs/05 §4): `ActivityList` replaces the
+  ledger table on `/transactions` only; day totals from `dayCashflow` (src/lib/day-groups.ts, tested) match the page
+  summary; colours in `components/tones.ts` (blue-600/red-600, dark 400; axe contrast passes in both themes).
+- [reconcile-cashflow] Reconcile records the difference as expense ("Bank fees", the existing system category rather than
+  a new "Bank charges"), income ("Interest") or a balance adjustment (owner decision, 2026-11-05; docs/04 §1).
+  `npm run convert:reconcile -- <email> [--apply]` converts existing reconcile adjustments (void + repost, one DB
+  transaction, archived accounts skipped).
+- [levels-time] Opportunity Fund levels keep date and time, several per day (docs/04 §15, docs/03); the form defaults
+  to the current time; levels chart is a monotone curve. The old unique index is dropped by the service before an
+  insert. Fixes OPP-03: the overview passed the replayed level document (ObjectId) to the client.
 - [invest-chart] "Invested vs value" chart (owner request, 2026-11-05; docs/04 §24, docs/05 §5) on the Assets page (filter:
   all / one class / one holding via `?chart=`, follows the page's class filter and "Emergency fund: hidden") and on each
   holding's page (replaces the old step chart). Ranges 1M · 3M · 6M · YTD · 1Y · All · Custom (`TimeRangeBar` with
