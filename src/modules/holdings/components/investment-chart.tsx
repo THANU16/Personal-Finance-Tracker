@@ -28,7 +28,8 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { formatPercentBp } from "@/lib/format";
 import { linePath, monotonePath, stepAfterPoints, type XY } from "@/lib/monotone-path";
 
-// docs/04 §24 — invested (step) vs value (smooth curve, dots on values entered), gain shaded.
+// docs/04 §24 — invested (step) vs value (smooth curve), gain shaded. No dots on the line (owner
+// decision, 2026-11-06): every point is real data; the hover dot + tooltip say where a value came from.
 // dataviz: two series → validated series slots 1 and 2, legend always shown, values in ink.
 
 const VALUE = "var(--viz-series-1)";
@@ -43,22 +44,8 @@ interface Row extends InvestmentPoint {
   t: number;
 }
 
-/** Curve through the points; with `jumps`, a vertical step on each flow day (§24.8). */
-function valuePoints(rows: readonly Row[], jumps: boolean): XY[][] {
-  if (!jumps) return [rows.map((r) => [r.t, r.valueMinor] as const)];
-  const segments: XY[][] = [[]];
-  for (const r of rows) {
-    if (r.before && segments.at(-1)!.length) {
-      segments.at(-1)!.push([r.t, r.before.valueMinor]);
-      segments.push([]);
-    }
-    segments.at(-1)!.push([r.t, r.valueMinor]);
-  }
-  return segments.filter((s) => s.length);
-}
-
 /** Drawn on the chart's own scales so the shading follows the value curve exactly. */
-function InvestmentLayer({ rows, jumps }: { rows: readonly Row[]; jumps: boolean }) {
+function InvestmentLayer({ rows }: { rows: readonly Row[] }) {
   const xScale = useXAxisScale();
   const yScale = useYAxisScale();
   const plot = usePlotArea();
@@ -66,8 +53,8 @@ function InvestmentLayer({ rows, jumps }: { rows: readonly Row[]; jumps: boolean
   if (!xScale || !yScale || rows.length === 0) return null;
   const px = ([t, v]: XY): XY => [Number(xScale(t)), Number(yScale(v))];
 
-  const segments = valuePoints(rows, jumps).map((s) => s.map(px));
-  const valueD = segments.map((s, i) => monotonePath(s, i > 0)).join("");
+  // §24.8 — one smooth monotone curve through the real points only (never straight segments).
+  const valueD = monotonePath(rows.map((r) => px([r.t, r.valueMinor])));
   const invested = stepAfterPoints(rows.map((r) => px([r.t, r.investedMinor])));
   const investedD = linePath(invested);
   const top = plot?.y ?? 0;
@@ -99,24 +86,15 @@ function InvestmentLayer({ rows, jumps }: { rows: readonly Row[]; jumps: boolean
         strokeLinejoin="round"
         strokeLinecap="round"
       />
-      {rows
-        .filter((r) => r.entered)
-        .map((r) => {
-          const [x, y] = px([r.t, r.valueMinor]);
-          return (
-            <circle
-              key={r.date}
-              cx={x}
-              cy={y}
-              r={4}
-              fill={VALUE}
-              stroke="var(--card)"
-              strokeWidth={2}
-            />
-          );
-        })}
     </g>
   );
+}
+
+/** Where a point's value comes from — every point is real data, nothing is estimated (§24.2). */
+function sourceOf(p: InvestmentPoint): string {
+  if (p.entered) return "Value you entered";
+  if (p.before) return "After a buy or redemption";
+  return "Last value held";
 }
 
 function ChartTip({ active, payload, currency }: TooltipContentProps & { currency: string }) {
@@ -143,9 +121,7 @@ function ChartTip({ active, payload, currency }: TooltipContentProps & { currenc
           {bp !== null ? ` (${formatPercentBp(bp, { signed: true })})` : ""}
         </span>
       </div>
-      <div className="text-muted-foreground">
-        {p.entered ? "● Value you entered" : "Between your updates (estimated)"}
-      </div>
+      <div className="text-muted-foreground">{sourceOf(p)}</div>
     </TooltipShell>
   );
 }
@@ -189,12 +165,10 @@ function xTicks(from: number, to: number, count: number): number[] {
 export interface InvestmentChartProps {
   points: InvestmentPoint[];
   currency: string;
-  /** Holding page: vertical jumps on flow days (§24.8). */
-  jumps?: boolean;
   label: string;
 }
 
-export function InvestmentChart({ points, currency, jumps = false, label }: InvestmentChartProps) {
+export function InvestmentChart({ points, currency, label }: InvestmentChartProps) {
   const ax = useChartAxes();
   const isMobile = useIsMobile();
   const rows: Row[] = points
@@ -239,7 +213,7 @@ export function InvestmentChart({ points, currency, jumps = false, label }: Inve
             <Amount minor={r.valueMinor - r.investedMinor} currency={currency} signed />
           ),
         },
-        { label: "Value source", value: (r) => (r.entered ? "Entered" : "Estimated") },
+        { label: "Value source", value: sourceOf },
       ]}
     >
       <ResponsiveContainer width="100%" height="100%">
@@ -266,7 +240,7 @@ export function InvestmentChart({ points, currency, jumps = false, label }: Inve
             axisLine={false}
             width={ax.yWidth(88)}
           />
-          <InvestmentLayer rows={rows} jumps={jumps} />
+          <InvestmentLayer rows={rows} />
           <Tooltip
             cursor={{ stroke: "var(--muted-foreground)", strokeWidth: 1, strokeDasharray: "3 3" }}
             content={(props) => <ChartTip {...props} currency={currency} />}

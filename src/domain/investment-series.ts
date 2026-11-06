@@ -1,6 +1,5 @@
 // docs/04 §24 — invested vs value over time (display only). Pure.
-import { buildBuckets, prevDayKey, type Granularity, type KeyRange } from "@/domain/date-range";
-import { daysBetween } from "@/domain/fd";
+import { prevDayKey, type KeyRange } from "@/domain/date-range";
 import {
   createHoldingReplayer,
   sortEvents,
@@ -14,47 +13,10 @@ export interface InvestedValue {
   valueMinor: number;
 }
 
-interface Spread {
-  /** Anchor day (exclusive). */
-  from: string;
-  /** Valuation day (exclusive: the §3 value is exact there). */
-  to: string;
-  moveMinor: number;
-}
-
 /**
- * Market moves made by valuations, each spread back to its anchor (§24.2): the previous
- * valuation, the first event, a full redemption, or a re-opening after one.
- */
-function spreadsOf(sorted: readonly HoldingEvent[], trackUnits: boolean): Spread[] {
-  const r = createHoldingReplayer({ trackUnits });
-  const out: Spread[] = [];
-  let anchor: string | null = null;
-  let applied = false;
-  for (const e of sorted) {
-    const reopening = !applied || r.state.fullyRedeemed;
-    if (e.kind === "valuation") {
-      const before = r.state.currentValueMinor;
-      r.apply(e);
-      const move = r.state.currentValueMinor - before;
-      const last = out.at(-1);
-      if (last && last.to === e.date) last.moveMinor += move;
-      else if (anchor !== null && anchor < e.date && move !== 0) {
-        out.push({ from: anchor, to: e.date, moveMinor: move });
-      }
-      anchor = e.date;
-    } else {
-      r.apply(e);
-      if (reopening || r.state.fullyRedeemed) anchor = e.date;
-    }
-    applied = true;
-  }
-  return out.filter((s) => s.moveMinor !== 0);
-}
-
-/**
- * One holding's invested and value at the end of each date in `dates` (ascending, unique),
- * in its own currency. FDs (`valueAt`) accrue daily per §9 and are never spread.
+ * One holding's invested and value at the end of each date in `dates` (ascending, unique), in its
+ * own currency — exactly §3: the last value entered, plus buys / redemptions since. Nothing is
+ * estimated between updates (owner decision, 2026-11-06). FDs (`valueAt`) use §9 for each date.
  */
 export function holdingInvestedValues(
   events: readonly HoldingEvent[],
@@ -62,21 +24,12 @@ export function holdingInvestedValues(
   dates: readonly string[],
 ): InvestedValue[] {
   const sorted = sortEvents(events);
-  const spreads = opts.valueAt ? [] : spreadsOf(sorted, opts.trackUnits);
   const r = createHoldingReplayer({ trackUnits: opts.trackUnits, valueAt: opts.valueAt });
   let i = 0;
-  let s = 0;
   return dates.map((d) => {
     while (i < sorted.length && sorted[i]!.date <= d) r.apply(sorted[i++]!);
     if (i === 0) return { investedMinor: 0, valueMinor: 0 };
-    let value = r.valueOn(d);
-    while (s < spreads.length && spreads[s]!.to <= d) s += 1;
-    const sp = spreads[s];
-    if (sp && sp.from < d && d < sp.to) {
-      const share = daysBetween(sp.from, d) / daysBetween(sp.from, sp.to);
-      value += roundHalfAwayFromZero(sp.moveMinor * share);
-    }
-    return { investedMinor: r.state.investedMinor, valueMinor: Math.max(0, value) };
+    return { investedMinor: r.state.investedMinor, valueMinor: r.valueOn(d) };
   });
 }
 
@@ -151,13 +104,13 @@ export function firstEventDate(
 export function computeInvestmentSeries(
   input: InvestmentSeriesInput,
   range: KeyRange,
-  granularity: Granularity,
 ): InvestmentSeries {
   const baselineDate = prevDayKey(range.from);
   const inRange = (d: string) => d >= range.from && d <= range.to;
 
-  // §24.3 — bucket ends ∪ valuation days ∪ flow days; the day before each flow day for `before`.
-  const pointDates = new Set(buildBuckets(range, granularity).map((b) => b.end));
+  // §24.3 — only real data: the range start (the value held then), valuation days, flow days and
+  // the range end; the day before each flow day for `before`. No points in between.
+  const pointDates = new Set([range.from, range.to]);
   const flowDays = new Set<string>();
   for (const h of input.holdings) {
     for (const e of input.holdingEvents.get(h.id) ?? []) {

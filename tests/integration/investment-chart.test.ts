@@ -45,7 +45,7 @@ async function setup() {
 const Q1 = { r: "custom", from: "2026-01-01", to: "2026-03-31", g: "month" };
 
 describe("getInvestmentChart (docs/04 §24)", () => {
-  it("one holding: spread values, dots, summary; void moves the chart with the ledger", async () => {
+  it("one holding: real values only, dots, summary; void moves the chart with the ledger", async () => {
     const { ctx, fund, redeem } = await setup();
     const chart = () =>
       getInvestmentChart(ctx, {
@@ -62,8 +62,8 @@ describe("getInvestmentChart (docs/04 §24)", () => {
     ]);
     expect(c.points.find((p) => p.date === "2026-02-10")).toMatchObject({
       investedMinor: 15_000_000,
-      valueMinor: 16_677_419,
-      before: { investedMinor: 10_000_000 },
+      valueMinor: 16_000_000, // 110,000 held + the 50,000 buy: nothing estimated
+      before: { investedMinor: 10_000_000, valueMinor: 11_000_000 },
     });
     expect(c.end).toEqual({
       investedMinor: 12_000_000,

@@ -427,21 +427,16 @@ Shown on the Assets page (whole portfolio, or one class, or one holding) and on 
 it never changes holding caches, net worth or snapshots (§22 net worth keeps closing values carried forward).
 1. **Invested** = the holding's `invested` after each day's events, exactly as §3 (redemptions remove `costRemoved`).
    Drawn as a step line: it moves only on the day of a buy, SIP, redemption, opening balance or reinvested income.
-2. **Value** = the §3 value at the end of the day, plus the **spread market move**: when a valuation changes the value
-   by `M` (value just after the valuation event − value just before it), `M` is spread in a straight line over the days
-   since the previous anchor. For a day `d` between anchor `p` and valuation date `n`:
-   `value(d) = §3 value(d) + round(M × (d − p) ÷ (n − p))`. On `n` itself the §3 value is used (exact), so the line
-   passes through every value entered. Anchors are: the previous valuation, the holding's first event, and the day of
-   a full redemption (a closed position never gets a spread). Several valuations on one day count as one move.
-   Buys, redemptions and reinvested income keep their full value effect on their own day; trade prices of unit-tracked
-   holdings re-price on the trade day as in §3. Never below 0. After the last valuation the value is held (§3) until
-   the next one. FDs use §9 for every day (no spreading needed).
-3. **Points**: bucket ends of the range (granularity per §22) ∪ every valuation date ∪ every flow date in the range,
-   plus the day before the range (baseline). A point is **entered** when an included holding has a valuation that day
-   (shown as a dot). A value of 0 recorded on an empty holding (created with nothing in it) is not a value update: no
-   dot, and "All" starts at the first real event. A single holding is shown in its own currency (like its stat cards); a group converts every
-   holding to the base currency with the rate on that date (§14), and a holding without a rate on a date is left out
-   of that point and counted (`fxMissing`).
+2. **Value** = the §3 value at the end of the day, exactly as the holding totals: the last value entered plus the value
+   effects of buys, redemptions and reinvested income since. **Nothing is estimated** (owner decision, 2026-11-06,
+   replacing the earlier spreading of value moves): a day between two updates shows the previous value, and a range
+   that starts between updates starts at the value held then. FDs use §9 for each date.
+3. **Points** — only real data: the range start (the value held then), every valuation day, every flow day in the
+   range and the range end (the value held today). Nothing in between. A point is **entered** when an included holding
+   has a valuation that day (named in the tooltip and table; no dots on the line, owner decision 2026-11-06). A value of 0 recorded on an empty holding (created with nothing in it) is
+   not a value update: no dot, and "All" starts at the first real event. A single holding is shown in its own currency
+   (like its stat cards); a group converts every holding to the base currency with the rate on that date (§14), and a
+   holding without a rate on a date is left out of that point and counted (`fxMissing`).
 4. **Summary** at the range end: value, invested, gain = value − invested and gain % = gain ÷ invested ("—" when 0).
    **Market gain in the range** = (value at end − value at the baseline) − Σ value effects of flows in the range
    (invest `+amount`, reinvested income `+(amount − tax)`, redemption `−amount`, each in base on its date; on a day with
@@ -453,5 +448,5 @@ it never changes holding caches, net worth or snapshots (§22 net worth keeps cl
    "Emergency fund: hidden" view leaves emergency-fund holdings out, like the totals.
 7. Ranges: 1M (30 days), 3M, 6M, YTD, 1Y, All (from the first included event), Custom. Assets page defaults to 1Y, a
    holding's page to All.
-8. Drawing: the Assets chart draws value as a monotone curve through the points; a holding's chart draws the value as
-   a monotone curve between flow days and a vertical jump on each flow day (both lines jump together).
+8. Drawing (owner decision, 2026-11-06): on both charts the value is one smooth monotone curve through the points
+   (never straight segments, never overshooting a real value); invested is a step line; the gap is shaded.

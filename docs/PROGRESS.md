@@ -465,6 +465,10 @@ Status values: ⬜ not started · 🟡 in progress · ✅ done
 - [levels-time] Opportunity Fund levels keep date and time, several per day (docs/04 §15, docs/03); the form defaults
   to the current time; levels chart is a monotone curve. The old unique index is dropped by the service before an
   insert. Fixes OPP-03: the overview passed the replayed level document (ObjectId) to the client.
+- [invest-chart-v2] Owner decision 2026-11-06: no estimated values on the Invested vs value chart. Value between updates is
+  the last value held (exact §3), a range starting between updates starts at it; points are only real data (range
+  start/end, valuation and flow days), joined by one smooth monotone curve on both charts (the holding page's vertical
+  jumps were removed). Replaces the spreading described below (docs/04 §24.2, §24.3, §24.8).
 - [invest-chart] "Invested vs value" chart (owner request, 2026-11-05; docs/04 §24, docs/05 §5) on the Assets page (filter:
   all / one class / one holding via `?chart=`, follows the page's class filter and "Emergency fund: hidden") and on each
   holding's page (replaces the old step chart). Ranges 1M · 3M · 6M · YTD · 1Y · All · Custom (`TimeRangeBar` with

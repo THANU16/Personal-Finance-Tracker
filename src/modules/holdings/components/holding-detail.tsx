@@ -184,7 +184,6 @@ export async function HoldingDetailView({
           searchParams={sp}
           scope={{ kind: "holding", id }}
           defaultPreset="all"
-          jumps
           title="Invested vs value"
           description={`This holding over time, in ${h.currency}`}
         />

@@ -42,7 +42,6 @@ export async function InvestmentChartCard({
   scope,
   defaultPreset,
   excludeEmergency,
-  jumps = false,
   title,
   description,
   filter = false,
@@ -51,8 +50,6 @@ export async function InvestmentChartCard({
   scope: InvestmentScope;
   defaultPreset: RangePreset;
   excludeEmergency?: boolean;
-  /** Holding page: vertical jumps on flow days (docs/04 §24.8). */
-  jumps?: boolean;
   title: string;
   description: string;
   /** Show the All / class / holding picker (Assets page). */
@@ -115,7 +112,7 @@ export async function InvestmentChartCard({
             </span>
           </Stat>
         </div>
-        <InvestmentChart points={c.points} currency={currency} jumps={jumps} label={title} />
+        <InvestmentChart points={c.points} currency={currency} label={title} />
         <p className="border-t border-dashed pt-3 text-sm text-muted-foreground">
           Dividends &amp; interest received in {inRange}:{" "}
           <span className="font-medium text-foreground">

@@ -68,17 +68,29 @@ async function register(context: BrowserContext) {
 }
 
 /** Demo data is development-only in the app, so the script seeds it directly (like `npm run seed`). */
-async function seed(env: NodeJS.ProcessEnv) {
+/**
+ * Connects to the in-memory database and builds every collection and index BEFORE registering:
+ * on an empty database, concurrent first requests could otherwise create the user's settings twice
+ * and the unique index build would then fail.
+ */
+async function prepareDb(env: NodeJS.ProcessEnv) {
   // The app's env schema needs the .env.local keys; the in-memory database URI wins.
   loadEnvConfig(process.cwd());
   Object.assign(process.env, env);
-  const { connectDb, disconnectDb } = await import("../src/server/db/connect");
+  const { connectDb } = await import("../src/server/db/connect");
+  await import("../src/server/bootstrap");
+  await import("../src/server/seed/demo");
+  await import("../src/modules/settings/onboarding");
+  await connectDb();
+  await Promise.all(Object.values(mongoose.models).map((m) => m.init()));
+}
+
+async function seed() {
+  const { disconnectDb } = await import("../src/server/db/connect");
   const { ensureUserSetup } = await import("../src/server/bootstrap");
   const { utcToBusinessDate } = await import("../src/domain/dates");
   const { findUserIdByEmail, seedDemoData } = await import("../src/server/seed/demo");
   const { completeOnboarding } = await import("../src/modules/settings/onboarding");
-  await connectDb();
-  await Promise.all(Object.values(mongoose.models).map((m) => m.init()));
   const db = mongoose.connection.db;
   if (!db) throw new Error("No database connection");
   const userId = await findUserIdByEmail(db, EMAIL);
@@ -218,9 +230,10 @@ async function main() {
 
     const context = await browser.newContext(IPHONE);
     await context.addInitScript(NAME_SHIM);
+    await prepareDb(env);
     await register(context);
     console.log("Seeding demo data (18 months)…");
-    await seed(env);
+    await seed();
     const { cookies } = await context.storageState();
 
     const loads: ColdLoad[] = [];

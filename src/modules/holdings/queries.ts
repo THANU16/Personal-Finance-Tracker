@@ -462,7 +462,6 @@ export async function getInvestmentChart(
       toBase: single ? (m) => m : input.toBase,
     },
     view.range,
-    view.granularity,
   );
   const usedClasses = new Set(withHistory.map((h) => String(h.assetClassId)));
   return {
