@@ -438,10 +438,11 @@ it never changes holding caches, net worth or snapshots (§22 net worth keeps cl
    (like its stat cards); a group converts every holding to the base currency with the rate on that date (§14), and a
    holding without a rate on a date is left out of that point and counted (`fxMissing`).
 4. **Summary** at the range end: value, invested, gain = value − invested and gain % = gain ÷ invested ("—" when 0).
-   **Market gain in the range** = (value at end − value at the baseline) − Σ value effects of flows in the range
-   (invest `+amount`, reinvested income `+(amount − tax)`, redemption `−amount`, each in base on its date; on a day with
-   an opening balance the holding's whole change that day counts as money in): the change not caused by money going in
-   or out (includes FD interest and currency moves).
+   **Market gain in the range** = (value at end − value at the baseline) − (money put in − money taken out) in the range,
+   each in base on its date: a buy puts in `amount + fee`, reinvested income `amount − tax`, a redemption takes out
+   `amount − fee − tax` (the cash received); on a day with an opening balance the holding's whole change that day counts
+   as money in. Fees and tax are therefore a cost, as in Gain (owner decision, 2026-11-07), so for "All"
+   **Market gain − Gain = realised gain/loss** from redemptions. Includes FD interest and currency moves.
 5. **Dividends & interest received in the range** = Σ `investment_income` amounts (gross, paid out or reinvested) of the
    included holdings dated in the range, in base. Shown as a number, never as a line (paid-out income is already cash).
 6. Scope: every holding type, active and closed (closed ones are 0 after their full redemption). On the Assets page the

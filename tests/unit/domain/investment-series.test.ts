@@ -163,6 +163,31 @@ describe("computeInvestmentSeries (docs/04 §24)", () => {
     expect(s.incomeMinor).toBe(0);
   });
 
+  it("fees and tax are a cost: Market gain − Gain = realised gain (owner decision, 2026-11-07)", () => {
+    const one = (events: HoldingEvent[]) =>
+      computeInvestmentSeries(input({ holdingEvents: new Map([["a", events]]) }), range);
+    // A buy with a 25 fee: both say −25.
+    let s = one([txn("invest", "2026-01-10", 100_000, { feeMinor: 25 })]);
+    expect(s.end.gainMinor).toBe(-25);
+    expect(s.marketGainMinor).toBe(-25);
+    // Partial redemption with a fee: cost recovery realises 0, so both agree (19,875).
+    s = one([
+      txn("invest", "2026-01-10", 100_000, { feeMinor: 25 }),
+      val("2026-01-20", 120_000),
+      txn("redeem", "2026-02-10", 30_000, { feeMinor: 100 }),
+    ]);
+    expect(s.end).toMatchObject({ investedMinor: 70_125, valueMinor: 90_000, gainMinor: 19_875 });
+    expect(s.marketGainMinor).toBe(19_875);
+    // Full redemption: everything is realised (120,000 − 100,025 − 100); Gain is 0.
+    s = one([
+      txn("invest", "2026-01-10", 100_000, { feeMinor: 25 }),
+      val("2026-01-20", 120_000),
+      txn("redeem", "2026-02-10", 120_000, { feeMinor: 100 }),
+    ]);
+    expect(s.end.gainMinor).toBe(0);
+    expect(s.marketGainMinor).toBe(19_875);
+  });
+
   it("an opening balance counts its whole first-day value as money in", () => {
     const s = computeInvestmentSeries(
       input({

@@ -100,7 +100,10 @@ export async function InvestmentChartCard({
               <Money valueMinor={end.gainMinor} currency={currency} signed colorNegative={false} />
             </span>
           </Stat>
-          <Stat label={`Market gain in ${inRange}`} hint="Value change minus money added">
+          <Stat
+            label={`Market gain in ${inRange}`}
+            hint="Value change minus money in and out (fees included)"
+          >
             <span className={tone(c.marketGainMinor)}>
               {arrow(c.marketGainMinor)}
               <Money

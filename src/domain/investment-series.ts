@@ -33,15 +33,22 @@ export function holdingInvestedValues(
   });
 }
 
-/** §24.4 — what a flow adds to the value on its day (native currency). */
-function valueEffect(e: HoldingTxnEvent): number {
+/**
+ * §24.4 — money a flow puts in (+) or takes out (−), native currency: a buy is the cash paid
+ * (amount + fee), a redemption the cash received (amount − fee − tax), reinvested income what was
+ * added (amount − tax). Fees and tax are therefore a cost in market gain, as in Gain (owner
+ * decision, 2026-11-07), so Market gain − Gain = realised gain / loss.
+ */
+function moneyInOut(e: HoldingTxnEvent): number {
+  const fee = e.feeMinor ?? 0;
+  const tax = e.taxMinor ?? 0;
   switch (e.type) {
     case "invest":
-      return e.amountMinor;
+      return e.amountMinor + fee;
     case "redeem":
-      return -e.amountMinor;
+      return -(e.amountMinor - fee - tax);
     case "investment_income":
-      return e.reinvest ? e.amountMinor - (e.taxMinor ?? 0) : 0;
+      return e.reinvest ? e.amountMinor - tax : 0;
     case "opening_balance":
       return 0; // the whole first-day value counts instead (handled by the caller)
   }
@@ -165,7 +172,7 @@ export function computeInvestmentSeries(
       if (list.some((e) => e.type === "opening_balance")) {
         // An opening balance brings the whole position in: its first-day value is money in.
         native = values[idx.get(d)!]!.valueMinor - values[idx.get(prevDayKey(d))!]!.valueMinor;
-      } else native = list.reduce((sum, e) => sum + valueEffect(e), 0);
+      } else native = list.reduce((sum, e) => sum + moneyInOut(e), 0);
       marketFlows += input.toBase(native, h.currency, d) ?? 0;
     }
   }
