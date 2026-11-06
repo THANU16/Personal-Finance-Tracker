@@ -5,10 +5,15 @@ import { cardOutstandingMinor, nextMonthlyDate } from "@/domain/accounts";
 import {
   bucketFlows,
   changeOf,
+  costBreakdown,
   flowTotals,
+  netWorthBridge,
   runwayTenths,
   safeToSpend,
+  spendingPace,
   type Change,
+  type CostKind,
+  type CostRow,
   type DailyFlow,
   type FlowPoint,
   type FlowTotals,
@@ -17,6 +22,7 @@ import { businessDateToUtc, utcToBusinessDate } from "@/domain/dates";
 import {
   buildBuckets,
   nextDayKey,
+  prevDayKey,
   previousPeriod,
   rangeDays,
   type Bucket,
@@ -25,15 +31,18 @@ import {
 } from "@/domain/date-range";
 import type { ToBase } from "@/domain/fx";
 import { isStale } from "@/domain/holdings";
+import { computeInvestmentSeries } from "@/domain/investment-series";
 import { computeNetWorthSeries, type NetWorthPoint } from "@/domain/series";
 import { AssetClassModel, type AssetClassDoc } from "@/modules/asset-classes/model";
 import { CategoryModel, type CategoryDoc } from "@/modules/categories/model";
+import { SYSTEM_CATEGORY } from "@/modules/categories/seed";
+import { getSystemCategoryId } from "@/modules/categories/service";
 import { requestSeriesInput } from "@/modules/dashboard/series-input";
 import { getBucketsInBase } from "@/modules/earmarks/service";
 import { loadToBase } from "@/modules/fx/service";
 import { getSettings } from "@/modules/settings/service";
 import { listMonthEndSnapshots, type SnapshotPoint } from "@/modules/snapshots/service";
-import { TransactionModel } from "@/modules/transactions/model";
+import { TransactionModel, type TransactionDoc } from "@/modules/transactions/model";
 import type { Ctx } from "@/server/ctx";
 import { connectDb } from "@/server/db/connect";
 import { toObjectId } from "@/server/db/ids";
@@ -764,4 +773,244 @@ export async function getAttention(ctx: Ctx): Promise<Attention> {
 /** First date with data, for the "All" preset. */
 export async function getEarliestKey(ctx: Ctx): Promise<string | null> {
   return (await seriesInput(ctx)).earliestKey;
+}
+
+// ------------------------------------------------------------- insight cards (docs/04 §25)
+
+const monthRangeOf = (ctx: Ctx): KeyRange => {
+  const today = todayOf(ctx);
+  return { from: `${today.slice(0, 7)}-01`, to: today };
+};
+
+/** Every holding, for §24 maths over the whole portfolio (from the request's ledger load). */
+async function allHoldingsInput(ctx: Ctx) {
+  const input = await seriesInput(ctx);
+  return {
+    input,
+    investments: {
+      holdings: input.holdings,
+      holdingEvents: input.holdingEvents,
+      toBase: input.toBase,
+    },
+  };
+}
+
+/** Market gain of the whole portfolio this month (§24.4); shared by two cards per request. */
+const monthInvestments = cache(async (ctx: Ctx) => {
+  const { investments } = await allHoldingsInput(ctx);
+  return computeInvestmentSeries(investments, monthRangeOf(ctx));
+});
+
+export interface NetWorthBridgeData {
+  from: string;
+  to: string;
+  startMinor: number;
+  endMinor: number;
+  changeMinor: number;
+  changePctBp: number | null;
+  savedMinor: number;
+  marketGainMinor: number;
+  otherMinor: number;
+}
+
+async function bridgeFor(ctx: Ctx, range: KeyRange): Promise<NetWorthBridgeData> {
+  const { input, investments } = await allHoldingsInput(ctx);
+  const [start, end] = computeNetWorthSeries(input, [prevDayKey(range.from), range.to]);
+  const month = monthRangeOf(ctx);
+  const isMonth = range.from === month.from && range.to === month.to;
+  const [flows, market] = await Promise.all([
+    flowTotalsFor(ctx, range).then(flowTotals),
+    isMonth ? monthInvestments(ctx) : computeInvestmentSeries(investments, range),
+  ]);
+  const b = netWorthBridge({
+    startMinor: start!.netWorthMinor,
+    endMinor: end!.netWorthMinor,
+    savedMinor: flows.savingsMinor,
+    marketGainMinor: market.marketGainMinor,
+  });
+  return {
+    ...b,
+    from: range.from,
+    to: range.to,
+    startMinor: start!.netWorthMinor,
+    endMinor: end!.netWorthMinor,
+    changePctBp: changeOf(end!.netWorthMinor, start!.netWorthMinor).pctBp,
+  };
+}
+
+/** §25.1 — this month and the dashboard range. */
+export async function getNetWorthBridges(
+  ctx: Ctx,
+  view: RangeView,
+): Promise<{ currency: string; month: NetWorthBridgeData; range: NetWorthBridgeData }> {
+  const [month, range] = await Promise.all([
+    bridgeFor(ctx, monthRangeOf(ctx)),
+    bridgeFor(ctx, view.range),
+  ]);
+  return { currency: ctx.baseCurrency, month, range };
+}
+
+export interface InvestmentsSummary {
+  currency: string;
+  valueMinor: number;
+  investedMinor: number;
+  gainMinor: number;
+  gainBp: number | null;
+  marketGainMonthMinor: number;
+  /** Last 6 months, real points only (§24.3). */
+  points: { date: string; valueMinor: number; investedMinor: number }[];
+  fxMissing: number;
+}
+
+/** §25.2 */
+export async function getInvestmentsSummary(ctx: Ctx): Promise<InvestmentsSummary> {
+  const { investments } = await allHoldingsInput(ctx);
+  const month = monthRangeOf(ctx);
+  const six = computeInvestmentSeries(investments, {
+    from: addMonthsKey(month.from, -6),
+    to: month.to,
+  });
+  const thisMonth = await monthInvestments(ctx);
+  return {
+    currency: ctx.baseCurrency,
+    valueMinor: six.end.valueMinor,
+    investedMinor: six.end.investedMinor,
+    gainMinor: six.end.gainMinor,
+    gainBp: six.end.gainBp,
+    marketGainMonthMinor: thisMonth.marketGainMinor,
+    points: six.points
+      .filter((p) => p.valueMinor !== 0 || p.investedMinor !== 0)
+      .map((p) => ({ date: p.date, valueMinor: p.valueMinor, investedMinor: p.investedMinor })),
+    fxMissing: six.fxMissing,
+  };
+}
+
+export interface SpendingPaceData extends ReturnType<typeof spendingPace> {
+  currency: string;
+  spentMinor: number;
+  usualMonthMinor: number;
+  /** Complete months the usual month is averaged over (0–3). */
+  monthsUsed: number;
+  day: number;
+  daysInMonth: number;
+  monthKey: string;
+}
+
+/** §25.3 */
+export async function getSpendingPace(ctx: Ctx): Promise<SpendingPaceData> {
+  const month = monthRangeOf(ctx);
+  const [current, last3] = await Promise.all([
+    flowTotalsFor(ctx, month),
+    completeMonthFlows(ctx, 3),
+  ]);
+  const withSpend = last3.filter((m) => m.expenseMinor > 0);
+  const usual = withSpend.length
+    ? Math.round(withSpend.reduce((s, m) => s + m.expenseMinor, 0) / withSpend.length)
+    : 0;
+  const [y, m] = month.from.split("-").map(Number) as [number, number];
+  const daysInMonth = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const day = Number(month.to.slice(8));
+  const spent = current[0]?.expenseMinor ?? 0;
+  return {
+    currency: ctx.baseCurrency,
+    spentMinor: spent,
+    usualMonthMinor: usual,
+    monthsUsed: withSpend.length,
+    day,
+    daysInMonth,
+    monthKey: month.from.slice(0, 7),
+    ...spendingPace({ spentMinor: spent, usualMonthMinor: usual, day, daysInMonth }),
+  };
+}
+
+export interface CostsThisYear {
+  currency: string;
+  year: string;
+  totalMinor: number;
+  items: { kind: CostKind; amountMinor: number }[];
+  fxMissing: number;
+}
+
+const COST_CATEGORIES = [
+  ["loan_interest", SYSTEM_CATEGORY.loanInterest],
+  ["bank_fees", SYSTEM_CATEGORY.bankFees],
+  ["investment_fees", SYSTEM_CATEGORY.investmentFees],
+] as const;
+
+/** §25.4 — fees and interest paid this calendar year, in base. */
+export async function getCostsThisYear(ctx: Ctx): Promise<CostsThisYear> {
+  await connectDb();
+  const userId = toObjectId(ctx.userId, "User");
+  const today = todayOf(ctx);
+  const year = today.slice(0, 4);
+  const found = await Promise.all(
+    COST_CATEGORIES.map(async ([kind, name]) => {
+      const id = await getSystemCategoryId(ctx, name, "expense").catch(() => null);
+      return id ? ([String(id), kind] as const) : null;
+    }),
+  );
+  const costCategory = new Map<string, CostRow["costCategory"]>(
+    found.filter((x): x is NonNullable<typeof x> => x !== null),
+  );
+  const categoryIds = [...costCategory.keys()].map((id) => toObjectId(id, "Category"));
+  const [docs, toBase] = await Promise.all([
+    TransactionModel.find({
+      userId,
+      status: "posted",
+      date: {
+        $gte: businessDateToUtc(`${year}-01-01`, ctx.tz),
+        $lt: businessDateToUtc(nextDayKey(today), ctx.tz),
+      },
+      $or: [
+        { type: "debt_payment", interestMinor: { $gt: 0 } },
+        { type: { $in: ["transfer", "invest", "redeem"] }, feeMinor: { $gt: 0 } },
+        {
+          type: "expense",
+          $or: [
+            { categoryId: { $in: categoryIds } },
+            { "splits.categoryId": { $in: categoryIds } },
+          ],
+        },
+      ],
+    })
+      .select({
+        type: 1,
+        date: 1,
+        currency: 1,
+        amountMinor: 1,
+        feeMinor: 1,
+        interestMinor: 1,
+        categoryId: 1,
+        splits: 1,
+      })
+      .lean<TransactionDoc[]>(),
+    toBaseOf(ctx),
+  ]);
+
+  let fxMissing = 0;
+  const rows: CostRow[] = [];
+  for (const t of docs) {
+    const day = utcToBusinessDate(t.date, ctx.tz);
+    const base = (minor: number) => {
+      if (!minor) return 0;
+      const v = toBase(minor, t.currency, day);
+      if (v === null) fxMissing += 1;
+      return v ?? 0;
+    };
+    // Split expenses count by their lines' categories (§25.4).
+    const lines =
+      t.type === "expense" && t.splits?.length
+        ? t.splits.map((s) => ({ categoryId: s.categoryId, amountMinor: s.amountMinor }))
+        : [{ categoryId: t.categoryId, amountMinor: t.amountMinor }];
+    lines.forEach((line, i) => {
+      rows.push({
+        type: t.type,
+        amountMinor: base(line.amountMinor),
+        feeMinor: i === 0 ? base(t.feeMinor ?? 0) : 0,
+        interestMinor: i === 0 ? base(t.interestMinor ?? 0) : 0,
+        costCategory: line.categoryId ? (costCategory.get(String(line.categoryId)) ?? null) : null,
+      });
+    });
+  }
+  return { currency: ctx.baseCurrency, year, ...costBreakdown(rows), fxMissing };
 }

@@ -33,17 +33,29 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { parseRangeView, type RangeView } from "@/domain/date-range";
 import { utcToBusinessDate } from "@/domain/dates";
 import { formatPercentBp } from "@/lib/format";
+import { linePath, monotonePath, stepAfterPoints } from "@/lib/monotone-path";
+import { ChartLegend } from "@/components/charts/chart-kit";
+import type { CostKind } from "@/domain/analytics";
 import { cn } from "@/lib/utils";
-import { NetWorthMenu, SafeToSpendValue } from "@/modules/dashboard/components/dashboard-client";
+import {
+  NetWorthBridgeView,
+  NetWorthMenu,
+  SafeToSpendValue,
+} from "@/modules/dashboard/components/dashboard-client";
 import {
   allocationAsOf,
   cashflowSeries,
   getAttention,
+  getCostsThisYear,
+  getInvestmentsSummary,
+  getNetWorthBridges,
+  getSpendingPace,
   getEarliestKey,
   getSafeToSpend,
   getStanding,
   getUpcoming,
   netWorthSeries,
+  type InvestmentsSummary,
   type UpcomingItem,
   topExpenseCategories,
 } from "@/modules/dashboard/queries";
@@ -892,6 +904,320 @@ export async function EssentialsCard({ searchParams }: { searchParams: SearchPar
             Essentials →
           </Link>
         </div>
+      </Widget>
+    );
+  });
+}
+
+// ------------------------------------------------------------- insight cards (docs/04 §25)
+
+const keyDate = (key: string) => {
+  const [y, m, d] = key.split("-").map(Number) as [number, number, number];
+  return new Date(Date.UTC(y, m - 1, d));
+};
+const dayMonth = (key: string) =>
+  keyDate(key).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
+
+export async function NetWorthBridgeCard({ searchParams }: { searchParams: SearchParams }) {
+  return guarded("Why did my net worth change?", async () => {
+    const { ctx, view } = await load(searchParams);
+    const b = await getNetWorthBridges(ctx, view);
+    return (
+      <Widget
+        title="Why did my net worth change?"
+        description="Saving vs the market vs everything else"
+      >
+        <NetWorthBridgeView
+          currency={b.currency}
+          month={b.month}
+          range={b.range}
+          rangeLabel={`${dayMonth(view.range.from)} – ${dayMonth(view.range.to)}`}
+        />
+      </Widget>
+    );
+  });
+}
+
+/** Value (smooth) and invested (steps) over 6 months, drawn on the server (no chart library). */
+function InvestmentsSparkline({ points }: { points: InvestmentsSummary["points"] }) {
+  if (points.length < 2) return null;
+  const W = 560;
+  const H = 120;
+  const t0 = keyDate(points[0]!.date).getTime();
+  const t1 = keyDate(points.at(-1)!.date).getTime();
+  const all = points.flatMap((p) => [p.valueMinor, p.investedMinor]);
+  const lo = Math.min(...all);
+  const hi = Math.max(...all);
+  const pad = (hi - lo) * 0.1 || hi * 0.05 || 1;
+  const x = (key: string) => 4 + ((keyDate(key).getTime() - t0) / Math.max(1, t1 - t0)) * (W - 8);
+  const y = (v: number) => 4 + (1 - (v - (lo - pad)) / (hi - lo + 2 * pad)) * (H - 8);
+  const value = monotonePath(points.map((p) => [x(p.date), y(p.valueMinor)] as const));
+  const invested = linePath(
+    stepAfterPoints(points.map((p) => [x(p.date), y(p.investedMinor)] as const)),
+  );
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="h-28 w-full" preserveAspectRatio="none" aria-hidden>
+      <path d={invested} fill="none" stroke="var(--viz-series-2)" strokeWidth={2} />
+      <path
+        d={value}
+        fill="none"
+        stroke="var(--viz-series-1)"
+        strokeWidth={2}
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+const toneOf = (v: number) =>
+  v > 0 ? "text-emerald-700 dark:text-emerald-400" : v < 0 ? "text-destructive" : "";
+const arrowOf = (v: number) => (v > 0 ? "▲ " : v < 0 ? "▼ " : "");
+
+export async function InvestmentsCard({ searchParams }: { searchParams: SearchParams }) {
+  return guarded("Investments", async () => {
+    const { ctx } = await load(searchParams);
+    const s = await getInvestmentsSummary(ctx);
+    return (
+      <Widget
+        title="Investments"
+        description={
+          <span className="flex flex-wrap items-center gap-2">
+            All holdings, in {s.currency}
+            <FxBadge count={s.fxMissing} />
+          </span>
+        }
+        action={
+          <Link
+            href="/assets"
+            className="inline-flex min-h-11 shrink-0 items-center text-sm text-primary hover:underline md:min-h-0"
+          >
+            Open Assets →
+          </Link>
+        }
+      >
+        <div className="grid gap-4">
+          <dl className="grid grid-cols-2 gap-x-4 gap-y-3">
+            <div className="grid gap-0.5">
+              <dt className="text-xs text-muted-foreground">Value</dt>
+              <dd className="font-semibold tabular-nums">
+                <Money valueMinor={s.valueMinor} currency={s.currency} />
+              </dd>
+            </div>
+            <div className="grid gap-0.5">
+              <dt className="text-xs text-muted-foreground">Invested</dt>
+              <dd className="font-semibold tabular-nums">
+                <Money valueMinor={s.investedMinor} currency={s.currency} />
+              </dd>
+            </div>
+            <div className="grid gap-0.5">
+              <dt className="text-xs text-muted-foreground">Gain</dt>
+              <dd className={cn("font-semibold tabular-nums", toneOf(s.gainMinor))}>
+                <span className="whitespace-nowrap">
+                  {arrowOf(s.gainMinor)}
+                  <Money
+                    valueMinor={s.gainMinor}
+                    currency={s.currency}
+                    signed
+                    colorNegative={false}
+                  />
+                </span>
+                {s.gainBp !== null ? (
+                  <span className="block text-xs font-normal text-muted-foreground">
+                    {formatPercentBp(s.gainBp, { signed: true })}
+                  </span>
+                ) : null}
+              </dd>
+            </div>
+            <div className="grid gap-0.5">
+              <dt className="text-xs text-muted-foreground">Market gain this month</dt>
+              <dd
+                className={cn(
+                  "font-semibold whitespace-nowrap tabular-nums",
+                  toneOf(s.marketGainMonthMinor),
+                )}
+              >
+                {arrowOf(s.marketGainMonthMinor)}
+                <Money
+                  valueMinor={s.marketGainMonthMinor}
+                  currency={s.currency}
+                  signed
+                  colorNegative={false}
+                />
+              </dd>
+            </div>
+          </dl>
+          {s.points.length >= 2 ? (
+            <div className="grid gap-1">
+              <ChartLegend
+                items={[
+                  { label: "Value", color: "var(--viz-series-1)" },
+                  { label: "Invested", color: "var(--viz-series-2)" },
+                ]}
+              />
+              <InvestmentsSparkline points={s.points} />
+              <span className="text-xs text-muted-foreground">Last 6 months</span>
+            </div>
+          ) : null}
+        </div>
+      </Widget>
+    );
+  });
+}
+
+const PACE_CHIP = {
+  ahead: [
+    "▲ Ahead of pace",
+    "border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300",
+  ],
+  below: [
+    "▼ Below pace",
+    "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-300",
+  ],
+  on_pace: ["On pace", "bg-muted text-muted-foreground"],
+} as const;
+
+export async function SpendingPaceCard({ searchParams }: { searchParams: SearchParams }) {
+  return guarded("Spending pace", async () => {
+    const { ctx } = await load(searchParams);
+    const p = await getSpendingPace(ctx);
+    const monthName = keyDate(`${p.monthKey}-01`).toLocaleDateString("en-GB", {
+      month: "long",
+      timeZone: "UTC",
+    });
+    const chip = p.status === "no_history" ? null : PACE_CHIP[p.status];
+    const spentPct = Math.min(100, (p.spentBp ?? 0) / 100);
+    const expectedPct = p.expectedBp / 100;
+    return (
+      <Widget
+        title="Spending pace"
+        description={`${monthName} so far vs a usual month`}
+        action={
+          chip ? (
+            <span
+              className={cn(
+                "shrink-0 rounded-full border px-2.5 py-1 text-xs font-semibold whitespace-nowrap",
+                chip[1],
+              )}
+            >
+              {chip[0]}
+            </span>
+          ) : null
+        }
+      >
+        <div className="grid gap-4">
+          <div className="grid gap-0.5">
+            <span className="text-2xl font-semibold tabular-nums">
+              <Money valueMinor={p.spentMinor} currency={p.currency} />{" "}
+              <span className="text-sm font-normal text-muted-foreground">spent</span>
+            </span>
+            <span className="text-sm text-muted-foreground">
+              Day {p.day} of {p.daysInMonth}
+              {p.status !== "no_history" ? (
+                <>
+                  {" "}
+                  · a usual month is <Money
+                    valueMinor={p.usualMonthMinor}
+                    currency={p.currency}
+                  />{" "}
+                  (average of the last {p.monthsUsed} month{p.monthsUsed === 1 ? "" : "s"})
+                </>
+              ) : null}
+            </span>
+          </div>
+          {p.status === "no_history" ? (
+            <p className="text-sm text-muted-foreground">
+              Pace appears once there is a full month of spending to compare with.
+            </p>
+          ) : (
+            <>
+              <div
+                className="relative h-3 rounded-full bg-muted"
+                role="img"
+                aria-label={`Spent ${Math.round(spentPct)}% of a usual month; ${Math.round(expectedPct)}% expected by today`}
+              >
+                <span
+                  className={cn(
+                    "absolute inset-y-0 left-0 rounded-full",
+                    p.status === "ahead" ? "bg-red-500" : "bg-[var(--viz-series-1)]",
+                  )}
+                  style={{ width: `${spentPct}%` }}
+                />
+                <span
+                  className="absolute -inset-y-1.5 w-0.5 bg-foreground"
+                  style={{ left: `${Math.min(100, expectedPct)}%` }}
+                />
+              </div>
+              <p className="text-sm">
+                Line = where a usual month is by today ({Math.round(expectedPct)}%). You are at{" "}
+                {Math.round(spentPct)}%:{" "}
+                <b>
+                  <Money
+                    valueMinor={Math.abs(p.overMinor)}
+                    currency={p.currency}
+                    colorNegative={false}
+                  />{" "}
+                  {p.overMinor >= 0 ? "over" : "under"} pace
+                </b>
+                .
+              </p>
+            </>
+          )}
+        </div>
+      </Widget>
+    );
+  });
+}
+
+const COST_LABEL: Record<CostKind, string> = {
+  loan_interest: "Loan interest",
+  bank_fees: "Bank fees",
+  investment_fees: "Investment fees",
+  transfer_fees: "Transfer fees",
+};
+
+export async function CostsCard({ searchParams }: { searchParams: SearchParams }) {
+  return guarded("Fees & interest", async () => {
+    const { ctx } = await load(searchParams);
+    const c = await getCostsThisYear(ctx);
+    const max = Math.max(1, ...c.items.map((i) => i.amountMinor));
+    return (
+      <Widget
+        title={`Fees & interest · ${c.year}`}
+        description={
+          <span className="flex flex-wrap items-center gap-2">
+            Money paid as costs, not spent on things
+            <FxBadge count={c.fxMissing} />
+          </span>
+        }
+      >
+        {c.items.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No fees or interest recorded this year.</p>
+        ) : (
+          <div className="grid gap-4">
+            <span className="text-2xl font-semibold tabular-nums">
+              <Money valueMinor={c.totalMinor} currency={c.currency} />
+            </span>
+            <ul className="grid gap-3">
+              {c.items.map((i) => (
+                <li
+                  key={i.kind}
+                  className="grid grid-cols-[1fr_auto] items-center gap-x-3 gap-y-1.5 md:grid-cols-[10rem_1fr_9rem]"
+                >
+                  <span className="text-sm">{COST_LABEL[i.kind]}</span>
+                  <span className="text-right text-sm tabular-nums md:order-last">
+                    <Money valueMinor={i.amountMinor} currency={c.currency} />
+                  </span>
+                  <span className="col-span-2 h-2 rounded-full bg-muted md:col-span-1" aria-hidden>
+                    <span
+                      className="block h-full rounded-full bg-[var(--viz-series-2)]"
+                      style={{ width: `${Math.max(1, (i.amountMinor / max) * 100)}%` }}
+                    />
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </Widget>
     );
   });

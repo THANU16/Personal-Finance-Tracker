@@ -451,3 +451,19 @@ it never changes holding caches, net worth or snapshots (§22 net worth keeps cl
    holding's page to All.
 8. Drawing (owner decision, 2026-11-06): on both charts the value is one smooth monotone curve through the points
    (never straight segments, never overshooting a real value); invested is a step line; the gap is shaded.
+
+## 25. Dashboard insight cards (owner request, 2026-11-07)
+Display only; every figure comes from the rules above, in the base currency.
+1. **Why did my net worth change?** For "this month" (1st → today) and for the dashboard range: change = net worth at
+   the end − net worth at the end of the day before the start (§2). **Saved** = income − expense of the period (§4).
+   **Investments (market gain)** = §24.4 over every holding. **Currency & adjustments** = change − saved − market
+   gain (FX moves, adjustments, reinvested income, opening balances), so the three always add up to the change.
+2. **Investments**: value, invested, gain and gain % today (§24.4), market gain this month, and a 6-month sparkline of
+   value (smooth) and invested (steps) from the §24 points. Links to Assets.
+3. **Spending pace**: spent = this month's expense so far (§4). Usual month = the average expense of the last 3
+   complete months. Expected by today = usual × day ÷ days in the month. Status: **ahead** when spent − expected >
+   2.5% of a usual month, **below** when < −2.5%, else **on pace**; without history, no comparison.
+4. **Fees & interest (this calendar year)**: loan interest (interest part of loan payments + "Loan interest"
+   expenses), bank fees ("Bank fees" expenses, which includes reconcile differences recorded as expenses),
+   investment fees (buy / redemption fees + "Investment fees" expenses) and transfer fees; each in base on its date.
+   Split expenses are counted by their lines' categories. Largest first; kinds with 0 left out.

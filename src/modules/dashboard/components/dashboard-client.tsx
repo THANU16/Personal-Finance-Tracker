@@ -14,7 +14,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { createManualSnapshotAction, rebuildHistoryAction } from "@/modules/dashboard/actions";
-import type { SafeToSpend } from "@/modules/dashboard/queries";
+import { formatPercentBp } from "@/lib/format";
+import { cn } from "@/lib/utils";
+import type { NetWorthBridgeData, SafeToSpend } from "@/modules/dashboard/queries";
 
 /** Net worth card menu: Rebuild history · Take a snapshot now. */
 export function NetWorthMenu() {
@@ -107,4 +109,121 @@ export function SafeToSpendValue({ data }: { data: SafeToSpend }) {
       ) : null}
     </div>
   );
+}
+
+const BRIDGE_ROWS = [
+  ["savedMinor", "Saved (income − expense)"],
+  ["marketGainMinor", "Investments (market gain)"],
+  ["otherMinor", "Currency & adjustments"],
+] as const;
+
+/**
+ * docs/04 §25.1 — why net worth changed: this month or the dashboard range (a local switch; both
+ * are computed on the server). Bars grow right (added) or left (reduced) from the middle.
+ */
+export function NetWorthBridgeView({
+  currency,
+  month,
+  range,
+  rangeLabel,
+}: {
+  currency: string;
+  month: NetWorthBridgeData;
+  range: NetWorthBridgeData;
+  rangeLabel: string;
+}) {
+  const [tab, setTab] = useState<"month" | "range">("month");
+  const d = tab === "month" ? month : range;
+  const max = Math.max(1, ...BRIDGE_ROWS.map(([k]) => Math.abs(d[k])));
+  const up = d.changeMinor >= 0;
+  return (
+    <div className="grid gap-4">
+      <div
+        role="group"
+        aria-label="Period"
+        className="grid w-full grid-cols-2 rounded-lg bg-muted p-0.5 sm:w-fit"
+      >
+        {(
+          [
+            ["month", "This month"],
+            ["range", rangeLabel],
+          ] as const
+        ).map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            aria-pressed={tab === key}
+            onClick={() => setTab(key)}
+            className={cn(
+              "min-h-11 rounded-md px-3 text-sm font-medium text-muted-foreground md:min-h-8",
+              tab === key && "bg-background text-foreground shadow-sm",
+            )}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      <div className="grid gap-0.5">
+        <span
+          className={cn(
+            "text-2xl font-semibold tabular-nums",
+            up ? "text-emerald-700 dark:text-emerald-400" : "text-destructive",
+          )}
+        >
+          {up ? "▲ " : "▼ "}
+          <Money valueMinor={d.changeMinor} currency={currency} signed colorNegative={false} />
+          {d.changePctBp !== null ? ` (${formatPercentBp(d.changePctBp, { signed: true })})` : ""}
+        </span>
+        <span className="text-sm text-muted-foreground tabular-nums">
+          <Money valueMinor={d.startMinor} currency={currency} compact /> on {shortDay(d.from, -1)}{" "}
+          → <Money valueMinor={d.endMinor} currency={currency} compact /> on {shortDay(d.to)}
+        </span>
+      </div>
+      <ul className="grid gap-3" aria-label="Where the change came from">
+        {BRIDGE_ROWS.map(([key, label]) => {
+          const v = d[key];
+          const width = `${Math.max(1, (Math.abs(v) / max) * 50)}%`;
+          return (
+            <li
+              key={key}
+              className="grid grid-cols-[1fr_auto] items-center gap-x-3 gap-y-1.5 md:grid-cols-[13rem_1fr_9rem]"
+            >
+              <span className="text-sm">{label}</span>
+              <span
+                className={cn(
+                  "text-right text-sm tabular-nums md:order-last",
+                  v >= 0 ? "text-emerald-700 dark:text-emerald-400" : "text-destructive",
+                )}
+              >
+                <Money valueMinor={v} currency={currency} signed colorNegative={false} />
+              </span>
+              <span
+                className="relative col-span-2 h-2 rounded-full bg-muted md:col-span-1"
+                aria-hidden
+              >
+                <span className="absolute inset-y-[-3px] left-1/2 w-px bg-border" />
+                <span
+                  className={cn(
+                    "absolute inset-y-0 rounded-full",
+                    v >= 0 ? "left-1/2 bg-emerald-600" : "right-1/2 bg-red-500",
+                  )}
+                  style={{ width }}
+                />
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+      <p className="border-t border-dashed pt-3 text-xs text-muted-foreground">
+        Paying a loan moves cash to the loan, so it does not change net worth.
+      </p>
+    </div>
+  );
+}
+
+/** "31 Oct" (offset −1: the day before `key`). */
+function shortDay(key: string, offsetDays = 0): string {
+  const [y, m, d] = key.split("-").map(Number) as [number, number, number];
+  const date = new Date(Date.UTC(y, m - 1, d + offsetDays));
+  return date.toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
 }

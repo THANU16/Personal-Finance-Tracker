@@ -8,7 +8,11 @@ import {
   AttentionCard,
   CashCard,
   CashflowCard,
+  CostsCard,
   EssentialsCard,
+  InvestmentsCard,
+  NetWorthBridgeCard,
+  SpendingPaceCard,
   DashboardRangeBar,
   GoalsCard,
   NeedsAttentionCard,
@@ -74,31 +78,57 @@ export default function DashboardPage({ searchParams }: PageProps<"/dashboard">)
             <CashCard searchParams={searchParams} />
           </Suspense>
         </Slot>
+        {/* docs/04 §25 insight cards: why net worth changed + investments. */}
         <div className={`${ROW} lg:grid-cols-[3fr_2fr]`}>
-          <Slot order="order-9">
+          <Slot order="order-4">
+            <Suspense fallback={box("h-80")}>
+              <NetWorthBridgeCard searchParams={searchParams} />
+            </Suspense>
+          </Slot>
+          <Slot order="order-5">
+            <Suspense fallback={box("h-80")}>
+              <InvestmentsCard searchParams={searchParams} />
+            </Suspense>
+          </Slot>
+        </div>
+        <div className={`${ROW} lg:grid-cols-[3fr_2fr]`}>
+          <Slot order="order-12">
             <Suspense fallback={box("h-80")}>
               <NetWorthCard searchParams={searchParams} />
             </Suspense>
           </Slot>
-          <Slot order="order-5">
+          <Slot order="order-8">
             <Suspense fallback={box("h-80")}>
               <AllocationCard searchParams={searchParams} />
             </Suspense>
           </Slot>
         </div>
         <div className={`${ROW} lg:grid-cols-[3fr_2fr]`}>
-          <Slot order="order-4">
+          <Slot order="order-6">
             <Suspense fallback={box("h-96")}>
               <CashflowCard searchParams={searchParams} />
             </Suspense>
           </Slot>
-          <Slot order="order-10">
+          <Slot order="order-13">
             <Suspense fallback={box("h-96")}>
               <TopCategoriesCard searchParams={searchParams} />
             </Suspense>
           </Slot>
         </div>
-        <Slot order="order-11">
+        {/* docs/04 §25 insight cards: spending pace + fees & interest. */}
+        <div className={`${ROW} lg:grid-cols-2`}>
+          <Slot order="order-7">
+            <Suspense fallback={box("h-64")}>
+              <SpendingPaceCard searchParams={searchParams} />
+            </Suspense>
+          </Slot>
+          <Slot order="order-14">
+            <Suspense fallback={box("h-64")}>
+              <CostsCard searchParams={searchParams} />
+            </Suspense>
+          </Slot>
+        </div>
+        <Slot order="order-15">
           <Suspense fallback={box("h-80")}>
             <AssetsLiabilitiesCard searchParams={searchParams} />
           </Suspense>
@@ -113,17 +143,17 @@ export default function DashboardPage({ searchParams }: PageProps<"/dashboard">)
           </Suspense>
         </div>
         <div className={`${ROW} md:grid-cols-3`}>
-          <Slot order="order-6">
+          <Slot order="order-9">
             <Suspense fallback={box("h-48")}>
               <GoalsCard searchParams={searchParams} />
             </Suspense>
           </Slot>
-          <Slot order="order-7">
+          <Slot order="order-10">
             <Suspense fallback={box("h-48")}>
               <EssentialsCard searchParams={searchParams} />
             </Suspense>
           </Slot>
-          <Slot order="order-8">
+          <Slot order="order-11">
             <Suspense fallback={box("h-48")}>
               <OpportunityCard searchParams={searchParams} />
             </Suspense>

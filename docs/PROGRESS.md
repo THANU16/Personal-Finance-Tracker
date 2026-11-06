@@ -455,6 +455,11 @@ Status values: ⬜ not started · 🟡 in progress · ✅ done
   by-holding table. New holdings enter the bridge at cost (opening_balance), so a gain recorded at opening shows as market
   change. The stale note uses today's staleness. Saved reviews without the section get it from the ledger when opened.
 - [mm] e2e `allocation.spec` raced (`isVisible()` right after navigation); it now waits for the editor first.
+- [dashboard-insights] Four dashboard cards (owner request, 2026-11-07, after the canvas preview; docs/04 §25, docs/05 §2):
+  why net worth changed (saved + market gain + rest, this month / range), investments summary with a server-drawn
+  6-month sparkline (lib/monotone-path), spending pace (vs the average of the last 3 complete months, ±2.5% band),
+  fees & interest this year (loan interest, bank / investment / transfer fees; split lines by category). Pure maths in
+  domain/analytics.ts (tested); queries reuse the request's ledger load. Phone order renumbered (order-1…15).
 - [activity-days] Transactions page day-by-day (owner request, 2026-11-05; docs/05 §4): `ActivityList` replaces the
   ledger table on `/transactions` only; day totals from `dayCashflow` (src/lib/day-groups.ts, tested) match the page
   summary; colours in `components/tones.ts` (blue-600/red-600, dark 400; axe contrast passes in both themes).

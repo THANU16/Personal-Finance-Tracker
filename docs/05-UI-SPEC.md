@@ -33,6 +33,13 @@ opportunity-fund banner if triggered, forecast warning.
 Row 5: Goals progress bars · Essentials mini (emergency months, health score) · Opportunity fund (size vs target, current drawdown).
 **Cash bar** ("Where my cash is": Emergency / Opportunity / Free) and **Safe to spend** with a breakdown popover, next to the
 emergency progress bar.
+**Insight cards** (owner request, 2026-11-07; docs/04 §25), desktop: after the cash bar a row **Why did my net worth
+change?** (saved / market gain / currency & adjustments bars, "This month" and range switch) · **Investments** (value,
+invested, gain, market gain this month, 6-month sparkline, → Assets); after income vs expense / top categories a row
+**Spending pace** (spent vs a usual month, expected-by-today line, ahead / on / below chip) · **Fees & interest** (this
+year by kind). Phones: hero · Needs attention · cash · net worth change · investments · income vs expense · spending
+pace · allocation · goals · essentials · opportunity · net worth trend · top categories · fees & interest · assets vs
+liabilities.
 Charts: net worth, assets vs liabilities (stacked bars), income vs expense with a separate savings-rate line chart beneath it (owner decision, Phase 4: no dual axis), allocation donut
 with drill-down, top categories (click filters Transactions with the same range).
 

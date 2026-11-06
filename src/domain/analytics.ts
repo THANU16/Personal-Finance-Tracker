@@ -137,3 +137,102 @@ export function safeToSpend(
     .reduce((s, i) => s + (i.outflowMinor ?? 0), 0);
   return { safeMinor: freeCashMinor - committed, committedMinor: committed };
 }
+
+// ---------------------------------------------------------------- dashboard insight cards (§25)
+
+/**
+ * docs/04 §25.1 — why net worth changed over a period: saved (income − expense, §4) and the
+ * investments' market gain (§24.4) are measured; "other" is the rest (currency moves,
+ * adjustments, reinvested income, new opening balances), so the three always add up.
+ */
+export function netWorthBridge(input: {
+  startMinor: number;
+  endMinor: number;
+  savedMinor: number;
+  marketGainMinor: number;
+}): { changeMinor: number; savedMinor: number; marketGainMinor: number; otherMinor: number } {
+  const changeMinor = input.endMinor - input.startMinor;
+  return {
+    changeMinor,
+    savedMinor: input.savedMinor,
+    marketGainMinor: input.marketGainMinor,
+    otherMinor: changeMinor - input.savedMinor - input.marketGainMinor,
+  };
+}
+
+export type PaceStatus = "ahead" | "on_pace" | "below" | "no_history";
+
+/**
+ * docs/04 §25.3 — spending so far this month vs a usual month (the average of the last complete
+ * months). Expected by today = usual × day ÷ days in month. "On pace" within ±2.5% of a usual
+ * month of the expected amount.
+ */
+export function spendingPace(input: {
+  spentMinor: number;
+  usualMonthMinor: number;
+  day: number;
+  daysInMonth: number;
+}): {
+  expectedMinor: number;
+  /** spent − expected (positive = ahead of pace). */
+  overMinor: number;
+  /** Spent and expected as a share of a usual month, in bp (null without history). */
+  spentBp: number | null;
+  expectedBp: number;
+  status: PaceStatus;
+} {
+  const expectedBp = Math.round((input.day * 10_000) / input.daysInMonth);
+  if (input.usualMonthMinor <= 0) {
+    return { expectedMinor: 0, overMinor: 0, spentBp: null, expectedBp, status: "no_history" };
+  }
+  const expectedMinor = Math.round((input.usualMonthMinor * input.day) / input.daysInMonth);
+  const overMinor = input.spentMinor - expectedMinor;
+  const tolerance = Math.round(input.usualMonthMinor * 0.025);
+  return {
+    expectedMinor,
+    overMinor,
+    spentBp: ratioBp(input.spentMinor, input.usualMonthMinor),
+    expectedBp,
+    status: overMinor > tolerance ? "ahead" : overMinor < -tolerance ? "below" : "on_pace",
+  };
+}
+
+export type CostKind = "loan_interest" | "bank_fees" | "investment_fees" | "transfer_fees";
+
+/** A posted transaction's fields the fees card needs (amounts already in base). */
+export interface CostRow {
+  type: string;
+  amountMinor: number;
+  feeMinor: number;
+  interestMinor: number;
+  /** System category of an expense: "loan_interest" | "bank_fees" | "investment_fees" | null. */
+  costCategory: Exclude<CostKind, "transfer_fees"> | null;
+}
+
+/**
+ * docs/04 §25.4 — money paid as costs: loan interest (the interest part of loan payments and
+ * "Loan interest" expenses), bank fees ("Bank fees" expenses), investment fees (buy / sell fees and
+ * "Investment fees" expenses) and transfer fees. Largest first; zero kinds left out.
+ */
+export function costBreakdown(rows: readonly CostRow[]): {
+  totalMinor: number;
+  items: { kind: CostKind; amountMinor: number }[];
+} {
+  const sums: Record<CostKind, number> = {
+    loan_interest: 0,
+    bank_fees: 0,
+    investment_fees: 0,
+    transfer_fees: 0,
+  };
+  for (const r of rows) {
+    if (r.type === "debt_payment") sums.loan_interest += r.interestMinor;
+    else if (r.type === "transfer") sums.transfer_fees += r.feeMinor;
+    else if (r.type === "invest" || r.type === "redeem") sums.investment_fees += r.feeMinor;
+    else if (r.type === "expense" && r.costCategory) sums[r.costCategory] += r.amountMinor;
+  }
+  const items = (Object.keys(sums) as CostKind[])
+    .map((kind) => ({ kind, amountMinor: sums[kind] }))
+    .filter((i) => i.amountMinor > 0)
+    .sort((a, b) => b.amountMinor - a.amountMinor);
+  return { totalMinor: items.reduce((s, i) => s + i.amountMinor, 0), items };
+}
