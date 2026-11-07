@@ -28,6 +28,10 @@ import { formatPercentBp } from "@/lib/format";
 import { vizColor } from "@/lib/viz-palette";
 import { createPlanAction, setPlanStatusAction, updatePlanAction } from "@/modules/sip/actions";
 import type { PlanEditorData } from "@/modules/sip/queries";
+import {
+  OpportunityRouteFields,
+  type RouteValue,
+} from "@/modules/sip/components/opportunity-route-fields";
 import { PinnedOnPhone } from "@/components/shared/mobile/pinned-on-phone";
 
 const DAYS = [
@@ -56,6 +60,9 @@ interface State {
   notes: string;
   allocationSource: "target" | "custom";
   allocation: AllocationTree;
+  /** Custom split only: the opportunity-fund share (the target has its own). */
+  opportunityBp: number;
+  route: RouteValue;
 }
 
 /** docs/05 §6 — plan editor (/sip/plans/new and /sip/plans/[id]). */
@@ -80,6 +87,13 @@ export function PlanEditor({ data, todayKey }: { data: PlanEditorData; todayKey:
     notes: p?.notes ?? "",
     allocationSource: p?.allocationSource ?? "target",
     allocation: p?.allocation ?? [],
+    opportunityBp: p?.opportunityBp ?? 0,
+    route: p?.opportunity ?? {
+      fromAccountId: null,
+      keepIn: "same",
+      accountId: null,
+      holdingId: null,
+    },
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [pending, setPending] = useState(false);
@@ -93,14 +107,18 @@ export function PlanEditor({ data, todayKey }: { data: PlanEditorData; todayKey:
     (p.amountMinor !== s.amountMinor ||
       p.allocationSource !== s.allocationSource ||
       JSON.stringify(p.allocation) !==
-        JSON.stringify(s.allocationSource === "custom" ? s.allocation : []));
+        JSON.stringify(s.allocationSource === "custom" ? s.allocation : []) ||
+      (s.allocationSource === "custom" && p.opportunityBp !== s.opportunityBp));
+  // The share this plan keeps aside: the target's, or its own custom split's (docs/04 §6).
+  const opportunityShare =
+    s.allocationSource === "target" ? data.target.opportunityBp : s.opportunityBp;
 
   // Target issues the plan would inherit (empty target, classes without holdings, other currency).
   const targetNotes = useMemo(() => {
     const notes: string[] = [];
-    if (data.target.allocation.length === 0)
+    if (data.target.enteredAllocation.length === 0)
       notes.push("No target allocation yet — set it under Allocation first.");
-    for (const c of data.target.allocation) {
+    for (const c of data.target.enteredAllocation) {
       const name = data.treeOptions.classes.find((x) => x.id === c.assetClassId)?.name ?? "A class";
       if (c.assets.length === 0)
         notes.push(`${name} has no holdings in the target: you will pick one when executing.`);
@@ -129,6 +147,8 @@ export function PlanEditor({ data, todayKey }: { data: PlanEditorData; todayKey:
     notes: s.notes || null,
     allocationSource: s.allocationSource,
     allocation: s.allocationSource === "custom" ? s.allocation : null,
+    opportunityBp: s.allocationSource === "custom" ? s.opportunityBp : 0,
+    opportunity: s.route,
   });
 
   async function save(): Promise<boolean> {
@@ -177,7 +197,8 @@ export function PlanEditor({ data, todayKey }: { data: PlanEditorData; todayKey:
   }
 
   const customValid =
-    s.allocationSource === "target" || treeIsValid(s.allocation, data.treeOptions, true);
+    s.allocationSource === "target" ||
+    treeIsValid(s.allocation, data.treeOptions, true, s.opportunityBp);
   const canSave =
     s.name.trim() && (s.amountMinor ?? 0) > 0 && s.sourceAccountId && customValid && !pending;
   const saveButton = (
@@ -426,7 +447,7 @@ export function PlanEditor({ data, todayKey }: { data: PlanEditorData; todayKey:
           {s.allocationSource === "target" ? (
             <div className="grid gap-2 text-sm">
               <ul className="flex flex-wrap gap-x-4 gap-y-1" aria-label="Target allocation">
-                {data.target.allocation.map((c) => {
+                {data.target.enteredAllocation.map((c) => {
                   const cls = data.treeOptions.classes.find((x) => x.id === c.assetClassId);
                   return (
                     <li key={c.assetClassId} className="flex items-center gap-1.5">
@@ -439,6 +460,11 @@ export function PlanEditor({ data, todayKey }: { data: PlanEditorData; todayKey:
                     </li>
                   );
                 })}
+                {data.target.opportunityBp > 0 ? (
+                  <li className="flex items-center gap-1.5">
+                    Opportunity fund {formatPercentBp(data.target.opportunityBp)}
+                  </li>
+                ) : null}
               </ul>
               {targetNotes.map((n) => (
                 <p key={n} className="text-xs text-muted-foreground">
@@ -455,6 +481,8 @@ export function PlanEditor({ data, todayKey }: { data: PlanEditorData; todayKey:
               currency={currency}
               requireAssets
               holdingCurrency={currency}
+              opportunityBp={s.opportunityBp}
+              onOpportunityChange={(bp) => set("opportunityBp", bp)}
             />
           )}
           {errors.allocation ? (
@@ -464,6 +492,35 @@ export function PlanEditor({ data, todayKey }: { data: PlanEditorData; todayKey:
           ) : null}
         </CardContent>
       </Card>
+
+      {opportunityShare > 0 ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Opportunity fund {formatPercentBp(opportunityShare)}</CardTitle>
+            <CardDescription>
+              Where this share goes each period: kept in an account as reserved money, moved to
+              another account, or put in an asset. You can change it when you execute a period.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-2">
+            <OpportunityRouteFields
+              idPrefix="plan-opp"
+              value={s.route}
+              onChange={(r) => set("route", r)}
+              source={account ? { id: account.id, name: account.name } : null}
+              accounts={accounts}
+              holdings={data.treeOptions.holdings
+                .filter((h) => h.active && h.currency === currency)
+                .map((h) => ({ id: h.id, name: h.name }))}
+            />
+            {errors.opportunity ? (
+              <p role="alert" className="text-sm text-destructive">
+                {errors.opportunity}
+              </p>
+            ) : null}
+          </CardContent>
+        </Card>
+      ) : null}
 
       <PinnedOnPhone className="flex flex-wrap justify-between gap-2">
         <div className="flex gap-2">

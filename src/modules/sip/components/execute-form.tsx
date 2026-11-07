@@ -27,6 +27,10 @@ import {
 } from "@/modules/transactions/components/dip-confirm-dialog";
 import type { ActionWarning } from "@/server/errors";
 import { PinnedOnPhone } from "@/components/shared/mobile/pinned-on-phone";
+import {
+  OpportunityRouteFields,
+  type RouteValue,
+} from "@/modules/sip/components/opportunity-route-fields";
 
 interface LineState {
   holdingId: string | null;
@@ -58,15 +62,29 @@ export function ExecuteForm({ view, todayKey }: { view: ExecuteView; todayKey: s
       priceMinorE4: null,
     })),
   );
+  // The opportunity-fund line (docs/04 §7): planned share, kept as the plan says unless changed.
+  const oppPlanned = e.opportunityPlannedMinor;
+  const [oppActual, setOppActual] = useState<number | null>(oppPlanned);
+  const [oppFee, setOppFee] = useState<number | null>(0);
+  const [route, setRoute] = useState<RouteValue>(view.opportunity.route);
+  const oppMoves = route.keepIn !== "same";
+  const oppFromSource = (route.fromAccountId ?? view.account.id) === view.account.id;
+  const oppAmount = oppActual ?? 0;
   const [executedOn, setExecutedOn] = useState(todayKey);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [warnings, setWarnings] = useState<ActionWarning[] | null>(null);
 
-  const actual = lines.reduce((s, l) => s + (l.actualMinor ?? 0), 0);
-  const fees = lines.reduce((s, l) => s + ((l.actualMinor ?? 0) > 0 ? (l.feeMinor ?? 0) : 0), 0);
+  const invested = lines.reduce((s, l) => s + (l.actualMinor ?? 0), 0);
+  const actual = invested + oppAmount;
+  const oppFeeCharged = oppMoves && oppAmount > 0 ? (oppFee ?? 0) : 0;
+  const fees =
+    lines.reduce((s, l) => s + ((l.actualMinor ?? 0) > 0 ? (l.feeMinor ?? 0) : 0), 0) +
+    (oppFromSource ? oppFeeCharged : 0);
   const status = actual <= 0 ? null : actual >= e.plannedTotalMinor ? "done" : "partial";
-  const balanceAfter = view.account.balanceMinor - actual - fees;
+  // A reserve keeps the money in the account; a move from the source takes it out.
+  const balanceAfter =
+    view.account.balanceMinor - invested - fees - (oppFromSource && oppMoves ? oppAmount : 0);
   const onTime = executedOn <= view.graceEnd;
 
   const groups = useMemo(() => {
@@ -98,6 +116,17 @@ export function ExecuteForm({ view, todayKey }: { view: ExecuteView; todayKey: s
         units: l.units,
         priceMinorE4: l.priceMinorE4,
       })),
+      opportunity:
+        oppPlanned > 0 || oppAmount > 0
+          ? {
+              actualMinor: oppAmount,
+              feeMinor: oppFeeCharged,
+              fromAccountId: route.fromAccountId,
+              keepIn: route.keepIn,
+              accountId: route.keepIn === "account" ? route.accountId : null,
+              holdingId: route.keepIn === "holding" ? route.holdingId : null,
+            }
+          : null,
       ...flags,
     });
     setPending(false);
@@ -159,7 +188,12 @@ export function ExecuteForm({ view, todayKey }: { view: ExecuteView; todayKey: s
           </div>
           <div className="grid gap-0.5">
             <span className="text-xs text-muted-foreground">Investing</span>
-            <Money valueMinor={actual} currency={ccy} className="text-lg font-semibold" />
+            <Money valueMinor={invested} currency={ccy} className="text-lg font-semibold" />
+            {oppAmount > 0 ? (
+              <span className="text-xs text-muted-foreground">
+                + <Money valueMinor={oppAmount} currency={ccy} /> opportunity fund
+              </span>
+            ) : null}
             {fees > 0 ? (
               <span className="text-xs text-muted-foreground">
                 + <Money valueMinor={fees} currency={ccy} /> fees
@@ -338,6 +372,52 @@ export function ExecuteForm({ view, todayKey }: { view: ExecuteView; todayKey: s
           </Card>
         );
       })}
+
+      {oppPlanned > 0 || oppAmount > 0 ? (
+        <Card className="border-dashed">
+          <CardHeader>
+            <CardTitle className="text-base">Opportunity fund</CardTitle>
+            <CardDescription>
+              Planned <Money valueMinor={oppPlanned} currency={ccy} />. Kept as opportunity money,
+              not invested.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-3">
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="grid gap-1">
+                <Label className="text-xs text-muted-foreground" htmlFor="opp-actual">
+                  Amount
+                </Label>
+                <MoneyInput
+                  id="opp-actual"
+                  currency={ccy}
+                  value={oppActual}
+                  onChange={setOppActual}
+                />
+              </div>
+              {oppMoves ? (
+                <div className="grid gap-1">
+                  <Label className="text-xs text-muted-foreground" htmlFor="opp-fee">
+                    Bank fee
+                  </Label>
+                  <MoneyInput id="opp-fee" currency={ccy} value={oppFee} onChange={setOppFee} />
+                  <span className="text-xs text-muted-foreground">
+                    0 if this transfer has no fee
+                  </span>
+                </div>
+              ) : null}
+            </div>
+            <OpportunityRouteFields
+              idPrefix="exec-opp"
+              value={route}
+              onChange={setRoute}
+              source={{ id: view.account.id, name: view.account.name }}
+              accounts={view.opportunity.accounts}
+              holdings={view.opportunity.holdings}
+            />
+          </CardContent>
+        </Card>
+      ) : null}
 
       {error ? (
         <p role="alert" className="text-sm text-destructive">

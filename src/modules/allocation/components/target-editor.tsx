@@ -17,18 +17,22 @@ import { PinnedOnPhone } from "@/components/shared/mobile/pinned-on-phone";
 /** /rebalancing → Plan: the single planned (target) allocation (docs/04 §6). */
 export function TargetEditor({ target, options }: { target: TargetDTO; options: TreeOptions }) {
   const router = useRouter();
-  const [tree, setTree] = useState<AllocationTree>(target.allocation);
+  // As entered: classes are shares of the whole plan, the opportunity share is the rest (§6).
+  const [tree, setTree] = useState<AllocationTree>(target.enteredAllocation);
+  const [opportunityBp, setOpportunityBp] = useState(target.opportunityBp);
   const [threshold, setThreshold] = useState<number | null>(target.thresholdBp);
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
-  const valid = tree.length > 0 && treeIsValid(tree, options) && (threshold ?? 0) >= 50;
+  const valid =
+    tree.length > 0 && treeIsValid(tree, options, false, opportunityBp) && (threshold ?? 0) >= 50;
 
   async function save() {
     setPending(true);
     setError(null);
     const result = await saveTargetAction({
       allocation: tree,
+      opportunityBp,
       thresholdBp: threshold ?? 0,
       note: note || null,
     });
@@ -50,11 +54,19 @@ export function TargetEditor({ target, options }: { target: TargetDTO; options: 
         <CardTitle>Target allocation</CardTitle>
         <CardDescription>
           Your one planned allocation. SIP plans and opportunity deployments follow it unless they
-          use their own split. Saving re-plans SIP periods that have not been executed yet.
+          use their own split. An opportunity-fund share is kept aside from each SIP; drift and
+          deployments compare the investment classes only. Saving re-plans SIP periods that have not
+          been executed yet.
         </CardDescription>
       </CardHeader>
       <CardContent className="grid gap-5">
-        <AllocationTreeEditor value={tree} onChange={setTree} options={options} />
+        <AllocationTreeEditor
+          value={tree}
+          onChange={setTree}
+          options={options}
+          opportunityBp={opportunityBp}
+          onOpportunityChange={setOpportunityBp}
+        />
         <div className="grid gap-4 sm:grid-cols-2">
           <FormField
             id="threshold"

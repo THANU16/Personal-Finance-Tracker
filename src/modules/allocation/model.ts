@@ -28,7 +28,10 @@ export const allocationTreeSchema = new Schema<AllocationTreeDoc>(
 export interface TargetAllocationDoc {
   _id: Types.ObjectId;
   userId: Types.ObjectId;
+  /** Classes as shares of the whole plan: they add up to 100% minus `opportunityBp` (§6). */
   allocation: AllocationTreeDoc[];
+  /** Share kept as opportunity-fund money (owner request, 2026-11-07); 0 = none. */
+  opportunityBp: number;
   /** Drift alert threshold for rebalancing (docs/04 §8). */
   thresholdBp: number;
   createdAt: Date;
@@ -39,6 +42,7 @@ const targetSchema = new Schema<TargetAllocationDoc>(
   {
     userId: { type: Schema.Types.ObjectId, required: true },
     allocation: { type: [allocationTreeSchema], default: [] },
+    opportunityBp: intField({ required: true, default: 0, min: 0, max: 9_900 }),
     thresholdBp: intField({ required: true, default: 500, min: 0, max: 10_000 }),
   },
   { timestamps: true },
@@ -55,6 +59,7 @@ export interface TargetAllocationHistoryDoc {
   _id: Types.ObjectId;
   userId: Types.ObjectId;
   allocation: AllocationTreeDoc[];
+  opportunityBp: number;
   thresholdBp: number;
   savedAt: Date;
   note: string | null;
@@ -63,6 +68,7 @@ export interface TargetAllocationHistoryDoc {
 const historySchema = new Schema<TargetAllocationHistoryDoc>({
   userId: { type: Schema.Types.ObjectId, required: true },
   allocation: { type: [allocationTreeSchema], default: [] },
+  opportunityBp: intField({ required: true, default: 0, min: 0, max: 9_900 }),
   thresholdBp: intField({ required: true }),
   savedAt: { type: Date, required: true, default: () => new Date() },
   note: { type: String, default: null, maxlength: 200 },

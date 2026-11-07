@@ -1,6 +1,13 @@
 import "server-only";
 import { Types, type ClientSession } from "mongoose";
-import { splitByTree, type AllocationTree } from "@/domain/allocation";
+import type { z } from "zod";
+import { splitWithOpportunity, type AllocationTree } from "@/domain/allocation";
+import {
+  canCarryEarmarks,
+  dedicatedBucket,
+  effectiveEarmarks,
+  moveBetweenBuckets as planMove,
+} from "@/domain/earmarks";
 import { businessDateToUtc, utcToBusinessDate } from "@/domain/dates";
 import {
   carryIn,
@@ -14,12 +21,16 @@ import {
 } from "@/domain/sip";
 import { AccountModel, type AccountDoc } from "@/modules/accounts/model";
 import { assertValidTree, getTarget, treeFromDoc, treeToDoc } from "@/modules/allocation/service";
+import type { TargetDTO } from "@/modules/allocation/schemas";
+import { earmarksOf, storeBucketAmounts } from "@/modules/earmarks/service";
 import { HoldingModel, type HoldingDoc } from "@/modules/holdings/model";
 import {
   SipExecutionModel,
   SipPlanModel,
   SipPlanVersionModel,
   type ExecutionLineDoc,
+  type ExecutionOpportunityDoc,
+  type OpportunityRouteDoc,
   type SipExecutionDoc,
   type SipPlanDoc,
   type SipPlanVersionDoc,
@@ -29,10 +40,12 @@ import {
   planInputSchema,
   skipInputSchema,
   type ExecutionDTO,
+  type OpportunityRouteDTO,
   type PlanData,
   type PlanDTO,
 } from "@/modules/sip/schemas";
 import { TransactionModel, type TransactionDoc } from "@/modules/transactions/model";
+import { formatMoney } from "@/lib/format";
 import { parseInput } from "@/server/action-result";
 import { writeAudit } from "@/server/audit/model";
 import type { Ctx } from "@/server/ctx";
@@ -74,6 +87,17 @@ export function toPlanDTO(ctx: Ctx, p: SipPlanDoc, current: SipPlanVersionDoc | 
     notes: p.notes ?? null,
     allocationSource: current?.allocationSource ?? "target",
     allocation: current?.allocationSource === "custom" ? treeFromDoc(current.allocation) : [],
+    opportunityBp: current?.allocationSource === "custom" ? (current.opportunityBp ?? 0) : 0,
+    opportunity: routeDTO(p.opportunity),
+  };
+}
+
+function routeDTO(r: Partial<OpportunityRouteDoc> | null | undefined): OpportunityRouteDTO {
+  return {
+    fromAccountId: r?.fromAccountId ? String(r.fromAccountId) : null,
+    keepIn: r?.keepIn ?? "same",
+    accountId: r?.accountId ? String(r.accountId) : null,
+    holdingId: r?.holdingId ? String(r.holdingId) : null,
   };
 }
 
@@ -103,6 +127,15 @@ export function toExecutionDTO(ctx: Ctx, e: SipExecutionDoc): ExecutionDTO {
       transactionId: l.transactionId ? String(l.transactionId) : null,
     })),
     allocationUsed: treeFromDoc(e.allocationUsed),
+    opportunityPlannedMinor: e.opportunityPlannedMinor ?? 0,
+    opportunity: e.opportunity
+      ? {
+          ...routeDTO(e.opportunity),
+          actualMinor: e.opportunity.actualMinor,
+          feeMinor: e.opportunity.feeMinor,
+          transactionId: e.opportunity.transactionId ? String(e.opportunity.transactionId) : null,
+        }
+      : null,
   };
 }
 
@@ -156,7 +189,11 @@ async function validateAllocation(
 ) {
   if (data.allocationSource !== "custom") return [];
   const tree = data.allocation ?? [];
-  const warnings = await assertValidTree(ctx, tree, { requireAssets: true, session });
+  const warnings = await assertValidTree(ctx, tree, {
+    requireAssets: true,
+    session,
+    opportunityBp: data.opportunityBp,
+  });
   // Invest postings need the holding in the plan's (source account's) currency.
   const ids = tree.flatMap((c) => c.assets.map((a) => new Types.ObjectId(a.holdingId)));
   const other = await HoldingModel.findOne({
@@ -178,26 +215,47 @@ async function validateAllocation(
   return warnings;
 }
 
-/** The tree a version invests with: its own (custom) or the live target. */
-function treeOf(
-  version: Pick<SipPlanVersionDoc, "allocationSource" | "allocation">,
-  target: AllocationTree,
-): AllocationTree {
-  return version.allocationSource === "custom" ? treeFromDoc(version.allocation) : target;
+/** A tree as entered (classes = shares of the whole) and its opportunity-fund share (§6). */
+interface PlanSplit {
+  tree: AllocationTree;
+  opportunityBp: number;
 }
 
-function planLines(total: number, tree: AllocationTree): ExecutionLineDoc[] {
-  if (tree.length === 0 || total <= 0) return [];
-  return splitByTree(total, tree).map((l) => ({
-    assetClassId: new Types.ObjectId(l.assetClassId),
-    holdingId: l.holdingId ? new Types.ObjectId(l.holdingId) : null,
-    plannedMinor: l.amountMinor,
-    actualMinor: 0,
-    feeMinor: 0,
-    units: null,
-    priceMinorE4: null,
-    transactionId: null,
-  }));
+const targetSplit = (t: TargetDTO): PlanSplit => ({
+  tree: t.enteredAllocation,
+  opportunityBp: t.opportunityBp,
+});
+
+/** What a version invests with: its own (custom) tree and share, or the live target's. */
+function treeOf(
+  version: Pick<SipPlanVersionDoc, "allocationSource" | "allocation" | "opportunityBp">,
+  target: PlanSplit,
+): PlanSplit {
+  return version.allocationSource === "custom"
+    ? { tree: treeFromDoc(version.allocation), opportunityBp: version.opportunityBp ?? 0 }
+    : target;
+}
+
+/** Lines for the investments and the opportunity share; they add up to `total` exactly. */
+function planLines(
+  total: number,
+  split: PlanSplit,
+): { lines: ExecutionLineDoc[]; opportunityMinor: number } {
+  if (split.tree.length === 0 || total <= 0) return { lines: [], opportunityMinor: 0 };
+  const { lines, opportunityMinor } = splitWithOpportunity(total, split.tree, split.opportunityBp);
+  return {
+    opportunityMinor,
+    lines: lines.map((l) => ({
+      assetClassId: new Types.ObjectId(l.assetClassId),
+      holdingId: l.holdingId ? new Types.ObjectId(l.holdingId) : null,
+      plannedMinor: l.amountMinor,
+      actualMinor: 0,
+      feeMinor: 0,
+      units: null,
+      priceMinorE4: null,
+      transactionId: null,
+    })),
+  };
 }
 
 /**
@@ -209,12 +267,12 @@ async function refreshPending(
   ctx: Ctx,
   plan: SipPlanDoc,
   session: ClientSession,
-  target?: AllocationTree,
+  target?: PlanSplit,
 ) {
   const userId = toObjectId(ctx.userId, "User");
   const today = todayOf(ctx);
   const versions = await loadVersions(ctx, plan._id, session);
-  const live = target ?? (await getTarget(ctx, session)).allocation;
+  const live = target ?? targetSplit(await getTarget(ctx, session));
   const executions = await SipExecutionModel.find({ userId, planId: plan._id })
     .sort({ dueDate: 1 })
     .session(session)
@@ -238,7 +296,8 @@ async function refreshPending(
           due,
         );
         const carry = carryIn(plan.missedPolicy, prev);
-        const tree = treeOf(version, live);
+        const split = treeOf(version, live);
+        const planned = planLines(stepped + carry, split);
         const status: ExecutionStatus = isMissed("due", due, plan.graceDays, today)
           ? "missed"
           : "due";
@@ -246,8 +305,9 @@ async function refreshPending(
           planVersion: version.version,
           carryInMinor: carry,
           plannedTotalMinor: stepped + carry,
-          lines: planLines(stepped + carry, tree),
-          allocationUsed: treeToDoc(tree),
+          lines: planned.lines,
+          opportunityPlannedMinor: planned.opportunityMinor,
+          allocationUsed: treeToDoc(split.tree),
           status,
         };
         await SipExecutionModel.updateOne(
@@ -329,8 +389,111 @@ export async function refreshTargetFollowers(ctx: Ctx, session: ClientSession): 
   const plans = await SipPlanModel.find({ userId, status: { $ne: "ended" } })
     .session(session)
     .lean<SipPlanDoc[]>();
-  const target = (await getTarget(ctx, session)).allocation;
+  const target = targetSplit(await getTarget(ctx, session));
   for (const plan of plans) await refreshPending(ctx, plan, session, target);
+}
+
+/**
+ * The opportunity share's route (docs/04 §7): "from" defaults to the plan's source account;
+ * the account kept in / moved to and the asset bought must be the user's, open, in the plan
+ * currency, and able to hold opportunity money.
+ */
+async function validateRoute(
+  ctx: Ctx,
+  input: PlanData["opportunity"],
+  source: AccountDoc,
+  session: ClientSession,
+): Promise<OpportunityRouteDoc> {
+  const route = {
+    fromAccountId: null as Types.ObjectId | null,
+    keepIn: input?.keepIn ?? "same",
+    accountId: null as Types.ObjectId | null,
+    holdingId: null as Types.ObjectId | null,
+  };
+  const from =
+    input?.fromAccountId && input.fromAccountId !== String(source._id)
+      ? await assertRouteAccount(
+          ctx,
+          input.fromAccountId,
+          source.currency,
+          "opportunity.fromAccountId",
+          session,
+        )
+      : source;
+  if (from !== source) route.fromAccountId = from._id;
+  if (route.keepIn === "account") {
+    const to = await assertRouteAccount(
+      ctx,
+      input!.accountId!,
+      source.currency,
+      "opportunity.accountId",
+      session,
+    );
+    if (String(to._id) === String(from._id)) {
+      throw new AppError("VALIDATION", "Choose another account, or keep it in the same account", {
+        "opportunity.accountId": ["Same as the from account"],
+      });
+    }
+    if (dedicatedBucket(to) !== "opportunity" && !canCarryEarmarks(to)) {
+      throw new AppError("VALIDATION", `"${to.name}" cannot hold opportunity money`, {
+        "opportunity.accountId": ["Cannot hold opportunity money"],
+      });
+    }
+    route.accountId = to._id;
+  }
+  if (route.keepIn === "holding") {
+    const h = await HoldingModel.findOne({
+      _id: toObjectId(input!.holdingId!, "Holding"),
+      userId: toObjectId(ctx.userId, "User"),
+    })
+      .session(session)
+      .lean<HoldingDoc>();
+    const field = { "opportunity.holdingId": ["Choose another asset"] };
+    if (!h) throw new AppError("VALIDATION", "Asset not found", field);
+    if (h.status !== "active") throw new AppError("VALIDATION", `"${h.name}" is closed`, field);
+    if (h.currency !== source.currency) {
+      throw new AppError("VALIDATION", `"${h.name}" is in ${h.currency}`, field);
+    }
+    if (h.countsTowardEmergencyFund) {
+      throw new AppError("VALIDATION", `"${h.name}" is emergency money as a whole`, field);
+    }
+    route.holdingId = h._id;
+  }
+  if (route.keepIn === "same" && dedicatedBucket(from) === "emergency") {
+    throw new AppError("VALIDATION", `"${from.name}" is emergency money as a whole`, {
+      "opportunity.fromAccountId": ["Emergency account"],
+    });
+  }
+  if (route.keepIn === "same" && !dedicatedBucket(from) && !canCarryEarmarks(from)) {
+    throw new AppError("VALIDATION", `"${from.name}" cannot hold opportunity money`, {
+      "opportunity.fromAccountId": ["Cannot hold opportunity money"],
+    });
+  }
+  return route;
+}
+
+async function assertRouteAccount(
+  ctx: Ctx,
+  id: string,
+  currency: string,
+  field: string,
+  session: ClientSession,
+): Promise<AccountDoc> {
+  const a = await AccountModel.findOne({
+    _id: toObjectId(id, "Account"),
+    userId: toObjectId(ctx.userId, "User"),
+  })
+    .session(session)
+    .lean<AccountDoc>();
+  if (!a) throw new AppError("VALIDATION", "Account not found", { [field]: ["Account not found"] });
+  if (a.archivedAt)
+    throw new AppError("VALIDATION", `"${a.name}" is archived`, { [field]: ["Archived"] });
+  if (a.currency !== currency) {
+    throw new AppError("VALIDATION", `Use a ${currency} account`, {
+      [field]: [`Must be ${currency}`],
+    });
+  }
+  return a;
 }
 
 export async function createPlan(
@@ -341,6 +504,7 @@ export async function createPlan(
   const result = await withTransaction(async (session) => {
     const account = await assertSourceAccount(ctx, data.sourceAccountId, session);
     const warnings = await validateAllocation(ctx, data, account.currency, session);
+    const opportunity = await validateRoute(ctx, data.opportunity, account, session);
     const userId = toObjectId(ctx.userId, "User");
     const [plan] = await SipPlanModel.create(
       [
@@ -361,6 +525,7 @@ export async function createPlan(
           useDriftTilt: data.useDriftTilt,
           notes: data.notes ?? null,
           currentVersion: 1,
+          opportunity,
         },
       ],
       { session },
@@ -375,6 +540,7 @@ export async function createPlan(
           amountMinor: data.amountMinor,
           allocationSource: data.allocationSource,
           allocation: data.allocationSource === "custom" ? treeToDoc(data.allocation ?? []) : [],
+          opportunityBp: data.allocationSource === "custom" ? data.opportunityBp : 0,
         },
       ],
       { session },
@@ -421,6 +587,7 @@ export async function updatePlan(
       });
     }
     const warnings = await validateAllocation(ctx, data, plan.currency, session);
+    const opportunity = await validateRoute(ctx, data.opportunity, account, session);
     const userId = toObjectId(ctx.userId, "User");
     const versions = await loadVersions(ctx, plan._id, session);
     const current = versions.find((v) => v.version === plan.currentVersion) ?? versions.at(-1)!;
@@ -428,10 +595,14 @@ export async function updatePlan(
       JSON.stringify(
         current.allocationSource === "custom" ? treeFromDoc(current.allocation) : [],
       ) === JSON.stringify(data.allocationSource === "custom" ? (data.allocation ?? []) : []);
+    const sameShare =
+      (current.allocationSource === "custom" ? (current.opportunityBp ?? 0) : 0) ===
+      (data.allocationSource === "custom" ? data.opportunityBp : 0);
     const versionChanged =
       current.amountMinor !== data.amountMinor ||
       current.allocationSource !== data.allocationSource ||
-      !sameTree;
+      !sameTree ||
+      !sameShare;
     const scheduleChanged =
       plan.frequency !== data.frequency ||
       (plan.dayOfMonth ?? null) !==
@@ -458,6 +629,7 @@ export async function updatePlan(
             amountMinor: data.amountMinor,
             allocationSource: data.allocationSource,
             allocation: data.allocationSource === "custom" ? treeToDoc(data.allocation ?? []) : [],
+            opportunityBp: data.allocationSource === "custom" ? data.opportunityBp : 0,
           },
         ],
         { session },
@@ -486,6 +658,7 @@ export async function updatePlan(
           graceDays: data.graceDays,
           useDriftTilt: data.useDriftTilt,
           notes: data.notes ?? null,
+          opportunity,
           ...(newVersion ? { currentVersion: newVersion } : {}),
         },
       },
@@ -616,6 +789,164 @@ export async function deletePlan(ctx: Ctx, id: string): Promise<{ id: string }> 
   });
 }
 
+type OpportunityInput = NonNullable<z.output<typeof executeInputSchema>["opportunity"]>;
+
+/**
+ * docs/04 §7 — the opportunity-fund line of an execution: reserve it in its "from" account (an
+ * earmark: no money moves), transfer it to another account, or buy an asset, both tagged into the
+ * opportunity bucket by the ledger. A move from the plan's source account was dip-guarded with
+ * the SIP total; from another account it is guarded on its own.
+ */
+async function keepOpportunity(
+  ctx: Ctx,
+  a: {
+    opp: OpportunityInput;
+    fromId: string;
+    fromSource: boolean;
+    currency: string;
+    date: Date;
+    description: string;
+    executionId: Types.ObjectId;
+    groupId: Types.ObjectId;
+    confirm: { confirmOpportunity?: boolean; confirmEmergency?: boolean };
+    session: ClientSession;
+  },
+): Promise<ExecutionOpportunityDoc> {
+  const { opp, session } = a;
+  const from = await assertRouteAccount(
+    ctx,
+    a.fromId,
+    a.currency,
+    "opportunity.fromAccountId",
+    session,
+  );
+  const base = {
+    fromAccountId: a.fromSource ? null : from._id,
+    keepIn: opp.keepIn,
+    accountId: null as Types.ObjectId | null,
+    holdingId: null as Types.ObjectId | null,
+    actualMinor: opp.actualMinor,
+    feeMinor: 0,
+    transactionId: null as Types.ObjectId | null,
+  };
+  const common = {
+    date: a.date,
+    amountMinor: opp.actualMinor,
+    feeMinor: opp.feeMinor,
+    fromAccountId: String(from._id),
+    description: a.description,
+    source: { kind: "sip_execution" as const, refId: a.executionId },
+    groupId: a.groupId,
+    dipGuardDone: a.fromSource,
+    ...(a.fromSource ? {} : a.confirm),
+  };
+  if (opp.keepIn === "same") {
+    await reserve(ctx, from, opp.actualMinor, session);
+    return base;
+  }
+  if (opp.keepIn === "account") {
+    if (!opp.accountId) {
+      throw new AppError("VALIDATION", "Choose the account to keep it in", {
+        "opportunity.accountId": ["Choose the account"],
+      });
+    }
+    const to = await assertRouteAccount(
+      ctx,
+      opp.accountId,
+      a.currency,
+      "opportunity.accountId",
+      session,
+    );
+    const txn = await postTransaction(
+      ctx,
+      {
+        ...common,
+        type: "transfer",
+        toAccountId: String(to._id),
+        // An Opportunity Fund account is all opportunity money already.
+        toBucket: dedicatedBucket(to) === "opportunity" ? null : "opportunity",
+      },
+      session,
+    );
+    return { ...base, accountId: to._id, feeMinor: opp.feeMinor, transactionId: txn._id };
+  }
+  if (!opp.holdingId) {
+    throw new AppError("VALIDATION", "Choose the asset to keep it in", {
+      "opportunity.holdingId": ["Choose the asset"],
+    });
+  }
+  const txn = await postTransaction(
+    ctx,
+    { ...common, type: "invest", holdingId: opp.holdingId, toBucket: "opportunity" },
+    session,
+  );
+  return {
+    ...base,
+    holdingId: toObjectId(opp.holdingId, "Holding"),
+    feeMinor: opp.feeMinor,
+    transactionId: txn._id,
+  };
+}
+
+/** Free money of an account becomes opportunity money (an Opportunity Fund account already is). */
+async function reserve(
+  ctx: Ctx,
+  account: AccountDoc,
+  amountMinor: number,
+  session: ClientSession,
+): Promise<void> {
+  if (dedicatedBucket(account) === "opportunity") return;
+  if (!canCarryEarmarks(account) || dedicatedBucket(account)) {
+    throw new AppError("VALIDATION", `"${account.name}" cannot hold opportunity money`, {
+      "opportunity.fromAccountId": ["Cannot hold opportunity money"],
+    });
+  }
+  const eff = effectiveEarmarks(
+    account.balanceMinor,
+    await earmarksOf(account.userId, account._id, session),
+  );
+  let amounts;
+  try {
+    amounts = planMove(eff, "free", "opportunity", amountMinor);
+  } catch {
+    throw new AppError(
+      "VALIDATION",
+      `"${account.name}" has only ${formatMoney(Math.max(0, eff.freeMinor), account.currency)} of free money to keep as opportunity money`,
+      { "opportunity.actualMinor": ["More than the free money"] },
+    );
+  }
+  await storeBucketAmounts(ctx, account, amounts, "sip_opportunity_reserve", session);
+}
+
+/** Undo of a reserve: that much opportunity money becomes free again (not below 0). */
+async function releaseReserve(
+  ctx: Ctx,
+  accountId: string,
+  amountMinor: number,
+  session: ClientSession,
+): Promise<void> {
+  const account = await AccountModel.findOne({
+    _id: toObjectId(accountId, "Account"),
+    userId: toObjectId(ctx.userId, "User"),
+  })
+    .session(session)
+    .lean<AccountDoc>();
+  if (!account || dedicatedBucket(account) || !canCarryEarmarks(account)) return;
+  const eff = effectiveEarmarks(
+    account.balanceMinor,
+    await earmarksOf(account.userId, account._id, session),
+  );
+  const back = Math.min(amountMinor, eff.opportunityMinor);
+  if (back <= 0) return;
+  await storeBucketAmounts(
+    ctx,
+    account,
+    planMove(eff, "opportunity", "free", back),
+    "sip_opportunity_release",
+    session,
+  );
+}
+
 export async function executeSip(
   ctx: Ctx,
   id: string,
@@ -681,14 +1012,21 @@ export async function executeSip(
         transactionId: null,
       };
     });
-    const actualTotal = lines.reduce((s, l) => s + l.actualMinor, 0);
+    const opp = data.opportunity && data.opportunity.actualMinor > 0 ? data.opportunity : null;
+    const sourceId = String(plan.sourceAccountId);
+    const oppFromId = opp?.fromAccountId ?? sourceId;
+    const oppMoves = opp !== null && opp.keepIn !== "same";
+    const oppFromSource = oppFromId === sourceId;
+    const actualTotal = lines.reduce((s, l) => s + l.actualMinor, 0) + (opp?.actualMinor ?? 0);
     let status: "done" | "partial";
     try {
       status = executionStatus(e.plannedTotalMinor, actualTotal);
     } catch (err) {
       throw new AppError("VALIDATION", (err as Error).message);
     }
-    const outflow = lines.reduce((s, l) => s + l.actualMinor + l.feeMinor, 0);
+    const outflow =
+      lines.reduce((s, l) => s + l.actualMinor + l.feeMinor, 0) +
+      (oppMoves && oppFromSource ? opp!.actualMinor + opp!.feeMinor : 0);
     await guardGroupOutflow(
       ctx,
       String(plan.sourceAccountId),
@@ -724,8 +1062,26 @@ export async function executeSip(
       );
       line.transactionId = txn._id;
     }
+    const opportunity = opp
+      ? await keepOpportunity(ctx, {
+          opp,
+          fromId: oppFromId,
+          fromSource: oppFromSource,
+          currency: plan.currency,
+          date,
+          description: `${plan.name} · ${e.periodKey} · opportunity fund`,
+          executionId: e._id,
+          groupId,
+          confirm: {
+            confirmOpportunity: data.confirmOpportunity,
+            confirmEmergency: data.confirmEmergency,
+          },
+          session,
+        })
+      : null;
     const $set = {
       lines,
+      opportunity,
       actualTotalMinor: actualTotal,
       status,
       executedAt: date,
@@ -794,6 +1150,14 @@ export async function undoSip(ctx: Ctx, id: string): Promise<ExecutionDTO> {
       throw new AppError("CONFLICT", "Nothing to undo for this period");
     }
     const plan = await loadPlan(ctx, String(e.planId), session);
+    if (e.opportunity && e.opportunity.keepIn === "same" && e.opportunity.actualMinor > 0) {
+      await releaseReserve(
+        ctx,
+        String(e.opportunity.fromAccountId ?? plan.sourceAccountId),
+        e.opportunity.actualMinor,
+        session,
+      );
+    }
     if (e.groupId) {
       const txns = await TransactionModel.find({ userId, groupId: e.groupId, status: "posted" })
         .session(session)
@@ -815,6 +1179,7 @@ export async function undoSip(ctx: Ctx, id: string): Promise<ExecutionDTO> {
       onTime: null,
       groupId: null,
       skipReason: null,
+      opportunity: null,
       lines: e.lines.map((l) => ({
         ...l,
         actualMinor: 0,

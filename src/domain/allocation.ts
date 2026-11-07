@@ -41,8 +41,13 @@ const isBp = (v: number) => Number.isSafeInteger(v) && v >= 0 && v <= BP_SCALE;
 export function validateTree(
   tree: AllocationTree,
   holdings: readonly TreeHoldingInfo[],
-  opts: { requireAssets?: boolean } = {},
+  opts: {
+    requireAssets?: boolean;
+    /** What the classes must add up to: 100% minus an opportunity-fund share (§6). */
+    totalBp?: number;
+  } = {},
 ): TreeValidation {
+  const totalBp = opts.totalBp ?? BP_SCALE;
   const errors: TreeIssue[] = [];
   const warnings: TreeIssue[] = [];
   if (tree.length === 0) errors.push({ path: "classes", message: "Add at least one asset class" });
@@ -84,8 +89,14 @@ export function validateTree(
       errors.push({ path, message: "Holdings in this class must add up to 100%" });
     }
   }
-  if (tree.length > 0 && classSum !== BP_SCALE) {
-    errors.push({ path: "classes", message: "Classes must add up to 100%" });
+  if (tree.length > 0 && classSum !== totalBp) {
+    errors.push({
+      path: "classes",
+      message:
+        totalBp === BP_SCALE
+          ? "Classes must add up to 100%"
+          : "Classes and the opportunity fund must add up to 100%",
+    });
   }
   return { errors, warnings };
 }
@@ -127,6 +138,38 @@ export function splitByTree(total: number, tree: AllocationTree): SplitLine[] {
     );
   });
   return lines;
+}
+
+/**
+ * docs/04 §6 — a tree whose classes add up to 100% minus `opportunityBp` (the opportunity-fund
+ * share): `total` is split over the classes and the opportunity share together by largest
+ * remainder, so lines + opportunity = total exactly (60/20/10/10 of 100,000 → 60,000 · 20,000 ·
+ * 10,000 · 10,000). With no opportunity share it is splitByTree.
+ */
+export function splitWithOpportunity(
+  total: number,
+  tree: AllocationTree,
+  opportunityBp: number,
+): { lines: SplitLine[]; opportunityMinor: number } {
+  if (opportunityBp <= 0)
+    return { lines: tree.length ? splitByTree(total, tree) : [], opportunityMinor: 0 };
+  const amounts = allocateLargestRemainder(total, [...tree.map((c) => c.percentBp), opportunityBp]);
+  const lines = tree.flatMap((c, i) => splitByTree(amounts[i]!, [{ ...c, percentBp: BP_SCALE }]));
+  return { lines, opportunityMinor: amounts.at(-1)! };
+}
+
+/**
+ * The investment classes rescaled to 100% (largest remainder) — drift, rebalancing and
+ * opportunity deployments compare investments only, never the opportunity-fund share.
+ */
+export function normalizeTree(tree: AllocationTree): AllocationTree {
+  const sum = tree.reduce((s, c) => s + c.percentBp, 0);
+  if (sum === BP_SCALE || sum === 0) return tree;
+  const scaled = allocateLargestRemainder(
+    BP_SCALE,
+    tree.map((c) => c.percentBp),
+  );
+  return tree.map((c, i) => ({ ...c, percentBp: scaled[i]! }));
 }
 
 /** Distributes what is missing to 100% onto the last row (the editor's "Auto-balance"). */

@@ -22,6 +22,8 @@ export const allocationTreeInputSchema = z
 export const saveTargetSchema = z
   .object({
     allocation: allocationTreeInputSchema,
+    /** Opportunity-fund share of the plan (classes add up to 100% minus this). */
+    opportunityBp: z.number().int().min(0).max(9_900, "Leave room for investments").default(0),
     thresholdBp: z.number().int().min(50, "At least 0.5%").max(5_000, "At most 50%"),
     note: z.string().trim().max(200).nullish(),
   })
@@ -29,7 +31,12 @@ export const saveTargetSchema = z
 export type SaveTargetInput = z.input<typeof saveTargetSchema>;
 
 export interface TargetDTO {
+  /** Investment classes rescaled to 100% (drift, rebalancing, deployments; docs/04 §6). */
   allocation: AllocationTree;
+  /** As entered: classes as shares of the whole, adding up to 100% − opportunityBp. */
+  enteredAllocation: AllocationTree;
+  /** Opportunity-fund share of a SIP (0 = none). */
+  opportunityBp: number;
   thresholdBp: number;
   updatedAt: string | null;
 }
@@ -39,6 +46,7 @@ export interface TargetHistoryDTO {
   savedAt: string;
   thresholdBp: number;
   allocation: AllocationTree;
+  opportunityBp: number;
   note: string | null;
 }
 

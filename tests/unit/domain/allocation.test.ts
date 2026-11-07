@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   autoBalance,
+  normalizeTree,
   splitByTree,
+  splitWithOpportunity,
   validateTree,
   type AllocationTree,
   type TreeHoldingInfo,
@@ -169,5 +171,45 @@ describe("cashflowSplit (docs/04 §8, SIP drift tilt)", () => {
 
   it("falls back to the target split when nothing is underweight", () => {
     expect(cashflowSplit(1_000, tree, {})).toEqual(splitByTree(1_000, tree));
+  });
+});
+
+describe("opportunity-fund share (docs/04 §6, owner request 2026-11-07)", () => {
+  const tree = [
+    { assetClassId: "eq", percentBp: 6_000, assets: [{ holdingId: "a", percentBp: 10_000 }] },
+    { assetClassId: "fi", percentBp: 2_000, assets: [{ holdingId: "b", percentBp: 10_000 }] },
+    { assetClassId: "au", percentBp: 1_000, assets: [{ holdingId: "c", percentBp: 10_000 }] },
+  ];
+  it("60/20/10 + 10% opportunity of 100,000 → 60,000 · 20,000 · 10,000 · 10,000", () => {
+    const s = splitWithOpportunity(100_000_00, tree, 1_000);
+    expect(s.lines.map((l) => l.amountMinor)).toEqual([60_000_00, 20_000_00, 10_000_00]);
+    expect(s.opportunityMinor).toBe(10_000_00);
+  });
+  it("lines + opportunity always sum to the total", () => {
+    const s = splitWithOpportunity(99_999, tree, 1_000);
+    expect(s.lines.reduce((t, l) => t + l.amountMinor, 0) + s.opportunityMinor).toBe(99_999);
+  });
+  it("no opportunity share is splitByTree", () => {
+    const full = [{ ...tree[0]!, percentBp: 10_000 }];
+    expect(splitWithOpportunity(1_000, full, 0)).toEqual({
+      lines: splitByTree(1_000, full),
+      opportunityMinor: 0,
+    });
+  });
+  it("classes must add up to 100% minus the opportunity share", () => {
+    const holdings = [
+      { id: "a", assetClassId: "eq", active: true },
+      { id: "b", assetClassId: "fi", active: true },
+      { id: "c", assetClassId: "au", active: true },
+    ];
+    expect(validateTree(tree, holdings, { totalBp: 9_000 }).errors).toEqual([]);
+    expect(validateTree(tree, holdings).errors.map((e) => e.message)).toContain(
+      "Classes must add up to 100%",
+    );
+  });
+  it("normalizeTree rescales investments to 100% for drift", () => {
+    expect(normalizeTree(tree).map((c) => c.percentBp)).toEqual([6_667, 2_222, 1_111]);
+    const full = [{ ...tree[0]!, percentBp: 10_000 }];
+    expect(normalizeTree(full)).toBe(full);
   });
 });

@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown, ChevronRight, Plus, Scale, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronRight, PiggyBank, Plus, Scale, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Money } from "@/components/shared/money";
 import { PercentInput } from "@/components/shared/percent-input";
@@ -13,8 +13,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  autoBalance,
-  splitByTree,
+  splitWithOpportunity,
   validateTree,
   type AllocationClass,
   type AllocationTree,
@@ -37,6 +36,8 @@ export function AllocationTreeEditor({
   currency,
   requireAssets = false,
   holdingCurrency,
+  opportunityBp,
+  onOpportunityChange,
 }: {
   value: AllocationTree;
   onChange: (tree: AllocationTree) => void;
@@ -48,31 +49,50 @@ export function AllocationTreeEditor({
   requireAssets?: boolean;
   /** Only offer holdings in this currency (SIP invests from one account). */
   holdingCurrency?: string;
+  /**
+   * Opportunity-fund share (owner request, 2026-11-07; docs/04 §6): shown as its own row when
+   * `onOpportunityChange` is given; classes + this add up to 100%.
+   */
+  opportunityBp?: number;
+  onOpportunityChange?: (bp: number) => void;
 }) {
+  const opp = onOpportunityChange ? (opportunityBp ?? 0) : 0;
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const classById = new Map(options.classes.map((c) => [c.id, c]));
   const holdingById = new Map(options.holdings.map((h) => [h.id, h]));
-  const sum = value.reduce((s, c) => s + c.percentBp, 0);
+  const classSum = value.reduce((s, c) => s + c.percentBp, 0);
+  const sum = classSum + opp;
+  /** The last row takes what is missing to 100% (after the opportunity share). */
+  const autoBalance = <T extends { percentBp: number }>(rows: readonly T[], total = 10_000): T[] =>
+    rows.length === 0
+      ? []
+      : [
+          ...rows.slice(0, -1),
+          {
+            ...rows.at(-1)!,
+            percentBp: Math.max(0, total - rows.slice(0, -1).reduce((t, r) => t + r.percentBp, 0)),
+          },
+        ];
   const validation = useMemo(
     () =>
       validateTree(
         value,
         options.holdings.map((h) => ({ id: h.id, assetClassId: h.assetClassId, active: h.active })),
-        { requireAssets },
+        { requireAssets, totalBp: 10_000 - opp },
       ),
-    [value, options.holdings, requireAssets],
+    [value, options.holdings, requireAssets, opp],
   );
   const amounts = useMemo(() => {
     if (!totalMinor || totalMinor <= 0 || sum !== 10_000 || validation.errors.length) return null;
     try {
-      return splitByTree(totalMinor, value);
+      return splitWithOpportunity(totalMinor, value, opp);
     } catch {
       return null;
     }
-  }, [totalMinor, sum, validation.errors.length, value]);
+  }, [totalMinor, sum, validation.errors.length, value, opp]);
   const amountOf = (classId: string, holdingId: string | null) =>
-    amounts
-      ?.filter(
+    amounts?.lines
+      .filter(
         (l) => l.assetClassId === classId && (holdingId === null || l.holdingId === holdingId),
       )
       .reduce((s, l) => s + l.amountMinor, 0) ?? null;
@@ -319,12 +339,39 @@ export function AllocationTreeEditor({
             type="button"
             size="sm"
             variant="outline"
-            onClick={() => onChange(autoBalance(value))}
+            onClick={() => onChange(autoBalance(value, 10_000 - opp))}
           >
             <Scale aria-hidden /> Auto-balance
           </Button>
         ) : null}
       </div>
+
+      {onOpportunityChange ? (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-dashed p-3">
+          <span className="flex min-w-36 flex-1 items-center gap-2 font-medium">
+            <PiggyBank className="size-4 text-muted-foreground" aria-hidden />
+            Opportunity fund
+            <span className="text-xs font-normal text-muted-foreground">
+              kept as opportunity money, not invested
+            </span>
+          </span>
+          <PercentInput
+            aria-label="Opportunity fund percent"
+            className="w-24"
+            value={opp}
+            onChange={(v) => onOpportunityChange(v ?? 0)}
+          />
+          {totalMinor ? (
+            <span className="w-32 text-right text-sm tabular-nums">
+              {amounts ? (
+                <Money valueMinor={amounts.opportunityMinor} currency={currency ?? "LKR"} />
+              ) : (
+                "—"
+              )}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
 
       <div
         role="status"
@@ -355,12 +402,13 @@ export function treeIsValid(
   tree: AllocationTree,
   options: TreeOptions,
   requireAssets = false,
+  opportunityBp = 0,
 ): boolean {
   return (
     validateTree(
       tree,
       options.holdings.map((h) => ({ id: h.id, assetClassId: h.assetClassId, active: h.active })),
-      { requireAssets },
+      { requireAssets, totalBp: 10_000 - opportunityBp },
     ).errors.length === 0
   );
 }

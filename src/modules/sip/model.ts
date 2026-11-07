@@ -10,10 +10,27 @@ import {
 import { allocationTreeSchema, type AllocationTreeDoc } from "@/modules/allocation/model";
 import {
   ALLOCATION_SOURCES,
+  OPPORTUNITY_KEEP_IN,
   PLAN_STATUSES,
   type AllocationSource,
+  type OpportunityKeepIn,
   type PlanStatus,
 } from "@/modules/sip/constants";
+
+/** Where the opportunity share goes; null `fromAccountId` = the plan's source account. */
+export interface OpportunityRouteDoc {
+  fromAccountId: Types.ObjectId | null;
+  keepIn: OpportunityKeepIn;
+  accountId: Types.ObjectId | null;
+  holdingId: Types.ObjectId | null;
+}
+
+const routeFields = {
+  fromAccountId: { type: Schema.Types.ObjectId, default: null },
+  keepIn: { type: String, enum: OPPORTUNITY_KEEP_IN, required: true, default: "same" },
+  accountId: { type: Schema.Types.ObjectId, default: null },
+  holdingId: { type: Schema.Types.ObjectId, default: null },
+};
 import { intField, userScopedModel } from "@/server/db/model";
 
 // docs/03-DATA-MODEL.md — sipPlans, sipPlanVersions, sipExecutions (docs/04 §7).
@@ -40,6 +57,8 @@ export interface SipPlanDoc {
   notes: string | null;
   /** Generation never back-fills paused periods: due dates before this are not generated. */
   resumedAt: Date | null;
+  /** Where the opportunity-fund share goes by default (Execute can change it per period). */
+  opportunity: OpportunityRouteDoc;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -73,6 +92,10 @@ const planSchema = new Schema<SipPlanDoc>(
     currentVersion: intField({ required: true, default: 1, min: 1 }),
     notes: { type: String, default: null, maxlength: 1000 },
     resumedAt: { type: Date, default: null },
+    opportunity: {
+      type: new Schema(routeFields, { _id: false }),
+      default: () => ({ fromAccountId: null, keepIn: "same", accountId: null, holdingId: null }),
+    },
   },
   { timestamps: true },
 );
@@ -89,6 +112,8 @@ export interface SipPlanVersionDoc {
   amountMinor: number;
   allocationSource: AllocationSource;
   allocation: AllocationTreeDoc[];
+  /** Custom trees only: opportunity-fund share (classes add up to 100% minus this). */
+  opportunityBp: number;
   createdAt: Date;
 }
 
@@ -101,6 +126,7 @@ const versionSchema = new Schema<SipPlanVersionDoc>(
     amountMinor: intField({ required: true, min: 1 }),
     allocationSource: { type: String, enum: ALLOCATION_SOURCES, required: true, default: "target" },
     allocation: { type: [allocationTreeSchema], default: [] },
+    opportunityBp: intField({ required: true, default: 0, min: 0, max: 9_900 }),
   },
   { timestamps: { createdAt: true, updatedAt: false } },
 );
@@ -123,6 +149,14 @@ export interface ExecutionLineDoc {
   transactionId: Types.ObjectId | null;
 }
 
+/** What an execution did with its opportunity share (Undo reverses exactly this). */
+export interface ExecutionOpportunityDoc extends OpportunityRouteDoc {
+  actualMinor: number;
+  feeMinor: number;
+  /** The transfer or buy when money moved; null when it was reserved in place. */
+  transactionId: Types.ObjectId | null;
+}
+
 export interface SipExecutionDoc {
   _id: Types.ObjectId;
   userId: Types.ObjectId;
@@ -142,6 +176,9 @@ export interface SipExecutionDoc {
   allocationUsed: AllocationTreeDoc[];
   /** "Use for next SIP" (Allocation page): open this period in the drift-tilted split. */
   useTilt: boolean;
+  /** Planned opportunity-fund share of `plannedTotalMinor` (lines hold the rest). */
+  opportunityPlannedMinor: number;
+  opportunity: ExecutionOpportunityDoc | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -178,6 +215,19 @@ const executionSchema = new Schema<SipExecutionDoc>(
     onTime: { type: Boolean, default: null },
     allocationUsed: { type: [allocationTreeSchema], default: [] },
     useTilt: { type: Boolean, required: true, default: false },
+    opportunityPlannedMinor: intField({ required: true, default: 0, min: 0 }),
+    opportunity: {
+      type: new Schema(
+        {
+          ...routeFields,
+          actualMinor: intField({ required: true, min: 0 }),
+          feeMinor: intField({ required: true, default: 0, min: 0 }),
+          transactionId: { type: Schema.Types.ObjectId, default: null },
+        },
+        { _id: false },
+      ),
+      default: null,
+    },
   },
   { timestamps: true },
 );

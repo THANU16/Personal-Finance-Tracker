@@ -2,6 +2,8 @@ import "server-only";
 import { Types } from "mongoose";
 import { isSpendableCash } from "@/domain/earmarks";
 import { utcToBusinessDate } from "@/domain/dates";
+import { normalizeTree } from "@/domain/allocation";
+import { dedicatedBucket } from "@/domain/earmarks";
 import { cashflowSplit } from "@/domain/rebalance";
 import { xirrBp } from "@/domain/returns";
 import {
@@ -26,7 +28,12 @@ import {
   type SipPlanDoc,
   type SipPlanVersionDoc,
 } from "@/modules/sip/model";
-import type { ExecutionDTO, HistoryFilters, PlanDTO } from "@/modules/sip/schemas";
+import type {
+  ExecutionDTO,
+  HistoryFilters,
+  OpportunityRouteDTO,
+  PlanDTO,
+} from "@/modules/sip/schemas";
 import { generateDueExecutions, toExecutionDTO, toPlanDTO } from "@/modules/sip/service";
 import { businessDateToUtc } from "@/domain/dates";
 import type { Ctx } from "@/server/ctx";
@@ -249,6 +256,15 @@ export interface ExecuteView {
    * 2026-11-07): Execute pre-fills it; 0 / absent = no fee last time.
    */
   lastFeeByHolding: Record<string, number>;
+  /** The opportunity-fund line's choices (owner request, 2026-11-07; docs/04 §7). */
+  opportunity: {
+    /** The plan's default route (Execute can change it for this period). */
+    route: OpportunityRouteDTO;
+    /** Accounts in the plan currency that can hold opportunity money (from / keep in). */
+    accounts: { id: string; name: string; opportunityAccount: boolean }[];
+    /** Active assets in the plan currency that can hold opportunity money. */
+    holdings: { id: string; name: string }[];
+  };
 }
 
 export async function getExecuteView(ctx: Ctx, executionId: string): Promise<ExecuteView> {
@@ -287,7 +303,12 @@ export async function getExecuteView(ctx: Ctx, executionId: string): Promise<Exe
       const k = String(h.assetClassId);
       classValues[k] = (classValues[k] ?? 0) + h.currentValueMinor;
     }
-    const split = cashflowSplit(dto.plannedTotalMinor, dto.allocationUsed, classValues);
+    // The tilt splits the investment part only, over the classes rescaled to 100% (§6).
+    const split = cashflowSplit(
+      dto.plannedTotalMinor - dto.opportunityPlannedMinor,
+      normalizeTree(dto.allocationUsed),
+      classValues,
+    );
     tiltedPlanned = dto.lines.map(
       (l) =>
         split.find((s) => s.assetClassId === l.assetClassId && s.holdingId === l.holdingId)
@@ -307,6 +328,14 @@ export async function getExecuteView(ctx: Ctx, executionId: string): Promise<Exe
     { $sort: { date: -1, createdAt: -1 } },
     { $group: { _id: "$holdingId", feeMinor: { $first: "$feeMinor" } } },
   ]);
+  const routeAccounts = await AccountModel.find({
+    userId,
+    archivedAt: null,
+    currency: plan.currency,
+    type: { $in: ["bank", "cash", "wallet", "broker_cash", "opportunity_fund"] },
+  })
+    .sort({ name: 1 })
+    .lean<AccountDoc[]>();
   return {
     execution: row(ctx, e, plan, todayOf(ctx)),
     plan: toPlanDTO(ctx, plan, version),
@@ -321,6 +350,19 @@ export async function getExecuteView(ctx: Ctx, executionId: string): Promise<Exe
     holdingsByClass,
     tiltedPlanned,
     lastFeeByHolding: Object.fromEntries(lastFees.map((f) => [String(f._id), f.feeMinor ?? 0])),
+    opportunity: {
+      route: toPlanDTO(ctx, plan, version).opportunity,
+      accounts: routeAccounts
+        .filter((a) => dedicatedBucket(a) !== "emergency")
+        .map((a) => ({
+          id: String(a._id),
+          name: a.name,
+          opportunityAccount: dedicatedBucket(a) === "opportunity",
+        })),
+      holdings: inCurrency
+        .filter((h) => !h.countsTowardEmergencyFund)
+        .map((h) => ({ id: String(h._id), name: h.name })),
+    },
   };
 }
 

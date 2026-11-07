@@ -1,6 +1,11 @@
 import "server-only";
 import { Types, type ClientSession } from "mongoose";
-import { validateTree, type AllocationTree, type TreeHoldingInfo } from "@/domain/allocation";
+import {
+  normalizeTree,
+  validateTree,
+  type AllocationTree,
+  type TreeHoldingInfo,
+} from "@/domain/allocation";
 import {
   TargetAllocationHistoryModel,
   TargetAllocationModel,
@@ -71,7 +76,7 @@ export async function treeHoldingInfo(
 export async function assertValidTree(
   ctx: Ctx,
   tree: AllocationTree,
-  opts: { requireAssets?: boolean; session?: ClientSession } = {},
+  opts: { requireAssets?: boolean; session?: ClientSession; opportunityBp?: number } = {},
 ): Promise<string[]> {
   const userId = toObjectId(ctx.userId, "User");
   const q = AssetClassModel.find({ userId, archivedAt: null });
@@ -84,6 +89,7 @@ export async function assertValidTree(
     });
   const result = validateTree(tree, await treeHoldingInfo(ctx, opts.session), {
     requireAssets: opts.requireAssets,
+    totalBp: 10_000 - (opts.opportunityBp ?? 0),
   });
   if (result.errors.length) {
     throw new AppError("VALIDATION", result.errors[0]!.message, {
@@ -94,8 +100,11 @@ export async function assertValidTree(
 }
 
 function toDTO(doc: TargetAllocationDoc | null): TargetDTO {
+  const entered = treeFromDoc(doc?.allocation);
   return {
-    allocation: treeFromDoc(doc?.allocation),
+    allocation: normalizeTree(entered),
+    enteredAllocation: entered,
+    opportunityBp: doc?.opportunityBp ?? 0,
     thresholdBp: doc?.thresholdBp ?? 500,
     updatedAt: doc ? doc.updatedAt.toISOString() : null,
   };
@@ -118,16 +127,27 @@ export async function saveTarget(
 ): Promise<TargetDTO & { warnings: string[] }> {
   const data = parseInput(saveTargetSchema, input);
   return withTransaction(async (session) => {
-    const warnings = await assertValidTree(ctx, data.allocation, { session });
+    const warnings = await assertValidTree(ctx, data.allocation, {
+      session,
+      opportunityBp: data.opportunityBp,
+    });
     const userId = toObjectId(ctx.userId, "User");
     const allocation = treeToDoc(data.allocation);
     const doc = await TargetAllocationModel.findOneAndUpdate(
       { userId },
-      { $set: { allocation, thresholdBp: data.thresholdBp } },
+      { $set: { allocation, opportunityBp: data.opportunityBp, thresholdBp: data.thresholdBp } },
       { upsert: true, returnDocument: "after", session, lean: true },
     );
     await TargetAllocationHistoryModel.create(
-      [{ userId, allocation, thresholdBp: data.thresholdBp, note: data.note ?? null }],
+      [
+        {
+          userId,
+          allocation,
+          opportunityBp: data.opportunityBp,
+          thresholdBp: data.thresholdBp,
+          note: data.note ?? null,
+        },
+      ],
       { session },
     );
     await writeAudit(
@@ -157,6 +177,7 @@ export async function listTargetHistory(ctx: Ctx, limit = 20): Promise<TargetHis
     savedAt: d.savedAt.toISOString(),
     thresholdBp: d.thresholdBp,
     allocation: treeFromDoc(d.allocation),
+    opportunityBp: d.opportunityBp ?? 0,
     note: d.note ?? null,
   }));
 }

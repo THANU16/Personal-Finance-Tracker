@@ -3,7 +3,12 @@ import type { AllocationTree } from "@/domain/allocation";
 import { MISSED_POLICIES, SIP_FREQUENCIES, type ExecutionStatus } from "@/domain/sip";
 import { dateKey } from "@/modules/accounts/schemas";
 import { allocationTreeInputSchema } from "@/modules/allocation/schemas";
-import { ALLOCATION_SOURCES, PLAN_STATUSES } from "@/modules/sip/constants";
+import {
+  ALLOCATION_SOURCES,
+  OPPORTUNITY_KEEP_IN,
+  PLAN_STATUSES,
+  type OpportunityKeepIn,
+} from "@/modules/sip/constants";
 
 const objectId = z.string().regex(/^[a-f0-9]{24}$/i, "Choose an item");
 const positiveMinor = z
@@ -16,6 +21,24 @@ const minor = z
   .int("Must be a whole amount")
   .min(0, "Cannot be negative")
   .max(Number.MAX_SAFE_INTEGER);
+
+/** Where the opportunity share goes (null from = the plan's source account). */
+const opportunityRouteSchema = z
+  .object({
+    fromAccountId: objectId.nullish(),
+    keepIn: z.enum(OPPORTUNITY_KEEP_IN).default("same"),
+    accountId: objectId.nullish(),
+    holdingId: objectId.nullish(),
+  })
+  .strict()
+  .superRefine((v, ctx) => {
+    if (v.keepIn === "account" && !v.accountId) {
+      ctx.addIssue({ code: "custom", path: ["accountId"], message: "Choose the account" });
+    }
+    if (v.keepIn === "holding" && !v.holdingId) {
+      ctx.addIssue({ code: "custom", path: ["holdingId"], message: "Choose the asset" });
+    }
+  });
 
 export const planInputSchema = z
   .object({
@@ -44,6 +67,9 @@ export const planInputSchema = z
     notes: z.string().trim().max(1000).nullish(),
     allocationSource: z.enum(ALLOCATION_SOURCES).default("target"),
     allocation: allocationTreeInputSchema.nullish(),
+    /** Custom trees: opportunity-fund share (classes add up to 100% minus this). */
+    opportunityBp: z.number().int().min(0).max(9_900).default(0),
+    opportunity: opportunityRouteSchema.nullish(),
   })
   .strict()
   .superRefine((v, ctx) => {
@@ -80,6 +106,18 @@ export const executeInputSchema = z
       )
       .min(1)
       .max(100),
+    /** The opportunity-fund line (owner request, 2026-11-07); absent = nothing kept. */
+    opportunity: z
+      .object({
+        actualMinor: minor,
+        feeMinor: minor.default(0),
+        fromAccountId: objectId.nullish(),
+        keepIn: z.enum(OPPORTUNITY_KEEP_IN),
+        accountId: objectId.nullish(),
+        holdingId: objectId.nullish(),
+      })
+      .strict()
+      .nullish(),
     confirmOpportunity: z.boolean().optional(),
     confirmEmergency: z.boolean().optional(),
   })
@@ -119,6 +157,17 @@ export interface PlanDTO {
   allocationSource: (typeof ALLOCATION_SOURCES)[number];
   /** Custom tree of the current version (empty when following the target). */
   allocation: AllocationTree;
+  /** Custom trees: opportunity-fund share of the current version. */
+  opportunityBp: number;
+  opportunity: OpportunityRouteDTO;
+}
+
+export interface OpportunityRouteDTO {
+  /** null = the plan's source account. */
+  fromAccountId: string | null;
+  keepIn: OpportunityKeepIn;
+  accountId: string | null;
+  holdingId: string | null;
 }
 
 export interface ExecutionLineDTO {
@@ -148,4 +197,14 @@ export interface ExecutionDTO {
   useTilt: boolean;
   lines: ExecutionLineDTO[];
   allocationUsed: AllocationTree;
+  /** Planned opportunity-fund share of this period (part of plannedTotalMinor). */
+  opportunityPlannedMinor: number;
+  /** What was done with it (executed periods). */
+  opportunity:
+    | (OpportunityRouteDTO & {
+        actualMinor: number;
+        feeMinor: number;
+        transactionId: string | null;
+      })
+    | null;
 }
