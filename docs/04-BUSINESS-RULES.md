@@ -152,6 +152,15 @@ Crypto 10% → A 20,000; B 10,000; MF 20,000; UT 30,000; Gold 10,000; BTC 10,000
 **UI editing:** changing a class % keeps its asset percents (asset amounts rescale); changing an asset
 % affects only that class; an "auto-balance" button distributes the remaining bp to the last row.
 
+**Opportunity-fund share** (owner request, 2026-11-07): the target allocation and a custom SIP tree may
+keep a share of each SIP as opportunity money (`opportunityBp`, 0–9900). Classes are then entered as
+shares of the whole and sum to `10000 − opportunityBp` (e.g. Equity 60 · Fixed 20 · Gold 10 · Opportunity 10).
+`splitWithOpportunity(total, tree, opportunityBp)` splits the total over the classes and the share with the
+largest-remainder method (lines + opportunity = total exactly).
+**Example:** 100,000 → Equity 60,000; Fixed 20,000; Gold 10,000; opportunity 10,000.
+Drift, cashflow rebalance, deployments and the drift tilt use the **normalised** tree (classes rescaled to
+10000 with largest remainder: 60/20/10 → 6667/2222/1111): the opportunity share is not an investment target.
+
 ## 7. SIP engine
 - **Periods:** monthly due date = `dayOfMonth` (31 = last day; clamp to month length); weekly =
   next `weekday`. Computed in the user timezone. Period key `YYYY-MM` / `YYYY-Www`.
@@ -168,6 +177,21 @@ Crypto 10% → A 20,000; B 10,000; MF 20,000; UT 30,000; Gold 10,000; BTC 10,000
   set `actualTotal`, `executedAt`, `onTime = executedAt ≤ dueDate + graceDays`;
   status = `done` if actualTotal ≥ plannedTotal, `partial` if 0 < actualTotal < plannedTotal.
   Over-investing is allowed (status done). Warn (don't block) if source balance would go negative.
+- **Opportunity line** (owner request, 2026-11-07): a period also plans `opportunityPlannedMinor` from the
+  share (§6); `plannedTotal` includes it and so does `actualTotal`. The plan stores a default **route**, and
+  Execute may change it for that period:
+  - **from** = the SIP source account (default) or another account (same currency, not archived);
+  - **keep it** = `same` (no money moves: that much of the from-account's free money becomes opportunity
+    money, an earmark move free → opportunity, §20; refused when free money is too low; an Opportunity Fund
+    account is all opportunity money already), `account` (a `transfer` with optional bank fee to another
+    account, tagged `toBucket: opportunity` unless it is an Opportunity Fund account) or `holding` (an
+    `invest` with optional fee into an active, same-currency, non-emergency asset, tagged
+    `toBucket: opportunity`).
+  - The source's dip guard covers the investments plus the opportunity amount and fee when they leave
+    the source; money from another account is guarded on its own (confirm flags apply).
+  - Transfers / buys share the execution's `groupId` and `sip_execution` source. **Undo** releases a
+    `same` reserve (opportunity → free, capped at the current opportunity money) and voids the group,
+    which reverses the bucket tags.
 - **Skip:** status `skipped` with reason; no transactions.
 - **Undo:** void every transaction in `groupId`, reset execution to `due` (or `missed` if past grace).
 - **Paused plans** generate nothing; resuming does not back-fill paused periods.

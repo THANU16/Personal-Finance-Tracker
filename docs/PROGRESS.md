@@ -490,6 +490,12 @@ Status values: ⬜ not started · 🟡 in progress · ✅ done
   (`src/lib/monotone-path.ts`, same Steffen curve as Recharts "monotone"); invisible series drive the tooltip. Income is a
   number under the chart. One holding is shown in its own currency. A 0 value recorded on an empty holding is ignored.
   Holding detail no longer returns `timeline`; `value-chart.tsx` removed.
+- [sip-opportunity] SIP opportunity-fund share (owner request, 2026-11-07; docs/04 §6, §7): the target and custom SIP
+  trees carry `opportunityBp`; classes are entered as shares of the whole (60/20/10 + 10) and normalised for drift, rebalance,
+  deployments and the tilt. Each period plans `opportunityPlannedMinor`; the route is kept in the source (earmark reserve),
+  in another account (transfer + bank fee) or in an asset (invest), from the source or a different account. Execute can
+  change the route and fee for the period; Undo releases a reserve and voids the moves. Simplest choices: a reserve too
+  big for the account's free money is refused (not partially kept); the target list shows the share read-only.
 
 ## Deviations from docs
 <!-- Claude: anything built differently from the docs, and why. Update the doc too if the user agrees. -->

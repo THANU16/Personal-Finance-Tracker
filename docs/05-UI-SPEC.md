@@ -120,18 +120,24 @@ Tabs: **Planner** · **Upcoming** · **History**.
     % of total and amount; "Add asset" (holding picker filtered by class, or create holding inline);
     totals bar turns red unless 100%; Auto-balance button.
   - Saving allocation changes on an existing plan shows "This creates version N, effective from <date>".
+  - An "Opportunity fund" row (% and amount) in the tree editor; classes + opportunity must total 100%
+    (docs/04 §6). With the target allocation the list shows its share read-only.
+  - "Opportunity fund X%" card (when the share > 0): From (SIP source / another account) · Keep it (in the
+    same account / move to another account / put in an asset) · In account / In asset — the default route.
 - Upcoming: due/overdue executions grouped by plan, Execute · Skip.
 - Execute `/sip/execute/[executionId]`: header (plan, period, planned total incl. carry-in, source
   account balance after) · toggle Normal split / Drift-tilted split · lines grouped by class: planned,
   **actual** input, fee, optional units/price (units auto = actual ÷ price) · totals and status preview
-  (done / partial) · Confirm.
+  (done / partial) · Confirm. When the period has an opportunity share: an "Opportunity fund" card with the
+  planned amount, Amount input (default planned), the route fields (default = plan's route) and a Bank fee
+  input when money moves; the header shows "+ X opportunity fund" and the balance-after counts the move.
 - History: filters (plan, status, date) · timeline list with planned vs actual and status chips ·
   per-plan charts: cumulative invested vs estimated value, monthly bars planned vs actual ·
   consistency score · Undo on recent executions.
 
 ## 7. Allocation `/rebalancing`
 Tabs: Plan · Planned vs Actual · Rebalance · History.
-- Target editor (same tree editor) + threshold.
+- Target editor (same tree editor, with the Opportunity fund row) + threshold.
 - Table: class · current value · current % · target % · drift (bp shown as %) with bar · status chip
   (OK / Over / Under) · expand to assets.
 - Plan panel: tabs "Invest new money" (amount input → suggested split) and "Full rebalance" (buy/sell

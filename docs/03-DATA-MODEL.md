@@ -152,7 +152,8 @@ stepUp?: { percentBp, everyMonths },
 missedPolicy: skip|carry_forward, graceDays: 7,
 useDriftTilt: false,
 currentVersion: number,
-notes?
+notes?,
+opportunity: { fromAccountId?: ObjectId|null, keepIn: same|account|holding, accountId?, holdingId? }  # default route (docs/04 §7)
 ```
 
 ## sipPlanVersions
@@ -160,6 +161,7 @@ notes?
 planId, version, effectiveFrom, amountMinor,
 allocationSource: target|custom (default target),
 allocation?: [{ assetClassId, percentBp, assets: [{ holdingId, percentBp }] }]   # required only when custom
+opportunityBp: 0          # custom only; classes sum to 10000 − opportunityBp (docs/04 §6)
 idx: {userId, planId, version} unique
 ```
 
@@ -171,18 +173,21 @@ plannedTotalMinor, carryInMinor: 0, actualTotalMinor: 0, executedAt?, skipReason
 lines: [{ assetClassId, holdingId, plannedMinor, actualMinor, feeMinor, units?, priceMinor?, transactionId? }],
 groupId?, onTime?: boolean,
 allocationUsed: [{ assetClassId, percentBp, assets: [{ holdingId, percentBp }] }]   # copy of the tree used
+opportunityPlannedMinor: 0,
+opportunity?: { fromAccountId?, keepIn, accountId?, holdingId?, actualMinor, feeMinor, transactionId? }  # as executed
 idx: {userId, planId, periodKey} unique, {userId, status, dueDate}
 ```
 
 ## targetAllocations (one active per user)
 ```
 allocation: [{ assetClassId, percentBp, assets: [{ holdingId, percentBp }] }],  # assets optional per class
+opportunityBp: 0,         # classes sum to 10000 − opportunityBp (docs/04 §6)
 thresholdBp, updatedAt
 ```
 
 ## targetAllocationHistory
 ```
-allocation, thresholdBp, savedAt, note?
+allocation, opportunityBp, thresholdBp, savedAt, note?
 ```
 
 ## opportunityFunds (one per user)
