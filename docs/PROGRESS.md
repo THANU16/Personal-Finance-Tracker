@@ -455,6 +455,12 @@ Status values: ⬜ not started · 🟡 in progress · ✅ done
   by-holding table. New holdings enter the bridge at cost (opening_balance), so a gain recorded at opening shows as market
   change. The stale note uses today's staleness. Saved reviews without the section get it from the ledger when opened.
 - [mm] e2e `allocation.spec` raced (`isVisible()` right after navigation); it now waits for the editor first.
+- [sip-plan-actions] SIP plan cards (owner request, 2026-11-07): Edit button + ⋯ menu (Pause/Resume, End plan, Delete).
+  Delete only for a plan that never invested (plan, versions and periods removed); a plan with executed periods keeps its
+  history and is refused with the count ("End it … or undo those periods first"). `deletePlan` in sip/service.ts, tested.
+- [sip-bank-fee] SIP Execute (owner request, 2026-11-07): the per-line fee is labelled "Bank fee" and pre-filled with the fee
+  of the last buy of that holding from the plan's source account (`ExecuteView.lastFeeByHolding`); 0 when none. Still
+  editable per period; stored as the invest fee (part of the cost, docs/04 §3).
 - [dashboard-insights] Four dashboard cards (owner request, 2026-11-07, after the canvas preview; docs/04 §25, docs/05 §2):
   why net worth changed (saved + market gain + rest, this month / range), investments summary with a server-drawn
   6-month sparkline (lib/monotone-path), spending pace (vs the average of the last 3 complete months, ±2.5% band),

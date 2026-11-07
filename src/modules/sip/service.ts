@@ -579,6 +579,43 @@ async function loadExecution(
  * then sets status done/partial and onTime. Over-investing is allowed. Returns a warning when the
  * source account ends below zero (never blocks).
  */
+/**
+ * Delete a plan that never invested (owner decision, 2026-11-07): the plan, its versions and its
+ * due / missed / skipped periods go. A plan with executed (done or partial) periods keeps its history:
+ * refused with how many — end it instead, or undo those periods first.
+ */
+export async function deletePlan(ctx: Ctx, id: string): Promise<{ id: string }> {
+  return withTransaction(async (session) => {
+    const plan = await loadPlan(ctx, id, session);
+    const userId = toObjectId(ctx.userId, "User");
+    const executed = await SipExecutionModel.countDocuments({
+      userId,
+      planId: plan._id,
+      status: { $in: ["done", "partial"] },
+    }).session(session);
+    if (executed > 0) {
+      throw new AppError(
+        "CONFLICT",
+        `This plan has ${executed} executed period${executed === 1 ? "" : "s"}. End it to stop future periods and keep its history, or undo those periods first in SIP history.`,
+      );
+    }
+    await SipExecutionModel.deleteMany({ userId, planId: plan._id }, { session });
+    await SipPlanVersionModel.deleteMany({ userId, planId: plan._id }, { session });
+    await SipPlanModel.deleteOne({ _id: plan._id, userId }, { session });
+    await writeAudit(
+      {
+        userId: ctx.userId,
+        action: "delete",
+        entity: "sipPlan",
+        entityId: plan._id,
+        before: { name: plan.name },
+      },
+      session,
+    );
+    return { id };
+  });
+}
+
 export async function executeSip(
   ctx: Ctx,
   id: string,

@@ -5,6 +5,7 @@ import { z } from "zod";
 import type { ExecutionDTO, PlanDTO } from "@/modules/sip/schemas";
 import {
   createPlan,
+  deletePlan,
   executeSip,
   setPlanStatus,
   skipSip,
@@ -42,6 +43,14 @@ export async function updatePlanAction(
 > {
   return runAction(async () => {
     const result = await updatePlan(await requireUser(), parseInput(id, planId), input);
+    refresh();
+    return result;
+  });
+}
+
+export async function deletePlanAction(planId: unknown): Promise<ActionResult<{ id: string }>> {
+  return runAction(async () => {
+    const result = await deletePlan(await requireUser(), parseInput(id, planId));
     refresh();
     return result;
   });

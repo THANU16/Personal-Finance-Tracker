@@ -52,7 +52,8 @@ export function ExecuteForm({ view, todayKey }: { view: ExecuteView; todayKey: s
     e.lines.map((l, i) => ({
       holdingId: l.holdingId,
       actualMinor: plannedFor(mode)[i]!,
-      feeMinor: 0,
+      // The bank fee of the last buy from this account into the holding (0 if none).
+      feeMinor: l.holdingId ? (view.lastFeeByHolding[l.holdingId] ?? 0) : 0,
       units: null,
       priceMinorE4: null,
     })),
@@ -245,7 +246,12 @@ export function ExecuteForm({ view, todayKey }: { view: ExecuteView; todayKey: s
                       ) : (
                         <Select
                           value={s.holdingId ?? ""}
-                          onValueChange={(v) => update(i, { holdingId: v || null })}
+                          onValueChange={(v) =>
+                            update(i, {
+                              holdingId: v || null,
+                              feeMinor: v ? (view.lastFeeByHolding[v] ?? 0) : 0,
+                            })
+                          }
                           items={options.map((o) => ({ value: o.id, label: o.name }))}
                         >
                           <SelectTrigger
@@ -280,14 +286,20 @@ export function ExecuteForm({ view, todayKey }: { view: ExecuteView; todayKey: s
                     </div>
                     <div className="grid gap-1">
                       <Label className="text-xs text-muted-foreground" htmlFor={`fee-${i}`}>
-                        Fee
+                        Bank fee
                       </Label>
                       <MoneyInput
                         id={`fee-${i}`}
                         currency={ccy}
                         value={s.feeMinor}
                         onChange={(v) => update(i, { feeMinor: v })}
+                        aria-describedby={`fee-hint-${i}`}
                       />
+                      <span id={`fee-hint-${i}`} className="text-xs text-muted-foreground">
+                        {s.holdingId && view.lastFeeByHolding[s.holdingId]
+                          ? "Same as your last buy · 0 if none"
+                          : "0 if this transfer has no fee"}
+                      </span>
                     </div>
                     <details className="grid gap-1 text-xs sm:col-span-4">
                       <summary className="cursor-pointer text-muted-foreground max-md:py-3.5">

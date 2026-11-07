@@ -17,6 +17,7 @@ import { getTarget, getTreeOptions } from "@/modules/allocation/service";
 import type { TargetDTO, TreeOptions } from "@/modules/allocation/schemas";
 import { AssetClassModel, type AssetClassDoc } from "@/modules/asset-classes/model";
 import { HoldingModel, type HoldingDoc } from "@/modules/holdings/model";
+import { TransactionModel } from "@/modules/transactions/model";
 import {
   SipExecutionModel,
   SipPlanModel,
@@ -243,6 +244,11 @@ export interface ExecuteView {
   holdingsByClass: Record<string, { id: string; name: string }[]>;
   /** Drift-tilted planned amounts aligned to execution lines (docs/04 §8 cashflow split). */
   tiltedPlanned: number[] | null;
+  /**
+   * Bank fee of the last buy of each holding from this plan's source account (owner request,
+   * 2026-11-07): Execute pre-fills it; 0 / absent = no fee last time.
+   */
+  lastFeeByHolding: Record<string, number>;
 }
 
 export async function getExecuteView(ctx: Ctx, executionId: string): Promise<ExecuteView> {
@@ -288,6 +294,19 @@ export async function getExecuteView(ctx: Ctx, executionId: string): Promise<Exe
           ?.amountMinor ?? 0,
     );
   }
+  const lastFees = await TransactionModel.aggregate<{ _id: Types.ObjectId; feeMinor: number }>([
+    {
+      $match: {
+        userId,
+        status: "posted",
+        type: "invest",
+        fromAccountId: plan.sourceAccountId,
+        holdingId: { $in: inCurrency.map((h) => h._id) },
+      },
+    },
+    { $sort: { date: -1, createdAt: -1 } },
+    { $group: { _id: "$holdingId", feeMinor: { $first: "$feeMinor" } } },
+  ]);
   return {
     execution: row(ctx, e, plan, todayOf(ctx)),
     plan: toPlanDTO(ctx, plan, version),
@@ -301,6 +320,7 @@ export async function getExecuteView(ctx: Ctx, executionId: string): Promise<Exe
     classes: classes.map((c) => ({ id: String(c._id), name: c.name, color: c.color })),
     holdingsByClass,
     tiltedPlanned,
+    lastFeeByHolding: Object.fromEntries(lastFees.map((f) => [String(f._id), f.feeMinor ?? 0])),
   };
 }
 

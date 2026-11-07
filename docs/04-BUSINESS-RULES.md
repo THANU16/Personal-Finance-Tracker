@@ -171,6 +171,9 @@ Crypto 10% → A 20,000; B 10,000; MF 20,000; UT 30,000; Gold 10,000; BTC 10,000
 - **Skip:** status `skipped` with reason; no transactions.
 - **Undo:** void every transaction in `groupId`, reset execution to `due` (or `missed` if past grace).
 - **Paused plans** generate nothing; resuming does not back-fill paused periods.
+- **Delete** (owner decision, 2026-11-07): only a plan with no executed (done / partial) period; it removes the plan, its
+  versions and its due / missed / skipped periods. Otherwise refused with the count: end it to keep the history, or undo
+  those periods first.
 - **Consistency** = on-time done executions ÷ executions with dueDate ≤ today (skipped count as not on time).
 - **Plan performance:** invested = Σ actual of done/partial lines; current value = Σ of each line's
   holding value × (that plan's invested in the holding ÷ holding invested) — label as "estimated

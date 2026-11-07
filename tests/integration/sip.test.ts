@@ -4,9 +4,11 @@ import { describe, expect, it } from "vitest";
 import { utcToBusinessDate } from "@/domain/dates";
 import { saveTarget } from "@/modules/allocation/service";
 import { setEarmark, getAccountBuckets } from "@/modules/earmarks/service";
-import { SipExecutionModel, type SipExecutionDoc } from "@/modules/sip/model";
+import { SipExecutionModel, SipPlanModel, type SipExecutionDoc } from "@/modules/sip/model";
+import { getExecuteView } from "@/modules/sip/queries";
 import {
   createPlan,
+  deletePlan,
   executeSip,
   generateDueExecutions,
   setPlanStatus,
@@ -201,6 +203,65 @@ describe("SIP: split, execute, undo (acceptance)", () => {
     expect(await generateDueExecutions(ctx)).toBe(0);
     await generateDueExecutions(ctx);
     expect(await executions(ctx, plan.id)).toHaveLength(n);
+  });
+});
+
+describe("bank fee on Execute (owner request, 2026-11-07)", () => {
+  it("pre-fills each holding's fee from its last buy from the plan's account", async () => {
+    const { ctx, bank, holdings, tree } = await setup();
+    await saveTarget(ctx, { allocation: tree, thresholdBp: 500 });
+    const { plan } = await createPlan(ctx, planInput(bank.id));
+    const [e] = await executions(ctx, plan.id);
+    let view = await getExecuteView(ctx, String(e!._id));
+    expect(view.lastFeeByHolding).toEqual({});
+    const input = asPlanned(e!);
+    input.lines[0]!.feeMinor = 25_00; // A: the bank charged 25
+    await executeSip(ctx, String(e!._id), input);
+    view = await getExecuteView(ctx, String(e!._id));
+    expect(view.lastFeeByHolding[holdings.A.id]).toBe(25_00);
+    expect(view.lastFeeByHolding[holdings.B.id]).toBe(0); // no fee last time
+  });
+});
+
+describe("deleting a plan (owner decision, 2026-11-07)", () => {
+  it("a plan that never invested is removed with its periods", async () => {
+    const { ctx, bank, tree } = await setup();
+    await saveTarget(ctx, { allocation: tree, thresholdBp: 500 });
+    const { plan } = await createPlan(ctx, planInput(bank.id));
+    expect((await executions(ctx, plan.id)).length).toBeGreaterThan(0);
+    await deletePlan(ctx, plan.id);
+    expect(await executions(ctx, plan.id)).toEqual([]);
+    expect(
+      await SipPlanModel.countDocuments({
+        userId: new Types.ObjectId(ctx.userId),
+        _id: new Types.ObjectId(plan.id),
+      }),
+    ).toBe(0);
+  });
+
+  it("a plan with executed periods keeps its history: delete is refused", async () => {
+    const { ctx, bank, tree } = await setup();
+    await saveTarget(ctx, { allocation: tree, thresholdBp: 500 });
+    const { plan } = await createPlan(ctx, planInput(bank.id));
+    const [e] = await executions(ctx, plan.id);
+    await executeSip(ctx, String(e!._id), asPlanned(e!));
+    const err = await rejection(deletePlan(ctx, plan.id));
+    expect(err.code).toBe("CONFLICT");
+    expect(err.message).toContain("1 executed period.");
+    expect(
+      await SipPlanModel.countDocuments({
+        userId: new Types.ObjectId(ctx.userId),
+        _id: new Types.ObjectId(plan.id),
+      }),
+    ).toBe(1);
+  });
+
+  it("only the owner can delete", async () => {
+    const { ctx, bank, tree } = await setup();
+    await saveTarget(ctx, { allocation: tree, thresholdBp: 500 });
+    const { plan } = await createPlan(ctx, planInput(bank.id));
+    const other = await makeUser();
+    expect((await rejection(deletePlan(other, plan.id))).code).toBe("NOT_FOUND");
   });
 });
 

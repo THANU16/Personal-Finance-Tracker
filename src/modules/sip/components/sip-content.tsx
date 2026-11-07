@@ -5,6 +5,7 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { Money } from "@/components/shared/money";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
+import { PlanCardActions } from "@/modules/sip/components/plan-card-actions";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatPercentBp } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -170,6 +171,13 @@ export async function SipContent({ searchParams }: { searchParams: SearchParams 
                     >
                       History
                     </Link>
+                    <span className="ml-auto flex gap-1">
+                      <PlanCardActions
+                        planId={c.plan.id}
+                        name={c.plan.name}
+                        status={c.plan.status}
+                      />
+                    </span>
                   </div>
                 </CardContent>
               </Card>
