@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Controller, useFieldArray, useForm, useWatch, type Path } from "react-hook-form";
-import { Landmark, Plus, Split, Trash2 } from "lucide-react";
+import { ArrowDownUp, ChevronDown, Landmark, Plus, Split, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
@@ -60,6 +60,33 @@ import type {
 } from "@/modules/transactions/components/quick-add-context";
 import { transactionInputSchema, type TransactionDTO } from "@/modules/transactions/schemas";
 import {
+  applyKeypadKey,
+  evaluateAmountExpression,
+  isCalculation,
+  minorToKeypad,
+} from "@/domain/amount-expression";
+import {
+  AccountPanel,
+  type AccountTileItem,
+  tileMoney,
+} from "@/modules/transactions/components/phone-entry/account-panel";
+import {
+  CalendarPanel,
+  addDaysKey,
+  formatDateKey,
+} from "@/modules/transactions/components/phone-entry/calendar-panel";
+import {
+  CategoryPanel,
+  categoryPath,
+} from "@/modules/transactions/components/phone-entry/category-panel";
+import { KeypadPanel } from "@/modules/transactions/components/phone-entry/keypad-panel";
+import { rememberCategoryId } from "@/modules/transactions/components/phone-entry/recent-categories";
+import {
+  RowSideButton,
+  TapRow,
+  type RowTone,
+} from "@/modules/transactions/components/phone-entry/tap-row";
+import {
   DipConfirmDialog,
   type DipConfirmation,
 } from "@/modules/transactions/components/dip-confirm-dialog";
@@ -108,90 +135,9 @@ function rememberLast(v: FormValues) {
   }
 }
 
-const RECENT_CATEGORIES_KEY = "wt-quick-add-categories";
-const RECENT_MAX = 8;
-type RecentCategories = Partial<Record<"expense" | "income", string[]>>;
-
-function readRecentRaw(): string {
-  try {
-    return localStorage.getItem(RECENT_CATEGORIES_KEY) ?? "{}";
-  } catch {
-    return "{}";
-  }
-}
-
-function parseRecent(raw: string): RecentCategories {
-  try {
-    return JSON.parse(raw) as RecentCategories;
-  } catch {
-    return {};
-  }
-}
-
-const readRecentCategories = () => parseRecent(readRecentRaw());
-const noopSubscribe = () => () => {};
-
 function rememberCategory(v: FormValues) {
   if ((v.type !== "expense" && v.type !== "income") || v.splitMode || !v.categoryId) return;
-  try {
-    const recent = readRecentCategories();
-    const list = [v.categoryId, ...(recent[v.type] ?? []).filter((id) => id !== v.categoryId)];
-    recent[v.type] = list.slice(0, RECENT_MAX);
-    localStorage.setItem(RECENT_CATEGORIES_KEY, JSON.stringify(recent));
-  } catch {
-    // storage unavailable — the grid is a convenience only
-  }
-}
-
-/** Phones: the last used categories as one-tap chips above the full picker. */
-function RecentCategoryGrid({
-  tree,
-  kind,
-  value,
-  onPick,
-}: {
-  tree: QuickAddOptions["categories"];
-  kind: "expense" | "income";
-  value: string;
-  onPick: (id: string) => void;
-}) {
-  // localStorage is browser-only; the server snapshot is empty, so hydration agrees.
-  const stored = React.useSyncExternalStore(
-    noopSubscribe,
-    () => readRecentRaw(),
-    () => "{}",
-  );
-  const recent = (parseRecent(stored)[kind] ?? []) as string[];
-  const names = new Map(
-    tree
-      .filter((c) => c.kind === kind)
-      .flatMap((root) => [
-        [root.id, root.name] as const,
-        ...root.children.map((c) => [c.id, c.name] as const),
-      ]),
-  );
-  const chips = recent.filter((id) => names.has(id));
-  if (chips.length === 0) return null;
-  return (
-    <div role="group" aria-label="Recent categories" className="grid grid-cols-2 gap-2 md:hidden">
-      {chips.map((id) => (
-        <button
-          key={id}
-          type="button"
-          aria-pressed={value === id}
-          onClick={() => onPick(id)}
-          className={cn(
-            "min-h-11 truncate rounded-lg border px-3 text-left text-sm",
-            value === id
-              ? "border-primary bg-primary text-primary-foreground"
-              : "bg-background active:bg-muted",
-          )}
-        >
-          {names.get(id)}
-        </button>
-      ))}
-    </div>
-  );
+  rememberCategoryId(v.type, v.categoryId);
 }
 
 const EMPTY_SPLITS = [
@@ -681,6 +627,11 @@ function QuickAddForm({
   const remaining = (amount && !Number.isNaN(amount) ? amount : 0) - splitTotal;
 
   const toAmount = useWatch({ control, name: "toAmountMinor" });
+  const [date, categoryId, tagsValue, notesValue, counterpartyValue] = useWatch({
+    control,
+    name: ["date", "categoryId", "tags", "notes", "counterparty"],
+  });
+  const [fromBucket, toBucket] = useWatch({ control, name: ["fromBucket", "toBucket"] });
   const rate =
     crossCurrency && amount && toAmount && !Number.isNaN(amount) && !Number.isNaN(toAmount)
       ? toAmount /
@@ -693,6 +644,174 @@ function QuickAddForm({
     for (const p of path.split(".")) node = (node as Record<string, unknown> | undefined)?.[p];
     return (node as { message?: string } | undefined)?.message;
   };
+
+  // ---- Phones (owner request, 2026-11-09; docs/07 §5): tap rows + one bottom panel ----------
+  // Amount uses a calculator keypad, date a calendar, category / account / asset tiles; each pick
+  // opens the next empty field. A new form opens on the keypad. Desktop is unchanged.
+  type Panel = "date" | "amount" | "fee" | "category" | "from" | "to" | "holding";
+  const [panel, setPanel] = React.useState<Panel | null>(isMobile && !editing ? "amount" : null);
+  const amountDigits = minorUnitDigits(currency);
+  const feeCurrency = from?.currency ?? currency;
+  const feeDigits = minorUnitDigits(feeCurrency);
+  const [expr, setExpr] = React.useState(() =>
+    minorToKeypad(getValues("amountMinor"), amountDigits),
+  );
+  const [feeOpen, setFeeOpen] = React.useState(() => Boolean(getValues("feeMinor")));
+  const [moreOpen, setMoreOpen] = React.useState(false);
+  // A pre-filled asset is only a guess unless it came with the request or an existing entry.
+  const [holdingChosen, setHoldingChosen] = React.useState(
+    request.mode === "edit" || Boolean(request.holdingId || request.duplicateOf),
+  );
+  const tone: RowTone =
+    type === "income" || type === "investment_income"
+      ? "income"
+      : type === "expense"
+        ? "expense"
+        : "neutral";
+
+  /** Writes the keypad text into the field; false (with a field error) when it is not valid. */
+  function commitKeypad(target: "amountMinor" | "feeMinor", text: string): boolean {
+    if (text.trim() === "") {
+      setValue(target, null);
+      return target === "feeMinor";
+    }
+    const value = evaluateAmountExpression(text, target === "feeMinor" ? feeDigits : amountDigits);
+    const bad =
+      value === null
+        ? "Check the sum"
+        : target === "amountMinor" && value <= 0
+          ? "Enter an amount more than 0"
+          : value < 0
+            ? "A fee cannot be below 0"
+            : null;
+    if (bad) {
+      setError(target, { message: bad });
+      return false;
+    }
+    setValue(target, value, { shouldDirty: true });
+    clearErrors(target);
+    return true;
+  }
+
+  function openPanel(next: Panel | null) {
+    if (panel === "amount" || panel === "fee") {
+      commitKeypad(panel === "fee" ? "feeMinor" : "amountMinor", expr);
+    }
+    if (next === "amount") setExpr(minorToKeypad(getValues("amountMinor"), amountDigits));
+    if (next === "fee") setExpr(minorToKeypad(getValues("feeMinor"), feeDigits));
+    setPanel(next);
+  }
+
+  const flow: Panel[] =
+    type === "expense"
+      ? splitMode
+        ? ["amount", "from"]
+        : ["amount", "category", "from"]
+      : type === "income"
+        ? ["amount", "category", "to"]
+        : type === "transfer"
+          ? ["amount", "from", "to"]
+          : type === "invest"
+            ? ["amount", "holding", "from"]
+            : type === "redeem"
+              ? byUnits
+                ? ["holding", "to"]
+                : ["amount", "holding", "to"]
+              : reinvest
+                ? ["amount", "holding"]
+                : ["amount", "holding", "to"];
+
+  /** After a pick: the next field in the flow that is still empty, else the Note field. */
+  function advance(after: Panel, holdingPicked = holdingChosen) {
+    const filled = (p: Panel) =>
+      p === "amount"
+        ? Boolean(getValues("amountMinor"))
+        : p === "category"
+          ? Boolean(getValues("categoryId"))
+          : p === "from"
+            ? Boolean(getValues("fromAccountId"))
+            : p === "to"
+              ? Boolean(getValues("toAccountId"))
+              : p === "holding"
+                ? holdingPicked && Boolean(getValues("holdingId"))
+                : true;
+    const next = flow.slice(flow.indexOf(after) + 1).find((p) => !filled(p));
+    if (next) {
+      if (next === "amount") setExpr(minorToKeypad(getValues("amountMinor"), amountDigits));
+      setPanel(next);
+      return;
+    }
+    setPanel(null);
+    requestAnimationFrame(() => document.getElementById("qa-description")?.focus());
+  }
+
+  function keypadOk() {
+    const target = panel === "fee" ? "feeMinor" : "amountMinor";
+    if (target === "amountMinor" && expr.trim() === "") {
+      setError("amountMinor", { message: "Enter an amount" });
+      return;
+    }
+    if (!commitKeypad(target, expr)) return;
+    if (target === "feeMinor") setPanel(null);
+    else advance("amount");
+  }
+
+  function keypadEquals() {
+    const digits = panel === "fee" ? feeDigits : amountDigits;
+    const value = evaluateAmountExpression(expr, digits);
+    if (value === null) return;
+    if (value < 0) {
+      setError(panel === "fee" ? "feeMinor" : "amountMinor", { message: "The result is below 0" });
+      return;
+    }
+    setExpr(minorToKeypad(value, digits));
+  }
+
+  function toggleFees() {
+    if (feeOpen) {
+      setFeeOpen(false);
+      setValue("feeMinor", null);
+      clearErrors("feeMinor");
+      if (panel === "fee") setPanel(null);
+      return;
+    }
+    setFeeOpen(true);
+    openPanel("fee");
+  }
+
+  /** A type switch closes a picker that belongs to the old type. */
+  function closeStalePanel() {
+    if (panel && panel !== "amount" && panel !== "date") setPanel(null);
+  }
+
+  // Keep the open row in view above the panel.
+  React.useEffect(() => {
+    if (!panel) return;
+    const id = panel === "fee" ? "qa-transfer-fee" : `qa-${panel}`;
+    document.getElementById(id)?.scrollIntoView({ block: "nearest" });
+  }, [panel]);
+
+  const accountTile = (a: QuickAddOptions["accounts"][number]): AccountTileItem => {
+    const setAside = a.bucketable ? a.emergencyMinor + a.opportunityMinor : 0;
+    return {
+      value: a.id,
+      name: a.name,
+      balanceMinor: a.balanceMinor,
+      currency: a.currency,
+      freeMinor: setAside > 0 ? Math.max(0, a.balanceMinor - setAside) : null,
+      note: a.type === "opportunity_fund" ? "Opportunity money" : undefined,
+    };
+  };
+  const holdingTile = (
+    h: QuickAddOptions["holdings"][number],
+    prefix: string,
+  ): AccountTileItem => ({
+    value: `${prefix}${h.id}`,
+    name: h.name,
+    balanceMinor: h.currentValueMinor,
+    currency: h.currency,
+    freeMinor: null,
+  });
 
   /**
    * Switching tabs keeps the account the user was working with in the field that matters for
@@ -791,7 +910,10 @@ function QuickAddForm({
         tags: "",
         notes: "",
       });
-      setFocus("amountMinor");
+      if (isMobile) {
+        setExpr("");
+        setPanel("amount");
+      } else setFocus("amountMinor");
       return;
     }
     onDone();
@@ -849,6 +971,686 @@ function QuickAddForm({
     );
   }
 
+  const typeTabs = (
+    <Controller
+      control={control}
+      name="type"
+      render={({ field }) => (
+        // Phones: one row of type chips that scrolls sideways, with "Debt pay" at the end.
+        // The grid item is a plain block: its height follows the content (a scroll container
+        // as grid item collapses) and min-w-0 keeps the wide row from widening the form.
+        <div className="-mx-4 min-w-0 md:mx-0">
+          <div className="flex [scrollbar-width:none] gap-2 overflow-x-auto px-4 md:block md:overflow-visible md:px-0">
+            <Tabs
+              value={field.value}
+              onValueChange={(v) => {
+                if (!editing) carryAccounts(v as QuickAddType);
+                closeStalePanel();
+                field.onChange(v);
+              }}
+            >
+              <TabsList className="flex w-max group-data-horizontal/tabs:h-auto md:grid md:w-full md:grid-cols-3 md:group-data-horizontal/tabs:h-auto">
+                {(
+                  [
+                    ["expense", "Expense"],
+                    ["income", "Income"],
+                    ["transfer", "Transfer"],
+                    ["invest", "Invest"],
+                    ["redeem", "Redeem"],
+                    ["investment_income", "Inv. income"],
+                  ] as const
+                ).map(([value, label]) => (
+                  <TabsTrigger key={value} value={value} className="shrink-0 px-3 md:px-1.5">
+                    {label}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </Tabs>
+            {!editing && isMobile && loans.length ? (
+              <ActionSheet
+                title="Pay a loan"
+                description="Opens the loan with Record payment ready."
+                trigger={
+                  <Button type="button" variant="outline" className="shrink-0 rounded-lg">
+                    <Landmark aria-hidden /> Debt pay
+                  </Button>
+                }
+                actions={loans.map((l) => ({
+                  label: l.name,
+                  icon: Landmark,
+                  onSelect: () => {
+                    onDone();
+                    router.push(`/debts/by-account/${l.id}`);
+                  },
+                }))}
+              />
+            ) : null}
+          </div>
+        </div>
+      )}
+    />
+  );
+  const previewBlock = preview ? (
+    <div className="grid gap-1 rounded-lg bg-muted px-3 py-2 text-sm" aria-live="polite">
+      <span className="flex justify-between">
+        Cost removed <Money valueMinor={preview.costRemovedMinor} currency={currency} />
+      </span>
+      <span className="flex justify-between">
+        Realised gain{" "}
+        <Money
+          valueMinor={preview.realizedGainMinor}
+          currency={currency}
+          signed={preview.realizedGainMinor > 0}
+        />
+      </span>
+      <span className="flex justify-between font-medium">
+        Cash to account <Money valueMinor={preview.cashToAccountMinor} currency={currency} />
+      </span>
+      {preview.full ? (
+        <span className="text-xs text-muted-foreground">Sells the whole holding.</span>
+      ) : null}
+    </div>
+  ) : null;
+  const toAmountField = crossCurrency ? (
+    <FormField
+      id="qa-to-amount"
+      label={`Amount received (${to!.currency})`}
+      error={err("toAmountMinor")}
+      description={
+        rate
+          ? `Rate 1 ${from!.currency} = ${rate.toPrecision(6)} ${to!.currency}`
+          : "Different currencies: enter what arrived."
+      }
+    >
+      <Controller
+        control={control}
+        name="toAmountMinor"
+        render={({ field }) => (
+          <MoneyInput
+            id="qa-to-amount"
+            currency={to!.currency}
+            value={field.value}
+            onChange={field.onChange}
+            onBlur={field.onBlur}
+            ref={field.ref}
+            {...fieldAria("qa-to-amount", err("toAmountMinor"), true)}
+          />
+        )}
+      />
+    </FormField>
+  ) : null;
+  const assetTransferHint =
+    assetTransfer && from && to ? (
+      <p className="text-xs text-muted-foreground" aria-live="polite">
+        {holdingRef(fromId) && holdingRef(toId)
+          ? `Switch: sells from ${from.name} and buys ${to.name} (realised gain is recorded on ${from.name}).`
+          : holdingRef(toId)
+            ? `Recorded as an investment into ${to.name}.`
+            : `Recorded as a redemption from ${from.name} (realised gain is calculated).`}
+      </p>
+    ) : null;
+  const totalLeaving =
+    type === "transfer" && fee && !Number.isNaN(fee) && amount && !Number.isNaN(amount) && from ? (
+      <div
+        className="flex justify-between rounded-lg bg-muted px-3 py-2 text-sm"
+        aria-live="polite"
+      >
+        <span>Total leaving {from.name}</span>
+        <Money valueMinor={amount + fee} currency={from.currency} />
+      </div>
+    ) : null;
+  const splitToggle = (
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      className="justify-self-start"
+      onClick={() => setValue("splitMode", !splitMode)}
+      aria-pressed={splitMode}
+    >
+      <Split aria-hidden /> {splitMode ? "Use one category" : "Split across categories"}
+    </Button>
+  );
+  const splitFieldset = splitMode ? (
+    <fieldset className="grid gap-2 rounded-lg border p-3">
+      <legend className="px-1 text-sm font-medium">Split</legend>
+      {fields.map((f, i) => (
+        <div key={f.id} className="grid grid-cols-[1fr_8rem_auto] items-start gap-2">
+          <Controller
+            control={control}
+            name={`splits.${i}.categoryId`}
+            render={({ field }) => (
+              <CategorySelect
+                tree={options.categories}
+                kind="expense"
+                value={field.value}
+                onChange={field.onChange}
+                aria-invalid={Boolean(err(`splits.${i}.categoryId`))}
+              />
+            )}
+          />
+          <Controller
+            control={control}
+            name={`splits.${i}.amountMinor`}
+            render={({ field }) => (
+              <MoneyInput
+                aria-label={`Line ${i + 1} amount`}
+                currency={currency}
+                value={field.value}
+                onChange={field.onChange}
+                onBlur={field.onBlur}
+                aria-invalid={Boolean(err(`splits.${i}.amountMinor`))}
+              />
+            )}
+          />
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label={`Remove line ${i + 1}`}
+            disabled={fields.length <= 2}
+            onClick={() => remove(i)}
+          >
+            <Trash2 aria-hidden />
+          </Button>
+        </div>
+      ))}
+      <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+        <div className="flex gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => append({ categoryId: "", amountMinor: null })}
+          >
+            <Plus aria-hidden /> Line
+          </Button>
+          {remaining > 0 ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const lastIndex = fields.length - 1;
+                setValue(
+                  `splits.${lastIndex}.amountMinor`,
+                  (splits[lastIndex]?.amountMinor ?? 0) + remaining,
+                );
+              }}
+            >
+              Fill remaining
+            </Button>
+          ) : null}
+        </div>
+        <span
+          className={!amount || remaining === 0 ? "text-muted-foreground" : "text-destructive"}
+          aria-live="polite"
+        >
+          {!amount || Number.isNaN(amount) ? (
+            "Enter the total first"
+          ) : remaining === 0 ? (
+            "Fully split"
+          ) : (
+            <>
+              Remaining <Money valueMinor={remaining} currency={currency} colorNegative={false} />
+            </>
+          )}
+        </span>
+      </div>
+      {err("splits") ? (
+        <p role="alert" className="text-xs text-destructive">
+          {err("splits")}
+        </p>
+      ) : null}
+    </fieldset>
+  ) : null;
+  const counterpartyField =
+    type === "income" || type === "expense" ? (
+      <FormField
+        id="qa-counterparty"
+        label={type === "income" ? "Payer (optional)" : "Payee (optional)"}
+        error={err("counterparty")}
+      >
+        <Input id="qa-counterparty" autoComplete="off" {...register("counterparty")} />
+      </FormField>
+    ) : null;
+  const tagsField = (
+    <FormField
+      id="qa-tags"
+      label="Tags (optional)"
+      error={err("tags")}
+      description="Separate with commas."
+    >
+      <Input
+        id="qa-tags"
+        list="qa-tag-options"
+        autoComplete="off"
+        aria-describedby="qa-tags-description"
+        {...register("tags")}
+      />
+      <datalist id="qa-tag-options">
+        {options.tags.map((t) => (
+          <option key={t} value={t} />
+        ))}
+      </datalist>
+    </FormField>
+  );
+  const notesField = (
+    <FormField id="qa-notes" label="Notes (optional)" error={err("notes")}>
+      <Textarea id="qa-notes" rows={2} {...register("notes")} />
+    </FormField>
+  );
+  const rootError = errors.root ? (
+    <p role="alert" className="text-sm text-destructive">
+      {errors.root.message}
+    </p>
+  ) : null;
+
+  const accountLabel = (value: string) => {
+    const h = holdingRef(value);
+    const item = h
+      ? options.holdings.find((x) => x.id === h)
+      : options.accounts.find((a) => a.id === value);
+    if (!item) return null;
+    const balance = "balanceMinor" in item ? item.balanceMinor : item.currentValueMinor;
+    return (
+      <span className="flex min-w-0 flex-col leading-tight">
+        <span className="truncate">{item.name}</span>
+        <span className="font-mono text-xs text-muted-foreground tabular-nums">
+          {tileMoney(balance, item.currency, options.baseCurrency)}
+        </span>
+      </span>
+    );
+  };
+  const keypadText = (text: string, digits: number, cur: string) => (
+    <>
+      <span className="min-w-0 font-mono text-xl break-all tabular-nums">
+        {text.replace(
+          /([+\-*/])/g,
+          (o) => ` ${o === "*" ? "×" : o === "/" ? "÷" : o === "-" ? "−" : o} `,
+        )}
+      </span>
+      {isCalculation(text) && evaluateAmountExpression(text, digits) !== null ? (
+        <span className="ml-auto shrink-0 font-mono text-sm text-muted-foreground tabular-nums">
+          = {formatMoney(evaluateAmountExpression(text, digits)!, cur)}
+        </span>
+      ) : null}
+    </>
+  );
+  const moneyText = (minor: number | null, cur: string) =>
+    minor !== null && !Number.isNaN(minor) ? (
+      <span className="font-mono text-xl tabular-nums">{formatMoney(minor, cur)}</span>
+    ) : null;
+  const path = categoryId ? categoryPath(options.categories, categoryId) : null;
+  const showFeeRow = type === "transfer" && (feeOpen || Boolean(fee));
+  const moreFilled = [tagsValue, notesValue, counterpartyValue, fromBucket, toBucket].filter((v) =>
+    Boolean(v && String(v).trim()),
+  ).length;
+  const moreHasError = ["counterparty", "tags", "notes", "fromBucket", "toBucket"].some((k) =>
+    Boolean(err(k)),
+  );
+  const moreShown = moreOpen || moreHasError;
+  const yesterdayKey = addDaysKey(options.todayKey, -1);
+
+  const phoneRows = (
+    <div className="grid">
+      <TapRow
+        id="qa-date"
+        label="Date"
+        placeholder="Choose a date"
+        active={panel === "date"}
+        error={err("date")}
+        tone={tone}
+        onClick={() => openPanel(panel === "date" ? null : "date")}
+      >
+        {date ? (
+          <>
+            {formatDateKey(date)}
+            {date === options.todayKey || date === yesterdayKey ? (
+              <span className="text-sm text-muted-foreground">
+                · {date === options.todayKey ? "Today" : "Yesterday"}
+              </span>
+            ) : null}
+          </>
+        ) : null}
+      </TapRow>
+      {!byUnits ? (
+        <TapRow
+          id="qa-amount"
+          label="Amount"
+          placeholder="0.00"
+          active={panel === "amount"}
+          error={err("amountMinor")}
+          tone={tone}
+          onClick={() => openPanel(panel === "amount" ? null : "amount")}
+          side={
+            type === "transfer" ? (
+              <RowSideButton pressed={showFeeRow} onClick={toggleFees}>
+                Fees
+              </RowSideButton>
+            ) : undefined
+          }
+        >
+          {panel === "amount" && expr
+            ? keypadText(expr, amountDigits, currency)
+            : moneyText(amount, currency)}
+        </TapRow>
+      ) : null}
+      {showFeeRow ? (
+        <TapRow
+          id="qa-transfer-fee"
+          label="Fee"
+          placeholder={assetTransfer ? "0.00 · exit load or charge" : "0.00 · bank charge"}
+          active={panel === "fee"}
+          error={err("feeMinor")}
+          tone={tone}
+          onClick={() => openPanel(panel === "fee" ? null : "fee")}
+        >
+          {panel === "fee" && expr
+            ? keypadText(expr, feeDigits, feeCurrency)
+            : moneyText(fee, feeCurrency)}
+        </TapRow>
+      ) : null}
+      {(type === "income" || type === "expense") && !(type === "expense" && splitMode) ? (
+        <TapRow
+          id="qa-category"
+          label="Category"
+          placeholder="Choose"
+          active={panel === "category"}
+          error={err("categoryId")}
+          tone={tone}
+          onClick={() => openPanel(panel === "category" ? null : "category")}
+        >
+          {path ? (
+            <span className="flex min-w-0 items-baseline gap-1.5">
+              <span className="truncate">{path.main}</span>
+              {path.sub ? (
+                <>
+                  <span className="text-muted-foreground" aria-hidden>
+                    ›
+                  </span>
+                  <span className="truncate">{path.sub}</span>
+                </>
+              ) : null}
+            </span>
+          ) : null}
+        </TapRow>
+      ) : null}
+      {investment && holdingChoices.length ? (
+        <TapRow
+          id="qa-holding"
+          label={type === "investment_income" ? "From asset" : "Asset"}
+          placeholder="Choose an asset"
+          active={panel === "holding"}
+          error={err("holdingId")}
+          tone={tone}
+          onClick={() => openPanel(panel === "holding" ? null : "holding")}
+        >
+          {holdingId ? accountLabel(`${HOLDING_PREFIX}${holdingId}`) : null}
+        </TapRow>
+      ) : null}
+      {showFrom ? (
+        <TapRow
+          id="qa-from"
+          label={type === "expense" ? "Account" : "From"}
+          placeholder="Choose"
+          active={panel === "from"}
+          error={err("fromAccountId")}
+          tone={tone}
+          onClick={() => openPanel(panel === "from" ? null : "from")}
+        >
+          {fromId ? accountLabel(fromId) : null}
+        </TapRow>
+      ) : null}
+      {showTo ? (
+        <TapRow
+          id="qa-to"
+          label={type === "income" ? "Account" : "To"}
+          placeholder="Choose"
+          active={panel === "to"}
+          error={err("toAccountId")}
+          tone={tone}
+          onClick={() => openPanel(panel === "to" ? null : "to")}
+          side={
+            type === "transfer" ? (
+              <RowSideButton
+                label="Swap From and To"
+                onClick={() => {
+                  const f = getValues("fromAccountId");
+                  setValue("fromAccountId", getValues("toAccountId"));
+                  setValue("toAccountId", f);
+                }}
+              >
+                <ArrowDownUp className="size-4" aria-hidden />
+              </RowSideButton>
+            ) : undefined
+          }
+        >
+          {toId ? accountLabel(toId) : null}
+        </TapRow>
+      ) : null}
+      <div className="grid min-h-14 grid-cols-[5.5rem_minmax(0,1fr)] items-center">
+        <label htmlFor="qa-description" className="text-[15px] text-muted-foreground">
+          Note
+        </label>
+        <input
+          id="qa-description"
+          autoComplete="off"
+          enterKeyHint="done"
+          aria-invalid={err("description") ? true : undefined}
+          className="h-14 w-full min-w-0 rounded-none border-0 border-b bg-transparent text-[17px] outline-none focus-visible:border-b-2 focus-visible:border-foreground"
+          {...register("description")}
+          onFocus={() => {
+            if (panel) openPanel(null);
+          }}
+        />
+      </div>
+      {err("description") ? (
+        <p role="alert" className="pl-[5.5rem] text-xs text-destructive">
+          {err("description")}
+        </p>
+      ) : null}
+    </div>
+  );
+
+  const phoneMore = (
+    <div className="grid gap-3">
+      <button
+        type="button"
+        aria-expanded={moreShown}
+        aria-controls="qa-more"
+        onClick={() => setMoreOpen(!moreShown)}
+        className="flex min-h-11 w-full items-center justify-between rounded-lg bg-muted px-3.5 text-sm font-medium"
+      >
+        <span>
+          More details{" "}
+          <span className="font-normal text-muted-foreground">
+            · {moreFilled ? `${moreFilled} filled` : "optional"}
+          </span>
+        </span>
+        <ChevronDown
+          className={cn("size-4 transition-transform", moreShown && "rotate-180")}
+          aria-hidden
+        />
+      </button>
+      {moreShown ? (
+        <div id="qa-more" className="grid gap-4">
+          {type === "invest" && showToBucket ? (
+            <BucketChoice
+              id="qa-holding-to-bucket"
+              label="Put into (optional)"
+              control={control}
+              name="toBucket"
+              account={toSide!}
+              error={err("toBucket")}
+              direction="in"
+            />
+          ) : null}
+          {type === "redeem" && showFromBucket ? (
+            <BucketChoice
+              id="qa-holding-from-bucket"
+              label="Sell from (optional)"
+              control={control}
+              name="fromBucket"
+              account={fromSide!}
+              error={err("fromBucket")}
+              direction="out"
+            />
+          ) : null}
+          {showFromBucket && type !== "redeem" ? (
+            <BucketChoice
+              id="qa-from-bucket"
+              label={type === "transfer" ? "Take from (optional)" : "Pay from (optional)"}
+              control={control}
+              name="fromBucket"
+              account={fromSide!}
+              error={err("fromBucket")}
+              direction="out"
+            />
+          ) : null}
+          {showToBucket && type !== "invest" ? (
+            <BucketChoice
+              id="qa-to-bucket"
+              label="Put into (optional)"
+              control={control}
+              name="toBucket"
+              account={toSide!}
+              error={err("toBucket")}
+              direction="in"
+            />
+          ) : null}
+          {type === "expense" ? splitToggle : null}
+          {counterpartyField}
+          {tagsField}
+          {notesField}
+          {!editing && options.templates.length ? templateField("qa-template-mobile") : null}
+        </div>
+      ) : null}
+    </div>
+  );
+
+  const phonePanel =
+    panel === "amount" || panel === "fee" ? (
+      <KeypadPanel
+        title={panel === "fee" ? "Fee" : "Amount"}
+        digits={panel === "fee" ? feeDigits : amountDigits}
+        onKey={(k) =>
+          setExpr((e) => applyKeypadKey(e, k, panel === "fee" ? feeDigits : amountDigits))
+        }
+        onEquals={keypadEquals}
+        onOk={keypadOk}
+        onClose={() => openPanel(null)}
+      />
+    ) : panel === "date" ? (
+      <CalendarPanel
+        value={date}
+        todayKey={options.todayKey}
+        onPick={(key) => {
+          setValue("date", key, { shouldDirty: true });
+          clearErrors("date");
+          setPanel(null);
+        }}
+        onClose={() => setPanel(null)}
+      />
+    ) : panel === "category" ? (
+      <CategoryPanel
+        tree={options.categories}
+        kind={type === "income" ? "income" : "expense"}
+        value={categoryId}
+        onPick={(id) => {
+          setValue("categoryId", id, { shouldDirty: true });
+          clearErrors("categoryId");
+          advance("category");
+        }}
+        onClose={() => setPanel(null)}
+      />
+    ) : panel === "holding" ? (
+      <AccountPanel
+        title={type === "investment_income" ? "From asset" : "Asset"}
+        groups={[{ items: holdingChoices.map((h) => holdingTile(h, "")) }]}
+        value={holdingId}
+        baseCurrency={options.baseCurrency}
+        onPick={(id) => {
+          setValue("holdingId", id, { shouldDirty: true });
+          clearErrors("holdingId");
+          setHoldingChosen(true);
+          advance("holding", true);
+        }}
+        onClose={() => setPanel(null)}
+      />
+    ) : panel === "from" || panel === "to" ? (
+      <AccountPanel
+        title={
+          type === "transfer"
+            ? panel === "from"
+              ? "From"
+              : "To"
+            : panel === "from" && type !== "expense"
+              ? "From account"
+              : panel === "to" && type !== "income"
+                ? "To account"
+                : "Account"
+        }
+        groups={
+          type === "transfer"
+            ? [
+                { label: "Accounts", items: options.accounts.map(accountTile) },
+                {
+                  label: "Assets",
+                  items: transferHoldings.map((h) => holdingTile(h, HOLDING_PREFIX)),
+                },
+              ]
+            : [{ items: options.accounts.map(accountTile) }]
+        }
+        value={panel === "from" ? fromId : toId}
+        disabledValue={type === "transfer" ? (panel === "from" ? toId : fromId) : undefined}
+        baseCurrency={options.baseCurrency}
+        onPick={(id) => {
+          const field = panel === "from" ? "fromAccountId" : "toAccountId";
+          setValue(field, id, { shouldDirty: true });
+          clearErrors(field);
+          advance(panel);
+        }}
+        onClose={() => setPanel(null)}
+      />
+    ) : null;
+
+  const phoneFields = (
+    <>
+      {typeTabs}
+      {phoneRows}
+      {investment ? (
+        <InvestmentHeader
+          control={control}
+          type={type}
+          holdings={holdingChoices}
+          holding={holding}
+          err={err}
+          onDone={onDone}
+          showPicker={false}
+        />
+      ) : null}
+      {investment ? (
+        <InvestmentFields
+          control={control}
+          type={type}
+          currency={currency}
+          holding={holding}
+          byUnits={byUnits}
+          reinvest={reinvest}
+          err={err}
+        />
+      ) : null}
+      {previewBlock}
+      {toAmountField}
+      {assetTransferHint}
+      {totalLeaving}
+      {type === "expense" ? splitFieldset : null}
+      {rootError}
+      {phoneMore}
+    </>
+  );
+
   return (
     <form
       id="quick-add-form"
@@ -857,529 +1659,271 @@ function QuickAddForm({
       className="flex min-h-0 flex-1 flex-col"
     >
       <div className="grid gap-4 overflow-y-auto px-4 pb-4">
-        {/* Templates: first on desktop; phones put them last (amount first, docs/07 §5). */}
-        {!editing && options.templates.length ? (
-          <div className="hidden md:contents">{templateField("qa-template")}</div>
-        ) : null}
-        <Controller
-          control={control}
-          name="type"
-          render={({ field }) => (
-            // Phones: one row of type chips that scrolls sideways, with "Debt pay" at the end.
-            // The grid item is a plain block: its height follows the content (a scroll container
-            // as grid item collapses) and min-w-0 keeps the wide row from widening the form.
-            <div className="-mx-4 min-w-0 md:mx-0">
-              <div className="flex [scrollbar-width:none] gap-2 overflow-x-auto px-4 md:block md:overflow-visible md:px-0">
-                <Tabs
-                  value={field.value}
-                  onValueChange={(v) => {
-                    if (!editing) carryAccounts(v as QuickAddType);
-                    field.onChange(v);
-                  }}
-                >
-                  <TabsList className="flex w-max group-data-horizontal/tabs:h-auto md:grid md:w-full md:grid-cols-3 md:group-data-horizontal/tabs:h-auto">
-                    {(
-                      [
-                        ["expense", "Expense"],
-                        ["income", "Income"],
-                        ["transfer", "Transfer"],
-                        ["invest", "Invest"],
-                        ["redeem", "Redeem"],
-                        ["investment_income", "Inv. income"],
-                      ] as const
-                    ).map(([value, label]) => (
-                      <TabsTrigger key={value} value={value} className="shrink-0 px-3 md:px-1.5">
-                        {label}
-                      </TabsTrigger>
-                    ))}
-                  </TabsList>
-                </Tabs>
-                {!editing && isMobile && loans.length ? (
-                  <ActionSheet
-                    title="Pay a loan"
-                    description="Opens the loan with Record payment ready."
-                    trigger={
-                      <Button type="button" variant="outline" className="shrink-0 rounded-lg">
-                        <Landmark aria-hidden /> Debt pay
-                      </Button>
-                    }
-                    actions={loans.map((l) => ({
-                      label: l.name,
-                      icon: Landmark,
-                      onSelect: () => {
-                        onDone();
-                        router.push(`/debts/by-account/${l.id}`);
-                      },
-                    }))}
-                  />
-                ) : null}
-              </div>
-            </div>
-          )}
-        />
+        {isMobile ? (
+          phoneFields
+        ) : (
+          <>
+            {/* Templates: first on desktop; phones put them last (amount first, docs/07 §5). */}
+            {!editing && options.templates.length ? (
+              <div className="hidden md:contents">{templateField("qa-template")}</div>
+            ) : null}
+            {typeTabs}
 
-        {investment ? (
-          <InvestmentHeader
-            control={control}
-            type={type}
-            holdings={holdingChoices}
-            holding={holding}
-            err={err}
-            onDone={onDone}
-          />
-        ) : null}
+            {investment ? (
+              <InvestmentHeader
+                control={control}
+                type={type}
+                holdings={holdingChoices}
+                holding={holding}
+                err={err}
+                onDone={onDone}
+              />
+            ) : null}
 
-        {!byUnits ? (
-          <FormField
-            id="qa-amount"
-            label={
-              crossCurrency
-                ? `Amount sent (${from!.currency})`
-                : type === "invest"
-                  ? "Amount invested"
-                  : type === "redeem"
-                    ? "Amount redeemed (gross)"
-                    : type === "investment_income"
-                      ? "Gross amount"
-                      : "Amount"
-            }
-            error={err("amountMinor")}
-          >
-            <Controller
-              control={control}
-              name="amountMinor"
-              render={({ field }) => (
-                <MoneyInput
-                  id="qa-amount"
-                  currency={currency}
-                  value={field.value}
-                  onChange={field.onChange}
-                  onBlur={field.onBlur}
-                  ref={field.ref}
-                  autoFocus
-                  size={isMobile ? "lg" : "default"}
-                  className={isMobile ? undefined : "h-11 text-lg md:h-11"}
-                  {...fieldAria("qa-amount", err("amountMinor"))}
+            {!byUnits ? (
+              <FormField
+                id="qa-amount"
+                label={
+                  crossCurrency
+                    ? `Amount sent (${from!.currency})`
+                    : type === "invest"
+                      ? "Amount invested"
+                      : type === "redeem"
+                        ? "Amount redeemed (gross)"
+                        : type === "investment_income"
+                          ? "Gross amount"
+                          : "Amount"
+                }
+                error={err("amountMinor")}
+              >
+                <Controller
+                  control={control}
+                  name="amountMinor"
+                  render={({ field }) => (
+                    <MoneyInput
+                      id="qa-amount"
+                      currency={currency}
+                      value={field.value}
+                      onChange={field.onChange}
+                      onBlur={field.onBlur}
+                      ref={field.ref}
+                      autoFocus
+                      size={isMobile ? "lg" : "default"}
+                      className={isMobile ? undefined : "h-11 text-lg md:h-11"}
+                      {...fieldAria("qa-amount", err("amountMinor"))}
+                    />
+                  )}
                 />
-              )}
-            />
-          </FormField>
-        ) : null}
+              </FormField>
+            ) : null}
 
-        {investment ? (
-          <InvestmentFields
-            control={control}
-            type={type}
-            currency={currency}
-            holding={holding}
-            byUnits={byUnits}
-            reinvest={reinvest}
-            err={err}
-          />
-        ) : null}
-        {type === "invest" && showToBucket ? (
-          <BucketChoice
-            id="qa-holding-to-bucket"
-            label="Put into (optional)"
-            control={control}
-            name="toBucket"
-            account={toSide!}
-            error={err("toBucket")}
-            direction="in"
-          />
-        ) : null}
-        {type === "redeem" && showFromBucket ? (
-          <BucketChoice
-            id="qa-holding-from-bucket"
-            label="Sell from (optional)"
-            control={control}
-            name="fromBucket"
-            account={fromSide!}
-            error={err("fromBucket")}
-            direction="out"
-          />
-        ) : null}
-        {preview ? (
-          <div className="grid gap-1 rounded-lg bg-muted px-3 py-2 text-sm" aria-live="polite">
-            <span className="flex justify-between">
-              Cost removed <Money valueMinor={preview.costRemovedMinor} currency={currency} />
-            </span>
-            <span className="flex justify-between">
-              Realised gain{" "}
-              <Money
-                valueMinor={preview.realizedGainMinor}
+            {investment ? (
+              <InvestmentFields
+                control={control}
+                type={type}
                 currency={currency}
-                signed={preview.realizedGainMinor > 0}
+                holding={holding}
+                byUnits={byUnits}
+                reinvest={reinvest}
+                err={err}
               />
-            </span>
-            <span className="flex justify-between font-medium">
-              Cash to account <Money valueMinor={preview.cashToAccountMinor} currency={currency} />
-            </span>
-            {preview.full ? (
-              <span className="text-xs text-muted-foreground">Sells the whole holding.</span>
             ) : null}
-          </div>
-        ) : null}
-
-        {showFrom ? (
-          <FormField
-            id="qa-from"
-            label={type === "transfer" ? "From" : "Paid from"}
-            error={err("fromAccountId")}
-          >
-            <Controller
-              control={control}
-              name="fromAccountId"
-              render={({ field }) => (
-                <AccountSelect
-                  id="qa-from"
-                  accounts={options.accounts}
-                  holdings={type === "transfer" ? transferHoldings : undefined}
-                  value={field.value}
-                  onChange={field.onChange}
-                  invalid={Boolean(err("fromAccountId"))}
-                />
-              )}
-            />
-          </FormField>
-        ) : null}
-        {showFromBucket && type !== "redeem" ? (
-          <BucketChoice
-            id="qa-from-bucket"
-            label={type === "transfer" ? "Take from (optional)" : "Pay from (optional)"}
-            control={control}
-            name="fromBucket"
-            account={fromSide!}
-            error={err("fromBucket")}
-            direction="out"
-          />
-        ) : null}
-        {showTo ? (
-          <FormField
-            id="qa-to"
-            label={type === "transfer" ? "To" : "Received into"}
-            error={err("toAccountId")}
-          >
-            <Controller
-              control={control}
-              name="toAccountId"
-              render={({ field }) => (
-                <AccountSelect
-                  id="qa-to"
-                  accounts={options.accounts}
-                  holdings={type === "transfer" ? transferHoldings : undefined}
-                  value={field.value}
-                  onChange={field.onChange}
-                  invalid={Boolean(err("toAccountId"))}
-                />
-              )}
-            />
-          </FormField>
-        ) : null}
-        {showToBucket && type !== "invest" ? (
-          <BucketChoice
-            id="qa-to-bucket"
-            label="Put into (optional)"
-            control={control}
-            name="toBucket"
-            account={toSide!}
-            error={err("toBucket")}
-            direction="in"
-          />
-        ) : null}
-
-        {crossCurrency ? (
-          <FormField
-            id="qa-to-amount"
-            label={`Amount received (${to!.currency})`}
-            error={err("toAmountMinor")}
-            description={
-              rate
-                ? `Rate 1 ${from!.currency} = ${rate.toPrecision(6)} ${to!.currency}`
-                : "Different currencies: enter what arrived."
-            }
-          >
-            <Controller
-              control={control}
-              name="toAmountMinor"
-              render={({ field }) => (
-                <MoneyInput
-                  id="qa-to-amount"
-                  currency={to!.currency}
-                  value={field.value}
-                  onChange={field.onChange}
-                  onBlur={field.onBlur}
-                  ref={field.ref}
-                  {...fieldAria("qa-to-amount", err("toAmountMinor"), true)}
-                />
-              )}
-            />
-          </FormField>
-        ) : null}
-
-        {type === "transfer" ? (
-          <FormField
-            id="qa-transfer-fee"
-            label={`Fee (optional${from ? `, ${from.currency}` : ""})`}
-            error={err("feeMinor")}
-            description={
-              assetTransfer
-                ? "Charge (e.g. exit load) taken from the source on top of the amount; recorded as an investment fee."
-                : "Bank charge taken from the source account on top of the amount; recorded under Bank fees."
-            }
-          >
-            <Controller
-              control={control}
-              name="feeMinor"
-              render={({ field }) => (
-                <MoneyInput
-                  id="qa-transfer-fee"
-                  currency={from?.currency ?? currency}
-                  value={field.value}
-                  onChange={field.onChange}
-                  onBlur={field.onBlur}
-                  ref={field.ref}
-                  {...fieldAria("qa-transfer-fee", err("feeMinor"), true)}
-                />
-              )}
-            />
-          </FormField>
-        ) : null}
-        {assetTransfer && from && to ? (
-          <p className="text-xs text-muted-foreground" aria-live="polite">
-            {holdingRef(fromId) && holdingRef(toId)
-              ? `Switch: sells from ${from.name} and buys ${to.name} (realised gain is recorded on ${from.name}).`
-              : holdingRef(toId)
-                ? `Recorded as an investment into ${to.name}.`
-                : `Recorded as a redemption from ${from.name} (realised gain is calculated).`}
-          </p>
-        ) : null}
-        {type === "transfer" &&
-        fee &&
-        !Number.isNaN(fee) &&
-        amount &&
-        !Number.isNaN(amount) &&
-        from ? (
-          <div
-            className="flex justify-between rounded-lg bg-muted px-3 py-2 text-sm"
-            aria-live="polite"
-          >
-            <span>Total leaving {from.name}</span>
-            <Money valueMinor={amount + fee} currency={from.currency} />
-          </div>
-        ) : null}
-
-        {(type === "income" || type === "expense") && !(type === "expense" && splitMode) ? (
-          <FormField id="qa-category" label="Category" error={err("categoryId")}>
-            <Controller
-              control={control}
-              name="categoryId"
-              render={({ field }) => (
-                <>
-                  <RecentCategoryGrid
-                    tree={options.categories}
-                    kind={type === "income" ? "income" : "expense"}
-                    value={field.value}
-                    onPick={field.onChange}
-                  />
-                  <CategorySelect
-                    id="qa-category"
-                    tree={options.categories}
-                    kind={type === "income" ? "income" : "expense"}
-                    value={field.value}
-                    onChange={field.onChange}
-                    {...fieldAria("qa-category", err("categoryId"))}
-                  />
-                </>
-              )}
-            />
-          </FormField>
-        ) : null}
-
-        {type === "expense" ? (
-          <div className="grid gap-3">
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="justify-self-start"
-              onClick={() => setValue("splitMode", !splitMode)}
-              aria-pressed={splitMode}
-            >
-              <Split aria-hidden /> {splitMode ? "Use one category" : "Split across categories"}
-            </Button>
-            {splitMode ? (
-              <fieldset className="grid gap-2 rounded-lg border p-3">
-                <legend className="px-1 text-sm font-medium">Split</legend>
-                {fields.map((f, i) => (
-                  <div key={f.id} className="grid grid-cols-[1fr_8rem_auto] items-start gap-2">
-                    <Controller
-                      control={control}
-                      name={`splits.${i}.categoryId`}
-                      render={({ field }) => (
-                        <CategorySelect
-                          tree={options.categories}
-                          kind="expense"
-                          value={field.value}
-                          onChange={field.onChange}
-                          aria-invalid={Boolean(err(`splits.${i}.categoryId`))}
-                        />
-                      )}
-                    />
-                    <Controller
-                      control={control}
-                      name={`splits.${i}.amountMinor`}
-                      render={({ field }) => (
-                        <MoneyInput
-                          aria-label={`Line ${i + 1} amount`}
-                          currency={currency}
-                          value={field.value}
-                          onChange={field.onChange}
-                          onBlur={field.onBlur}
-                          aria-invalid={Boolean(err(`splits.${i}.amountMinor`))}
-                        />
-                      )}
-                    />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      aria-label={`Remove line ${i + 1}`}
-                      disabled={fields.length <= 2}
-                      onClick={() => remove(i)}
-                    >
-                      <Trash2 aria-hidden />
-                    </Button>
-                  </div>
-                ))}
-                <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
-                  <div className="flex gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => append({ categoryId: "", amountMinor: null })}
-                    >
-                      <Plus aria-hidden /> Line
-                    </Button>
-                    {remaining > 0 ? (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          const lastIndex = fields.length - 1;
-                          setValue(
-                            `splits.${lastIndex}.amountMinor`,
-                            (splits[lastIndex]?.amountMinor ?? 0) + remaining,
-                          );
-                        }}
-                      >
-                        Fill remaining
-                      </Button>
-                    ) : null}
-                  </div>
-                  <span
-                    className={
-                      !amount || remaining === 0 ? "text-muted-foreground" : "text-destructive"
-                    }
-                    aria-live="polite"
-                  >
-                    {!amount || Number.isNaN(amount) ? (
-                      "Enter the total first"
-                    ) : remaining === 0 ? (
-                      "Fully split"
-                    ) : (
-                      <>
-                        Remaining{" "}
-                        <Money valueMinor={remaining} currency={currency} colorNegative={false} />
-                      </>
-                    )}
-                  </span>
-                </div>
-                {err("splits") ? (
-                  <p role="alert" className="text-xs text-destructive">
-                    {err("splits")}
-                  </p>
-                ) : null}
-              </fieldset>
-            ) : null}
-          </div>
-        ) : null}
-
-        <FormField id="qa-date" label="Date" error={err("date")}>
-          <Controller
-            control={control}
-            name="date"
-            render={({ field }) => (
-              <DatePicker
-                id="qa-date"
-                value={field.value}
-                onChange={(v) => field.onChange(v ?? "")}
-                aria-invalid={Boolean(err("date"))}
+            {type === "invest" && showToBucket ? (
+              <BucketChoice
+                id="qa-holding-to-bucket"
+                label="Put into (optional)"
+                control={control}
+                name="toBucket"
+                account={toSide!}
+                error={err("toBucket")}
+                direction="in"
               />
-            )}
-          />
-        </FormField>
-        <FormField id="qa-description" label="Description" error={err("description")}>
-          <Input id="qa-description" autoComplete="off" {...register("description")} />
-        </FormField>
-        {type === "income" || type === "expense" ? (
-          <FormField
-            id="qa-counterparty"
-            label={type === "income" ? "Payer (optional)" : "Payee (optional)"}
-            error={err("counterparty")}
-          >
-            <Input id="qa-counterparty" autoComplete="off" {...register("counterparty")} />
-          </FormField>
-        ) : null}
-        <FormField
-          id="qa-tags"
-          label="Tags (optional)"
-          error={err("tags")}
-          description="Separate with commas."
-        >
-          <Input
-            id="qa-tags"
-            list="qa-tag-options"
-            autoComplete="off"
-            aria-describedby="qa-tags-description"
-            {...register("tags")}
-          />
-          <datalist id="qa-tag-options">
-            {options.tags.map((t) => (
-              <option key={t} value={t} />
-            ))}
-          </datalist>
-        </FormField>
-        <FormField id="qa-notes" label="Notes (optional)" error={err("notes")}>
-          <Textarea id="qa-notes" rows={2} {...register("notes")} />
-        </FormField>
-        {!editing && options.templates.length ? (
-          <div className="md:hidden">{templateField("qa-template-mobile")}</div>
-        ) : null}
-        {errors.root ? (
-          <p role="alert" className="text-sm text-destructive">
-            {errors.root.message}
-          </p>
-        ) : null}
+            ) : null}
+            {type === "redeem" && showFromBucket ? (
+              <BucketChoice
+                id="qa-holding-from-bucket"
+                label="Sell from (optional)"
+                control={control}
+                name="fromBucket"
+                account={fromSide!}
+                error={err("fromBucket")}
+                direction="out"
+              />
+            ) : null}
+            {previewBlock}
+
+            {showFrom ? (
+              <FormField
+                id="qa-from"
+                label={type === "transfer" ? "From" : "Paid from"}
+                error={err("fromAccountId")}
+              >
+                <Controller
+                  control={control}
+                  name="fromAccountId"
+                  render={({ field }) => (
+                    <AccountSelect
+                      id="qa-from"
+                      accounts={options.accounts}
+                      holdings={type === "transfer" ? transferHoldings : undefined}
+                      value={field.value}
+                      onChange={field.onChange}
+                      invalid={Boolean(err("fromAccountId"))}
+                    />
+                  )}
+                />
+              </FormField>
+            ) : null}
+            {showFromBucket && type !== "redeem" ? (
+              <BucketChoice
+                id="qa-from-bucket"
+                label={type === "transfer" ? "Take from (optional)" : "Pay from (optional)"}
+                control={control}
+                name="fromBucket"
+                account={fromSide!}
+                error={err("fromBucket")}
+                direction="out"
+              />
+            ) : null}
+            {showTo ? (
+              <FormField
+                id="qa-to"
+                label={type === "transfer" ? "To" : "Received into"}
+                error={err("toAccountId")}
+              >
+                <Controller
+                  control={control}
+                  name="toAccountId"
+                  render={({ field }) => (
+                    <AccountSelect
+                      id="qa-to"
+                      accounts={options.accounts}
+                      holdings={type === "transfer" ? transferHoldings : undefined}
+                      value={field.value}
+                      onChange={field.onChange}
+                      invalid={Boolean(err("toAccountId"))}
+                    />
+                  )}
+                />
+              </FormField>
+            ) : null}
+            {showToBucket && type !== "invest" ? (
+              <BucketChoice
+                id="qa-to-bucket"
+                label="Put into (optional)"
+                control={control}
+                name="toBucket"
+                account={toSide!}
+                error={err("toBucket")}
+                direction="in"
+              />
+            ) : null}
+
+            {toAmountField}
+
+            {type === "transfer" ? (
+              <FormField
+                id="qa-transfer-fee"
+                label={`Fee (optional${from ? `, ${from.currency}` : ""})`}
+                error={err("feeMinor")}
+                description={
+                  assetTransfer
+                    ? "Charge (e.g. exit load) taken from the source on top of the amount; recorded as an investment fee."
+                    : "Bank charge taken from the source account on top of the amount; recorded under Bank fees."
+                }
+              >
+                <Controller
+                  control={control}
+                  name="feeMinor"
+                  render={({ field }) => (
+                    <MoneyInput
+                      id="qa-transfer-fee"
+                      currency={from?.currency ?? currency}
+                      value={field.value}
+                      onChange={field.onChange}
+                      onBlur={field.onBlur}
+                      ref={field.ref}
+                      {...fieldAria("qa-transfer-fee", err("feeMinor"), true)}
+                    />
+                  )}
+                />
+              </FormField>
+            ) : null}
+            {assetTransferHint}
+            {totalLeaving}
+
+            {(type === "income" || type === "expense") && !(type === "expense" && splitMode) ? (
+              <FormField id="qa-category" label="Category" error={err("categoryId")}>
+                <Controller
+                  control={control}
+                  name="categoryId"
+                  render={({ field }) => (
+                    <>
+                      <CategorySelect
+                        id="qa-category"
+                        tree={options.categories}
+                        kind={type === "income" ? "income" : "expense"}
+                        value={field.value}
+                        onChange={field.onChange}
+                        {...fieldAria("qa-category", err("categoryId"))}
+                      />
+                    </>
+                  )}
+                />
+              </FormField>
+            ) : null}
+
+            {type === "expense" ? (
+              <div className="grid gap-3">
+                {splitToggle}
+                {splitFieldset}
+              </div>
+            ) : null}
+
+            <FormField id="qa-date" label="Date" error={err("date")}>
+              <Controller
+                control={control}
+                name="date"
+                render={({ field }) => (
+                  <DatePicker
+                    id="qa-date"
+                    value={field.value}
+                    onChange={(v) => field.onChange(v ?? "")}
+                    aria-invalid={Boolean(err("date"))}
+                  />
+                )}
+              />
+            </FormField>
+            <FormField id="qa-description" label="Description" error={err("description")}>
+              <Input id="qa-description" autoComplete="off" {...register("description")} />
+            </FormField>
+            {counterpartyField}
+            {tagsField}
+            {notesField}
+            {rootError}
+          </>
+        )}
       </div>
-      <SheetFooter className="border-t pb-[calc(1rem+env(safe-area-inset-bottom)+var(--drawer-keyboard-inset,0px))] md:pb-4">
-        <Button type="submit" disabled={isSubmitting} className="w-full">
-          {isSubmitting ? "Saving…" : editing ? "Save changes" : "Save"}
-        </Button>
-        {!editing ? (
-          <Button
-            type="submit"
-            variant="outline"
-            disabled={isSubmitting}
-            className="w-full md:hidden"
-            data-add-another="1"
-          >
-            Save &amp; add another
+      {isMobile && panel ? (
+        phonePanel
+      ) : (
+        <SheetFooter className="border-t pb-[calc(1rem+env(safe-area-inset-bottom)+var(--drawer-keyboard-inset,0px))] max-md:grid max-md:grid-cols-[1fr_auto] md:pb-4">
+          <Button type="submit" disabled={isSubmitting} className="w-full">
+            {isSubmitting ? "Saving…" : editing ? "Save changes" : "Save"}
           </Button>
-        ) : null}
-      </SheetFooter>
+          {!editing ? (
+            <Button
+              type="submit"
+              variant="outline"
+              disabled={isSubmitting}
+              className="w-full px-5 md:hidden"
+              data-add-another="1"
+            >
+              Continue
+            </Button>
+          ) : null}
+        </SheetFooter>
+      )}
       <DipConfirmDialog
         warnings={confirm?.warnings ?? null}
         onCancel={() => setConfirm(null)}
@@ -1440,7 +1984,8 @@ export function QuickAddSheet({
     <>
       <SheetHeader className="pt-2 md:pt-4">
         <SheetTitle>{title}</SheetTitle>
-        <SheetDescription>
+        {/* Phones: the hint is for keyboards, so it stays for screen readers only. */}
+        <SheetDescription className="max-md:sr-only">
           {request.mode === "edit"
             ? "Saving replaces the original (it is kept as void)."
             : "Record an expense, income or transfer. Press N anywhere to open this."}

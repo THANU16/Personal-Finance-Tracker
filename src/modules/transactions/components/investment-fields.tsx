@@ -69,6 +69,7 @@ export function InvestmentHeader({
   holding,
   err,
   onDone,
+  showPicker = true,
 }: {
   control: QuickAddControl;
   type: string;
@@ -76,6 +77,8 @@ export function InvestmentHeader({
   holding: HoldingOption | undefined;
   err: (path: string) => string | undefined;
   onDone: () => void;
+  /** Phones pick the holding from tiles (Asset row), so the select is left out. */
+  showPicker?: boolean;
 }) {
   if (holdings.length === 0) {
     return (
@@ -93,41 +96,43 @@ export function InvestmentHeader({
   }
   return (
     <>
-      <FormField id="qa-holding" label="Holding" error={err("holdingId")}>
-        <Controller
-          control={control}
-          name="holdingId"
-          render={({ field }) => (
-            <Select
-              value={field.value}
-              onValueChange={(v) => field.onChange(String(v ?? ""))}
-              items={holdings.map((h) => ({ value: h.id, label: `${h.name} · ${h.currency}` }))}
-            >
-              <SelectTrigger
-                id="qa-holding"
-                className="w-full"
-                aria-invalid={Boolean(err("holdingId"))}
+      {showPicker ? (
+        <FormField id="qa-holding" label="Holding" error={err("holdingId")}>
+          <Controller
+            control={control}
+            name="holdingId"
+            render={({ field }) => (
+              <Select
+                value={field.value}
+                onValueChange={(v) => field.onChange(String(v ?? ""))}
+                items={holdings.map((h) => ({ value: h.id, label: `${h.name} · ${h.currency}` }))}
               >
-                <SelectValue placeholder="Choose a holding" />
-              </SelectTrigger>
-              <SelectContent className="max-h-80">
-                {holdings.map((h) => (
-                  <SelectItem key={h.id} value={h.id}>
-                    <span className="flex w-full justify-between gap-4">
-                      <span>{h.name}</span>
-                      <Money
-                        valueMinor={h.currentValueMinor}
-                        currency={h.currency}
-                        className="text-muted-foreground"
-                      />
-                    </span>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-        />
-      </FormField>
+                <SelectTrigger
+                  id="qa-holding"
+                  className="w-full"
+                  aria-invalid={Boolean(err("holdingId"))}
+                >
+                  <SelectValue placeholder="Choose a holding" />
+                </SelectTrigger>
+                <SelectContent className="max-h-80">
+                  {holdings.map((h) => (
+                    <SelectItem key={h.id} value={h.id}>
+                      <span className="flex w-full justify-between gap-4">
+                        <span>{h.name}</span>
+                        <Money
+                          valueMinor={h.currentValueMinor}
+                          currency={h.currency}
+                          className="text-muted-foreground"
+                        />
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          />
+        </FormField>
+      ) : null}
       {type === "redeem" && holding?.trackUnits && holding.units ? (
         <Controller
           control={control}
