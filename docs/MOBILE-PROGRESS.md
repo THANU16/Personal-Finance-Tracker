@@ -15,6 +15,14 @@
 Status values: ⬜ not started · 🟡 in progress · ✅ done
 
 ## Decisions
+- **Phone Quick add rebuilt (owner request, 2026-11-09).** Money Manager-style entry on phones:
+  calculator keypad, calendar, category and account/asset tiles in one bottom panel
+  (`src/modules/transactions/components/phone-entry/`). Owner chose account tiles with balances
+  (version B) and the keypad opening with a new form. Each pick opens the next empty field; a
+  pre-filled asset counts as empty unless it came with the request. Keypad sums are evaluated in
+  minor units with BigInt (× ÷ before + −, each step rounded half away from zero). The keyboard hint
+  under the title is screen-reader only on phones. Desktop form unchanged. e2e:
+  `tests/e2e/quick-add-phone.spec.ts`.
 - **M0 — screenshots run against an in-memory database, not Atlas.** docs/08 M0 says to log in as the
   seeded user from `.env.local` (`E2E_EMAIL`/`E2E_PASSWORD`), but those keys do not exist and
   `npm run seed` writes to the Atlas cluster in `MONGODB_URI`. `npm run screens` instead starts an

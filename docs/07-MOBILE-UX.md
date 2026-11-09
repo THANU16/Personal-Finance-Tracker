@@ -60,8 +60,11 @@ never pinch-zoom, never scroll sideways.**
   banner) → This month (income / expense / savings rate) → allocation donut (compact, legend as
   list) → goals → essentials.
 - **Quick add (+):** full-screen sheet. Type chips at top (Expense · Income · Transfer · Invest ·
-  Redeem · Inv. income · Debt pay). Huge amount field focused first, then category grid (recent
-  first), account, date, note. One "Save" in the sticky bar. "Save & add another".
+  Redeem · Inv. income · Debt pay). Tap rows + bottom panel (owner request, 2026-11-09): calculator
+  keypad open first (no phone keyboard for amounts; sums are exact in minor units,
+  `src/domain/amount-expression.ts`), then category tiles (main → sub, recent first), account tiles
+  with balances (version B), calendar for the date; Note last; optional fields under "More details".
+  Sticky bar: Save · Continue.
 - **Activity:** grouped by day with day totals; search at top; filter chip sheet; tap row → detail
   sheet with Edit / Duplicate / Void.
 - **Assets:** totals card; class sections collapsible; holding rows (name, value, gain % chip,

@@ -76,5 +76,5 @@ test("phone quick add: keypad sum → category → save, then Continue", async (
 
   await page.keyboard.press("Escape");
   await page.goto("/transactions");
-  await expect(page.getByText("Weekly groceries").first()).toBeVisible();
+  await expect(page.getByText("Weekly groceries").filter({ visible: true }).first()).toBeVisible();
 });

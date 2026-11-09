@@ -11,6 +11,13 @@
   System: Notifications · Settings
 - **Quick add** (button + keyboard `N`): sheet with type tabs Expense · Income · Transfer · Invest ·
   Redeem · Income from investment · Debt payment. Remembers last account. Enter submits.
+  Phones (owner request, 2026-11-09): tap rows Date · Amount (Fees on transfers) · Category · Asset ·
+  Account / From / To · Note, and one bottom panel that replaces the Save bar while open — calculator
+  keypad (+ − × ÷ =, OK goes to the next empty field; a new form opens on it), calendar (Sunday first,
+  Yesterday / Today), category tiles (main → sub, first tile keeps the main category; recent row on top),
+  account / asset tiles with balance and "X free" for earmarked accounts. Everything else (Pay from,
+  split, payee, tags, notes, template) sits under a collapsed "More details". Save · Continue (keeps
+  date and accounts, reopens the keypad). Desktop unchanged.
 - **Formatting:** `LKR 1,250,000.00` (or compact `1.25M` on cards with full value in tooltip);
   negatives red with minus sign; gains green/losses red with ▲/▼ chip; percents 1 decimal.
 - **Every list:** empty state with a primary action; skeleton loading; pagination or virtualised table.

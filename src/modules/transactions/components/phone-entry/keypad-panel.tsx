@@ -28,7 +28,7 @@ const KEYS: { key: PadKey; text: React.ReactNode; label?: string; kind?: "op" | 
     { key: "back", text: <Delete className="size-6" aria-hidden />, label: "Delete", kind: "op" },
     { key: "clear", text: "Clear", kind: "soft" },
     { key: "0", text: "0" },
-    { key: "00", text: "00", label: "Double zero" },
+    { key: "00", text: "00" },
     { key: "ok", text: "OK", kind: "ok" },
   ];
 
