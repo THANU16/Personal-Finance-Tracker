@@ -110,3 +110,60 @@ export function previousMonth(month: string): string {
   const [y, m] = month.split("-").map(Number) as [number, number];
   return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, "0")}`;
 }
+
+// ------------------------------------------------------------------------------ repeating budgets
+// Owner request: a budget can repeat every month from a start month (optionally until an end month)
+// instead of being set month by month. A one-month row overrides it for that month (or skips it).
+
+/** A month's own budget row; `skip` = no budget this month even though one repeats. */
+export interface MonthBudget {
+  categoryId: string;
+  amountMinor: number;
+  skip: boolean;
+}
+
+/** A repeating budget: every month from `fromMonth` to `untilMonth` (null = no end). */
+export interface BudgetRule {
+  categoryId: string;
+  amountMinor: number;
+  fromMonth: string;
+  untilMonth: string | null;
+}
+
+export interface EffectiveBudget extends BudgetLine {
+  /** The repeating budget in force, or null for a one-month budget. */
+  repeat: { fromMonth: string; untilMonth: string | null } | null;
+}
+
+/** Does the rule cover `month`? (`YYYY-MM` keys compare as strings.) */
+export function ruleCovers(rule: Pick<BudgetRule, "fromMonth" | "untilMonth">, month: string) {
+  return rule.fromMonth <= month && (rule.untilMonth === null || rule.untilMonth >= month);
+}
+
+/**
+ * The budget that applies to each category in `month`: its own row wins (a skip row means none);
+ * otherwise the covering repeating budget with the latest start month. Sorted by category id.
+ */
+export function effectiveBudgets(
+  month: string,
+  monthRows: readonly MonthBudget[],
+  rules: readonly BudgetRule[],
+): EffectiveBudget[] {
+  const out = new Map<string, EffectiveBudget>();
+  const own = new Map(monthRows.map((r) => [r.categoryId, r]));
+  for (const r of rules) {
+    if (!ruleCovers(r, month) || own.has(r.categoryId)) continue;
+    const cur = out.get(r.categoryId);
+    if (cur?.repeat && cur.repeat.fromMonth >= r.fromMonth) continue;
+    out.set(r.categoryId, {
+      categoryId: r.categoryId,
+      amountMinor: r.amountMinor,
+      repeat: { fromMonth: r.fromMonth, untilMonth: r.untilMonth },
+    });
+  }
+  for (const r of monthRows) {
+    if (r.skip) continue;
+    out.set(r.categoryId, { categoryId: r.categoryId, amountMinor: r.amountMinor, repeat: null });
+  }
+  return [...out.values()].sort((a, b) => (a.categoryId < b.categoryId ? -1 : 1));
+}

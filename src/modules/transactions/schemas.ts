@@ -42,6 +42,7 @@ const base = {
   /** Dip guard (docs/04 §20): retry flags after NEEDS_CONFIRMATION. Emergency needs its own flag. */
   confirmOpportunity: z.boolean().optional(),
   confirmEmergency: z.boolean().optional(),
+  confirmGoal: z.boolean().optional(),
 };
 
 /** Optional bucket (owner request): empty = free cash, the normal behaviour. */

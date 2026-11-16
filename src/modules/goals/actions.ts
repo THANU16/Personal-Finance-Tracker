@@ -1,7 +1,15 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createGoal, deleteGoal, setGoalArchived, updateGoal } from "@/modules/goals/service";
+import {
+  completeGoalCycle,
+  createGoal,
+  deleteGoal,
+  listGoalOptions,
+  setGoalArchived,
+  skipGoalCycle,
+  updateGoal,
+} from "@/modules/goals/service";
 import type { ActionResult } from "@/server/action-result";
 import { requireUser } from "@/server/auth/require-user";
 import { runAction } from "@/server/run-action";
@@ -40,4 +48,23 @@ export async function deleteGoalAction(id: string): Promise<ActionResult<{ id: s
     revalidate();
     return r;
   });
+}
+
+/** Repeating goals: close the current cycle (paid / done) or skip it; the due date moves on. */
+export async function closeGoalCycleAction(
+  id: string,
+  outcome: "completed" | "skipped",
+): Promise<ActionResult<{ id: string; nextDueDate: string }>> {
+  return runAction(async () => {
+    const ctx = await requireUser();
+    const r =
+      outcome === "completed" ? await completeGoalCycle(ctx, id) : await skipGoalCycle(ctx, id);
+    revalidate();
+    return r;
+  });
+}
+
+/** Active goals for the account form's "Kept for goal" picker (read only). */
+export async function goalOptionsAction(): Promise<ActionResult<{ id: string; name: string }[]>> {
+  return runAction(async () => listGoalOptions(await requireUser()));
 }

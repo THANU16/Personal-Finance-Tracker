@@ -1,5 +1,5 @@
 import "server-only";
-import type { ClientSession } from "mongoose";
+import { Types, type ClientSession } from "mongoose";
 import { cardOutstandingMinor, cardUtilisationBp, nextMonthlyDate } from "@/domain/accounts";
 import { businessDateToUtc, utcToBusinessDate } from "@/domain/dates";
 import {
@@ -8,6 +8,7 @@ import {
   reconcileRecordAllowed,
   type ReconcileRecordAs,
 } from "@/domain/ledger";
+import { GOAL_ACCOUNT_TYPES } from "@/domain/earmarks";
 import { formatMoney } from "@/lib/format";
 import { AccountModel, type AccountDoc } from "@/modules/accounts/model";
 import {
@@ -20,6 +21,7 @@ import {
 import { CategoryModel, type CategoryDoc } from "@/modules/categories/model";
 import { SYSTEM_CATEGORY } from "@/modules/categories/seed";
 import { getSystemCategoryId } from "@/modules/categories/service";
+import { GoalModel, type GoalDoc } from "@/modules/goals/model";
 import { TransactionModel } from "@/modules/transactions/model";
 import { hasEarmarks } from "@/modules/earmarks/service";
 import { parseInput } from "@/server/action-result";
@@ -33,7 +35,12 @@ import { postTransaction, type LedgerDraft } from "@/server/ledger/post";
 import { recomputeAccount } from "@/server/ledger/recompute";
 import { voidTransaction as voidLedgerTransaction } from "@/server/ledger/void";
 
-export function toAccountDTO(doc: AccountDoc, tz: string, todayKey?: string): AccountDTO {
+export function toAccountDTO(
+  doc: AccountDoc,
+  tz: string,
+  todayKey?: string,
+  goalNames?: ReadonlyMap<string, string>,
+): AccountDTO {
   const card =
     doc.type === "credit_card" && doc.creditCard
       ? {
@@ -57,6 +64,8 @@ export function toAccountDTO(doc: AccountDoc, tz: string, todayKey?: string): Ac
     openingDate: utcToBusinessDate(doc.openingDate, tz),
     includeInNetWorth: doc.includeInNetWorth,
     countsTowardEmergencyFund: doc.countsTowardEmergencyFund,
+    goalId: doc.goalId ? String(doc.goalId) : null,
+    goalName: doc.goalId ? (goalNames?.get(String(doc.goalId)) ?? null) : null,
     creditCard: doc.creditCard
       ? {
           limitMinor: doc.creditCard.limitMinor,
@@ -103,22 +112,85 @@ export async function listAccounts(
     .sort({ name: 1 })
     .lean<AccountDoc[]>();
   const today = utcToBusinessDate(new Date(), ctx.tz);
-  return docs.map((d) => toAccountDTO(d, ctx.tz, today));
+  const names = await goalNamesOf(ctx, docs);
+  return docs.map((d) => toAccountDTO(d, ctx.tz, today, names));
 }
 
 export async function getAccount(ctx: Ctx, id: string): Promise<AccountDTO> {
   await connectDb();
-  return toAccountDTO(await loadOwned(ctx, id), ctx.tz);
+  const doc = await loadOwned(ctx, id);
+  return toAccountDTO(doc, ctx.tz, undefined, await goalNamesOf(ctx, [doc]));
+}
+
+/** Names of the goals these accounts are reserved for (goal savings accounts). */
+export async function goalNamesOf(
+  ctx: Ctx,
+  docs: readonly Pick<AccountDoc, "goalId">[],
+): Promise<Map<string, string>> {
+  const ids = [...new Set(docs.filter((d) => d.goalId).map((d) => String(d.goalId)))];
+  if (!ids.length) return new Map();
+  const goals = await GoalModel.find({
+    userId: toObjectId(ctx.userId, "User"),
+    _id: { $in: ids.map((id) => new Types.ObjectId(id)) },
+  })
+    .select({ name: 1 })
+    .lean<Pick<GoalDoc, "_id" | "name">[]>();
+  return new Map(goals.map((g) => [String(g._id), g.name]));
+}
+
+/**
+ * Goal savings account (owner request, docs/04 §13): only bank / cash / wallet, not an emergency
+ * account, no earmarks, an active goal of this user, and not also linked to a goal by a share
+ * (it would count twice).
+ */
+async function checkGoalReservation(
+  ctx: Ctx,
+  next: { type: string; countsTowardEmergencyFund: boolean; goalId: string | null },
+  accountId: Types.ObjectId | null,
+  session: ClientSession,
+): Promise<void> {
+  if (!next.goalId) return;
+  const fail = (code: "VALIDATION" | "CONFLICT" | "NOT_FOUND", message: string): never => {
+    throw new AppError(code, message, { goalId: [message] });
+  };
+  if (!GOAL_ACCOUNT_TYPES.includes(next.type as (typeof GOAL_ACCOUNT_TYPES)[number])) {
+    fail("VALIDATION", "Only bank, cash and wallet accounts can be kept for a goal");
+  }
+  if (next.countsTowardEmergencyFund) {
+    fail("VALIDATION", "An emergency fund account cannot also be kept for a goal");
+  }
+  const userId = toObjectId(ctx.userId, "User");
+  const goal = await GoalModel.findOne({ _id: toObjectId(next.goalId, "Goal"), userId })
+    .session(session)
+    .lean<GoalDoc>();
+  if (!goal) fail("NOT_FOUND", "Goal not found");
+  if (goal!.status === "archived") fail("CONFLICT", `"${goal!.name}" is archived`);
+  if (accountId) {
+    if (await hasEarmarks(userId, accountId, session)) {
+      fail("CONFLICT", "Remove this account's earmarks first");
+    }
+    const linked = await GoalModel.findOne({ userId, "links.refId": accountId })
+      .session(session)
+      .lean<GoalDoc>();
+    if (linked) {
+      fail(
+        "CONFLICT",
+        `This account is linked to "${linked.name}" with a share; remove that link first`,
+      );
+    }
+  }
 }
 
 export async function createAccount(ctx: Ctx, input: unknown): Promise<AccountDTO> {
   const data = parseInput(createAccountSchema, input);
   return withTransaction(async (session) => {
     const userId = toObjectId(ctx.userId, "User");
+    await checkGoalReservation(ctx, data, null, session);
     const [doc] = await AccountModel.create(
       [
         {
           ...data,
+          goalId: data.goalId ? new Types.ObjectId(data.goalId) : null,
           userId,
           openingDate: businessDateToUtc(data.openingDate, ctx.tz),
           balanceMinor: data.openingBalanceMinor,
@@ -133,7 +205,8 @@ export async function createAccount(ctx: Ctx, input: unknown): Promise<AccountDT
       { userId: ctx.userId, action: "create", entity: "account", entityId: doc!._id, after: data },
       session,
     );
-    return toAccountDTO(await loadOwned(ctx, String(doc!._id), session), ctx.tz);
+    const created = await loadOwned(ctx, String(doc!._id), session);
+    return toAccountDTO(created, ctx.tz, undefined, await goalNamesOf(ctx, [created]));
   });
 }
 
@@ -159,6 +232,19 @@ export async function updateAccount(ctx: Ctx, id: string, input: unknown): Promi
       const message = "Remove this account's earmarks first";
       throw new AppError("CONFLICT", message, { countsTowardEmergencyFund: [message] });
     }
+    const nextGoalId =
+      data.goalId !== undefined ? data.goalId : current.goalId ? String(current.goalId) : null;
+    await checkGoalReservation(
+      ctx,
+      {
+        type: current.type,
+        countsTowardEmergencyFund:
+          data.countsTowardEmergencyFund ?? current.countsTowardEmergencyFund,
+        goalId: nextGoalId,
+      },
+      current._id,
+      session,
+    );
     if (data.creditCard !== undefined && current.type !== "credit_card" && data.creditCard) {
       throw new AppError("VALIDATION", "Only credit cards have a limit");
     }
@@ -168,6 +254,8 @@ export async function updateAccount(ctx: Ctx, id: string, input: unknown): Promi
       });
     }
     const $set: Record<string, unknown> = { ...data };
+    if (data.goalId !== undefined)
+      $set.goalId = data.goalId ? new Types.ObjectId(data.goalId) : null;
     if (data.openingDate) {
       const openingDate = businessDateToUtc(data.openingDate, ctx.tz);
       const earlier = await TransactionModel.exists({

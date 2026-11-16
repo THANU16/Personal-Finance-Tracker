@@ -65,6 +65,9 @@ export interface QuickAddOptions {
     bucketable: boolean;
     emergencyMinor: number;
     opportunityMinor: number;
+    /** Goal savings account (owner request): never a default; listed in its own group. */
+    goalId: string | null;
+    goalName: string | null;
   }[];
   categories: CategoryNode[];
   /** + holding earmarks (owner request): bucket tags on buy / sell / switch. */
@@ -97,16 +100,21 @@ export async function getQuickAddOptionsAction(): Promise<ActionResult<QuickAddO
     return {
       todayKey: utcToBusinessDate(new Date(), ctx.tz),
       baseCurrency: ctx.baseCurrency,
-      accounts: accounts.map((a) => ({
-        id: a.id,
-        name: a.name,
-        type: a.type,
-        currency: a.currency,
-        balanceMinor: a.balanceMinor,
-        bucketable: Boolean(buckets.get(a.id)?.canCarryEarmarks),
-        emergencyMinor: buckets.get(a.id)?.emergencyMinor ?? 0,
-        opportunityMinor: buckets.get(a.id)?.opportunityMinor ?? 0,
-      })),
+      // Goal savings accounts last (stable sort keeps the name order within each part).
+      accounts: [...accounts]
+        .sort((a, b) => Number(Boolean(a.goalId)) - Number(Boolean(b.goalId)))
+        .map((a) => ({
+          id: a.id,
+          name: a.name,
+          type: a.type,
+          currency: a.currency,
+          balanceMinor: a.balanceMinor,
+          bucketable: Boolean(buckets.get(a.id)?.canCarryEarmarks),
+          emergencyMinor: buckets.get(a.id)?.emergencyMinor ?? 0,
+          opportunityMinor: buckets.get(a.id)?.opportunityMinor ?? 0,
+          goalId: a.goalId,
+          goalName: a.goalName,
+        })),
       categories,
       holdings: holdings.map((h) => {
         const hb = holdingBuckets.get(h.id);

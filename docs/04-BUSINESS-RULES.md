@@ -262,10 +262,32 @@ Drift, cashflow rebalance, deployments and the drift tilt use the **normalised**
 ## 13. Budgets, goals, essentials, health score
 - **Budget actual** = expense in the category and its children for the month (splits included).
   Alerts at 80% and 100% (once per category per month).
-- **Goal current** = Σ linked value × shareBp. **Required monthly** (r = expectedReturnBp/12, n months left):
+- **Budget in force** (owner request, repeating budgets): for category c in month m, its own `budgets` row wins (a `skip`
+  row means no budget); otherwise the `budgetRules` row with `fromMonth ≤ m ≤ untilMonth` (null = no end) and the latest
+  `fromMonth`. Every budget read (Budgets page, alerts, dashboard, forecast, reports, Copy last month) uses this.
+  Set "every month from m (until u)": upsert the rule starting m, delete rules starting after m (inside [m, u] when u is
+  set) and m's own row, so the new amount applies from m; months before m keep theirs. Set "this month only": upsert m's
+  row (an override). Remove "only this month": a skip row when a rule covers m, else delete m's row. Remove "this and later
+  months": rules starting ≥ m are deleted, a rule covering m ends at m − 1, and own rows ≥ m are deleted.
+  Example: food 50,000 every month from 2026-01; 60,000 from 2026-06 → May 50,000, June on 60,000. A ranged
+  2026-12 → 2026-12 budget of 90,000 gives December 90,000 and January 50,000 again.
+- **Goal current** = Σ linked value × shareBp + Σ balances of the goal's savings accounts (counted in full, never below 0;
+  §20); their 3-month net change counts as contribution in full too. **Required monthly** (r = expectedReturnBp/12, n months left):
   r = 0 → `(target − current)/n`; else `(target − current×(1+r)^n) × r / ((1+r)^n − 1)`.
   On track if required monthly ≤ 110% of the average net monthly contribution to linked items over the
   last 3 months; achieved when current ≥ target.
+- **Repeating goals** (owner request): `recurrence = { every, unit: month|year, anchorDate, anchorCycle }`. The target is
+  per cycle and `targetDate` is the open cycle's due date, so current / required monthly / status above apply unchanged
+  to the current cycle. Due date of cycle c = `anchorDate + (c − anchorCycle) × period` (period = every months, or every
+  × 12 months), always counted from the anchor and clamped to month end (31 Jan monthly → 28/29 Feb, 31 Mar;
+  29 Feb yearly → 28 Feb in common years). **Complete cycle** / **Skip** append `{cycleNo, dueDate, targetMinor,
+  currentAtCloseMinor, status, closedOn}` to `cycles`, add 1 to `cycleNo` and set `targetDate` to the next due date
+  (one DB write guarded by `cycleNo`, so a double click cannot close a cycle twice). No money moves: paying the bill
+  from a linked account lowers its balance, so progress starts again by itself. Editing the due date or the period
+  re-anchors at the current cycle (`anchorDate = new due date, anchorCycle = cycleNo`); an edit that changes neither
+  keeps the anchor. Switching to one-time drops `recurrence` and keeps the history.
+  Worked example: yearly insurance 150,000 due 2027-03-01 → Complete cycle → next due 2028-03-01, history
+  `[{cycle 0, due 2027-03-01, completed}]`. Every 8 months from 2026-12-05 → 2027-08-05, 2028-04-05, 2028-12-05.
 - **Emergency fund:** basis = settings.emergencyExpenseBasis (essential falls back to all when no category is flagged essential; manual uses
   emergencyManualMonthlyMinor); target = emergencyTargetOverrideMinor ?? basis × emergencyMonths; current = emergency bucket (§20).
   Essential/all basis = average monthly expense (in `isEssential` categories, or all categories) over the last 6 complete months;
@@ -344,6 +366,13 @@ Email sent only if enabled and `RESEND_API_KEY` is configured.
 - Earmarkable accounts: bank, cash, wallet, broker_cash with balance > 0 and not dedicated.
 - Dedicated accounts: type `opportunity_fund` (implicitly 100% opportunity) and any account with `countsTowardEmergencyFund` (implicitly
   100% emergency). They cannot carry explicit earmarks.
+- **Goal savings accounts** (owner request): a bank, cash or wallet account with `goalId` is kept for that goal as a whole.
+  It is neither earmarkable nor spendable cash, so it is left out of free cash and safe to spend (its upcoming outflows too);
+  it still counts in net worth. It carries no earmarks and no bucket tags, cannot also count toward the emergency fund, and
+  cannot also be linked to a goal by a share (§13). An outflow from it (expense, transfer out incl. fee, invest incl. fee,
+  debt payment) is rejected with `NEEDS_CONFIRMATION` and `WITHDRAWS_FROM_GOAL(goalName, amount)` unless `confirmGoal` is
+  sent; Goals → **Pay from goal** sends it itself. Inflows, voids, reconcile and the unguarded sources are never asked.
+  Archiving or deleting the goal clears `goalId` on its accounts (same DB transaction) — they become normal money.
 - Raw earmark on account balance B: fixed → `amountMinor`; percent → `round(B × percentBp / 10000)`.
 - Effective earmarks: if Σ raw > B (over-earmarked) reduce opportunity first, then emergency, until Σ = B. Stored values are untouched;
   show an "Over-earmarked" badge and raise `over_earmarked`.

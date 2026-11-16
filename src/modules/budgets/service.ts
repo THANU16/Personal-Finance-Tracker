@@ -1,18 +1,26 @@
 import "server-only";
-import { Types } from "mongoose";
+import { Types, type ClientSession } from "mongoose";
 import {
   budgetActuals,
   budgetStatus,
   budgetTotal,
   budgetedSpendTotal,
   copyForward,
+  effectiveBudgets,
   previousMonth,
+  ruleCovers,
   unbudgeted,
   type BudgetStatus,
+  type EffectiveBudget,
   type SpendLine,
 } from "@/domain/budgets";
 import { businessDateToUtc, utcToBusinessDate } from "@/domain/dates";
-import { BudgetModel, type BudgetDoc } from "@/modules/budgets/model";
+import {
+  BudgetModel,
+  BudgetRuleModel,
+  type BudgetDoc,
+  type BudgetRuleDoc,
+} from "@/modules/budgets/model";
 import { CategoryModel, type CategoryDoc } from "@/modules/categories/model";
 import { loadToBase } from "@/modules/fx/service";
 import { TransactionModel } from "@/modules/transactions/model";
@@ -27,6 +35,8 @@ import { z } from "zod";
 // docs/04 §13 — monthly budgets per expense category (base currency). Actual = expense in the
 // category and its children for the month (splits per line), plus transfer fees ("Bank fees") and
 // loan interest ("Loan interest"), the same definition as cashflow (§4).
+// Owner request: a budget can repeat every month (budgetRules) from a month on, optionally until an
+// end month; a month's own row overrides it (or skips it) for that month.
 
 const month = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, "Pick a month");
 const objectId = z.string().regex(/^[a-f0-9]{24}$/i, "Choose a category");
@@ -39,9 +49,27 @@ export const setBudgetSchema = z
       .int("Whole amount")
       .positive("Above zero")
       .max(Number.MAX_SAFE_INTEGER),
+    /** "month" = this month only; "repeat" = every month from `month` (until `untilMonth`). */
+    applies: z.enum(["month", "repeat"]).default("month"),
+    untilMonth: month.nullish(),
+  })
+  .strict()
+  .refine((v) => !v.untilMonth || v.applies === "repeat", {
+    path: ["untilMonth"],
+    message: "Only a repeating budget has an end month",
+  })
+  .refine((v) => !v.untilMonth || v.untilMonth >= v.month, {
+    path: ["untilMonth"],
+    message: "Pick this month or later",
+  });
+export const removeBudgetSchema = z
+  .object({
+    month,
+    categoryId: objectId,
+    /** "month" = only this month; "onwards" = this and later months. */
+    scope: z.enum(["month", "onwards"]).default("month"),
   })
   .strict();
-export const removeBudgetSchema = z.object({ month, categoryId: objectId }).strict();
 export const monthSchema = month;
 
 export interface BudgetRowDTO {
@@ -54,6 +82,8 @@ export interface BudgetRowDTO {
   remainingMinor: number;
   usedBp: number;
   status: BudgetStatus;
+  /** The repeating budget this month's amount comes from; null = this month only. */
+  repeat: { fromMonth: string; untilMonth: string | null } | null;
 }
 
 export interface BudgetMonthDTO {
@@ -76,6 +106,42 @@ const nextMonth = (m: string) => {
   return mm === 12 ? `${y + 1}-01` : `${y}-${String(mm + 1).padStart(2, "0")}`;
 };
 export const currentMonth = (ctx: Ctx) => utcToBusinessDate(new Date(), ctx.tz).slice(0, 7);
+
+/** The budgets that apply in `m` (own rows win; else the covering repeating budget). */
+async function loadEffective(
+  ctx: Ctx,
+  m: string,
+  session?: ClientSession,
+): Promise<EffectiveBudget[]> {
+  const userId = uid(ctx);
+  const rowsQ = BudgetModel.find({ userId, month: m });
+  const rulesQ = BudgetRuleModel.find({
+    userId,
+    fromMonth: { $lte: m },
+    $or: [{ untilMonth: null }, { untilMonth: { $gte: m } }],
+  });
+  if (session) {
+    rowsQ.session(session);
+    rulesQ.session(session);
+  }
+  // Sequential inside a transaction (parallel operations cannot share one).
+  const rows = await rowsQ.lean<BudgetDoc[]>();
+  const rules = await rulesQ.lean<BudgetRuleDoc[]>();
+  return effectiveBudgets(
+    m,
+    rows.map((r) => ({
+      categoryId: String(r.categoryId),
+      amountMinor: r.amountMinor,
+      skip: Boolean(r.skip),
+    })),
+    rules.map((r) => ({
+      categoryId: String(r.categoryId),
+      amountMinor: r.amountMinor,
+      fromMonth: r.fromMonth,
+      untilMonth: r.untilMonth ?? null,
+    })),
+  );
+}
 
 /** Categorised expense lines of a month in base currency (user timezone). */
 export async function spendLines(
@@ -172,12 +238,13 @@ export async function getBudgetMonth(ctx: Ctx, m: string): Promise<BudgetMonthDT
   const mm = parseInput(monthSchema, m);
   await connectDb();
   const userId = uid(ctx);
-  const [budgets, categories, spend, prevCount] = await Promise.all([
-    BudgetModel.find({ userId, month: mm }).lean<BudgetDoc[]>(),
+  const [budgets, categories, spend, prev] = await Promise.all([
+    loadEffective(ctx, mm),
     CategoryModel.find({ userId, kind: "expense" }).lean<CategoryDoc[]>(),
     spendLines(ctx, mm),
-    BudgetModel.countDocuments({ userId, month: previousMonth(mm) }),
+    loadEffective(ctx, previousMonth(mm)),
   ]);
+  const repeatOf = new Map(budgets.map((b) => [b.categoryId, b.repeat]));
   const byId = new Map(categories.map((c) => [String(c._id), c]));
   const parentOf = new Map(
     categories.map((c) => [String(c._id), c.parentId ? String(c.parentId) : null]),
@@ -203,6 +270,7 @@ export async function getBudgetMonth(ctx: Ctx, m: string): Promise<BudgetMonthDT
         spentMinor: spent,
         remainingMinor: b.amountMinor - spent,
         ...budgetStatus(spent, b.amountMinor),
+        repeat: repeatOf.get(b.categoryId) ?? null,
       };
     })
     .sort(
@@ -243,40 +311,102 @@ export async function getBudgetMonth(ctx: Ctx, m: string): Promise<BudgetMonthDT
         return { id: String(c._id), label: l.parentName ? `${l.parentName} › ${l.name}` : l.name };
       })
       .sort((a, z) => a.label.localeCompare(z.label)),
-    previousMonthBudgets: prevCount,
+    previousMonthBudgets: prev.length,
   };
 }
 
+/**
+ * Sets a category's budget. "month": this month only (overrides any repeating budget). "repeat":
+ * every month from `month` on (until `untilMonth`): this month's own row is dropped so the new
+ * amount applies now, and later repeating budgets inside the new range are replaced. Earlier months
+ * keep their amounts.
+ */
 export async function setBudget(ctx: Ctx, input: unknown): Promise<{ saved: true }> {
   const data = parseInput(setBudgetSchema, input);
-  await connectDb();
-  const userId = uid(ctx);
-  const c = await CategoryModel.findOne({
-    _id: toObjectId(data.categoryId, "Category"),
-    userId,
-  }).lean<CategoryDoc>();
-  if (!c || c.kind !== "expense" || c.archivedAt) {
-    throw new AppError("VALIDATION", "Choose an active expense category", {
-      categoryId: ["Expense category"],
-    });
-  }
-  await BudgetModel.updateOne(
-    { userId, month: data.month, categoryId: c._id },
-    { $set: { amountMinor: data.amountMinor }, $setOnInsert: { rollover: false } },
-    { upsert: true, runValidators: true },
-  );
-  return { saved: true };
+  return withTransaction(async (session) => {
+    const userId = uid(ctx);
+    const c = await CategoryModel.findOne({
+      _id: toObjectId(data.categoryId, "Category"),
+      userId,
+    })
+      .session(session)
+      .lean<CategoryDoc>();
+    if (!c || c.kind !== "expense" || c.archivedAt) {
+      throw new AppError("VALIDATION", "Choose an active expense category", {
+        categoryId: ["Expense category"],
+      });
+    }
+    if (data.applies === "month") {
+      await BudgetModel.updateOne(
+        { userId, month: data.month, categoryId: c._id },
+        { $set: { amountMinor: data.amountMinor, skip: false }, $setOnInsert: { rollover: false } },
+        { upsert: true, runValidators: true, session },
+      );
+      return { saved: true as const };
+    }
+    const until = data.untilMonth ?? null;
+    await BudgetRuleModel.deleteMany(
+      {
+        userId,
+        categoryId: c._id,
+        fromMonth: until ? { $gt: data.month, $lte: until } : { $gt: data.month },
+      },
+      { session },
+    );
+    await BudgetRuleModel.updateOne(
+      { userId, categoryId: c._id, fromMonth: data.month },
+      { $set: { amountMinor: data.amountMinor, untilMonth: until } },
+      { upsert: true, runValidators: true, session },
+    );
+    await BudgetModel.deleteOne({ userId, month: data.month, categoryId: c._id }, { session });
+    return { saved: true as const };
+  });
 }
 
+/**
+ * "month": no budget this month (a repeating budget is skipped for it; a one-month budget is
+ * removed). "onwards": this and later months — repeating budgets end the month before (or are
+ * removed if they start now or later) and later one-month rows go too. Earlier months keep theirs.
+ */
 export async function removeBudget(ctx: Ctx, input: unknown): Promise<{ removed: true }> {
   const data = parseInput(removeBudgetSchema, input);
-  await connectDb();
-  await BudgetModel.deleteOne({
-    userId: uid(ctx),
-    month: data.month,
-    categoryId: toObjectId(data.categoryId, "Category"),
+  return withTransaction(async (session) => {
+    const userId = uid(ctx);
+    const categoryId = toObjectId(data.categoryId, "Category");
+    const rules = await BudgetRuleModel.find({ userId, categoryId })
+      .session(session)
+      .lean<BudgetRuleDoc[]>();
+    if (data.scope === "month") {
+      if (
+        rules.some((r) =>
+          ruleCovers({ fromMonth: r.fromMonth, untilMonth: r.untilMonth ?? null }, data.month),
+        )
+      ) {
+        await BudgetModel.updateOne(
+          { userId, month: data.month, categoryId },
+          { $set: { amountMinor: 0, skip: true }, $setOnInsert: { rollover: false } },
+          { upsert: true, runValidators: true, session },
+        );
+      } else {
+        await BudgetModel.deleteOne({ userId, month: data.month, categoryId }, { session });
+      }
+      return { removed: true as const };
+    }
+    const before = previousMonth(data.month);
+    for (const r of rules) {
+      if (r.fromMonth >= data.month) {
+        await BudgetRuleModel.deleteOne({ _id: r._id, userId }, { session });
+      } else if (r.untilMonth === null || r.untilMonth >= data.month) {
+        await BudgetRuleModel.updateOne(
+          { _id: r._id, userId },
+          { $set: { untilMonth: before } },
+          { session },
+        );
+      }
+    }
+    await BudgetModel.deleteMany({ userId, categoryId, month: { $gte: data.month } }, { session });
+    return { removed: true as const };
   });
-  return { removed: true };
 }
 
 /** "Copy last month": adds last month's budgets for categories without one this month. */
@@ -285,23 +415,14 @@ export async function copyLastMonth(ctx: Ctx, m: string): Promise<{ copied: numb
   return withTransaction(async (session) => {
     const userId = uid(ctx);
     // Sequential: parallel operations cannot open a DB transaction.
-    const prev = await BudgetModel.find({ userId, month: previousMonth(mm) })
-      .session(session)
-      .lean<BudgetDoc[]>();
-    const cur = await BudgetModel.find({ userId, month: mm }).session(session).lean<BudgetDoc[]>();
-    const toAdd = copyForward(
-      prev.map((b) => ({ categoryId: String(b.categoryId), amountMinor: b.amountMinor })),
-      cur.map((b) => ({ categoryId: String(b.categoryId), amountMinor: b.amountMinor })),
-    );
-    if (toAdd.length) {
-      await BudgetModel.insertMany(
-        toAdd.map((b) => ({
-          userId,
-          month: mm,
-          categoryId: new Types.ObjectId(b.categoryId),
-          amountMinor: b.amountMinor,
-        })),
-        { session },
+    const prev = await loadEffective(ctx, previousMonth(mm), session);
+    const cur = await loadEffective(ctx, mm, session);
+    const toAdd = copyForward(prev, cur);
+    for (const b of toAdd) {
+      await BudgetModel.updateOne(
+        { userId, month: mm, categoryId: new Types.ObjectId(b.categoryId) },
+        { $set: { amountMinor: b.amountMinor, skip: false }, $setOnInsert: { rollover: false } },
+        { upsert: true, runValidators: true, session },
       );
     }
     return { copied: toAdd.length };

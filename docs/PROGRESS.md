@@ -496,6 +496,26 @@ Status values: ⬜ not started · 🟡 in progress · ✅ done
   in another account (transfer + bank fee) or in an asset (invest), from the source or a different account. Execute can
   change the route and fee for the period; Undo releases a reserve and voids the moves. Simplest choices: a reserve too
   big for the account's free money is refused (not partially kept); the target list shows the share read-only.
+- [goals] **Repeating goals (owner request, 2026-11-16):** a goal is one-time or repeats every N months/years
+  (1–120). Kept on the goal itself (no `goalCycles` collection): `kind`, `recurrence {every, unit, anchorDate,
+  anchorCycle}`, `cycleNo`, `cycles[]`. `targetMinor` is per cycle and `targetDate` is the open cycle's due date, so the
+  §13 progress / required monthly / status code is unchanged. Due dates are counted from an anchor (no month-end drift);
+  editing the date or period re-anchors at the current cycle. Complete cycle / Skip move the due date on; no money
+  moves. Owner kept the scope small: no end date / max cycles, escalation, due-soon notifications or auto-complete on
+  payment. Goal links (shares of accounts/holdings) are unchanged.
+- [goals] **Goal savings accounts (owner request, 2026-11-16):** `accounts.goalId` marks a bank / cash / wallet account
+  as kept for one goal (a setting, not a new account type, so the account keeps its real type). Its balance counts in full
+  toward the goal, is never free cash or safe to spend, carries no earmarks or bucket tags, and spending from it asks
+  (`WITHDRAWS_FROM_GOAL`, `confirmGoal`); Pay from goal sends the confirmation. Archive / delete of the goal clears `goalId`
+  in the same transaction. Simplest choices: one account serves one goal; it cannot also be linked to a goal by a share or
+  count toward the emergency fund; Quick add sanitises remembered accounts on read (goal accounts are never a default)
+  rather than refusing to remember them; Pay from goal uses the goal's first savings account and the full target amount.
+- [budgets] **Repeating budgets (owner request, 2026-11-17):** a budget can apply every month from a month on (optionally
+  until an end month) instead of being copied monthly. Stored in a new `budgetRules` collection (added to backups and the
+  demo seed) rather than new fields on `budgets` — the approved plan said "same collection", but that needed a changed
+  unique index, which Atlas would not pick up without a manual index drop. `budgets` gained `skip` (amount 0) for
+  "remove only this month". One resolver (`effectiveBudgets`, docs/04 §13) feeds every budget read. New budgets default
+  to "Every month from now on"; existing monthly budgets stay one-month budgets (no migration).
 
 ## Deviations from docs
 <!-- Claude: anything built differently from the docs, and why. Update the doc too if the user agrees. -->

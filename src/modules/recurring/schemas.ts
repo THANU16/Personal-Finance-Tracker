@@ -87,6 +87,7 @@ export const confirmRuleSchema = z
     amountMinor: amountMinor.nullish(),
     confirmOpportunity: z.boolean().optional(),
     confirmEmergency: z.boolean().optional(),
+    confirmGoal: z.boolean().optional(),
   })
   .strict();
 

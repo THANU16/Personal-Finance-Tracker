@@ -82,7 +82,9 @@ function AccountRow({
   baseCurrency: string;
 }) {
   const meta = ACCOUNT_TYPE_META[account.type];
-  const sub = account.counterparty ?? account.institution ?? meta.label;
+  const sub = account.goalId
+    ? `For ${account.goalName ?? "a goal"}${account.institution ? ` · ${account.institution}` : ""}`
+    : (account.counterparty ?? account.institution ?? meta.label);
   // Earmarks and card details (docs/07 §2, audit ACC-01).
   const details = (
     <>

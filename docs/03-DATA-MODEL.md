@@ -35,6 +35,7 @@ name, type: bank|cash|wallet|credit_card|loan|broker_cash|opportunity_fund|recei
 currency, institution?, notes?, color?, icon?,
 openingBalanceMinor, openingDate,              # signed; liabilities negative
 includeInNetWorth: true, countsTowardEmergencyFund: false,
+goalId?: ObjectId,                              # goal savings account (bank|cash|wallet; owner request, docs/04 §20)
 creditCard?: { limitMinor, statementDay, dueDay },
 counterparty?: string,                          # receivable/payable
 balanceMinor (cache), lastTransactionAt (cache),
@@ -246,18 +247,33 @@ Dates are business date keys. `weekday`: 0 = Sunday. Confirm posts with `source:
 
 ## budgets
 ```
-month: "YYYY-MM", categoryId (expense), amountMinor (base currency), rollover: false (stored, not applied yet)
+month: "YYYY-MM", categoryId (expense), amountMinor (base currency), rollover: false (stored, not applied yet),
+skip: false                                    # owner request: no budget this month although one repeats (amount 0)
 idx: {userId, month, categoryId} unique
 ```
+
+## budgetRules (owner request: repeating budgets)
+```
+categoryId (expense), amountMinor (base currency), fromMonth: "YYYY-MM", untilMonth?: "YYYY-MM" (null = no end)
+idx: {userId, categoryId, fromMonth} unique
+```
+A month's own `budgets` row overrides a rule for that month (docs/04 §13). Kept separate from `budgets` so its unique
+index did not have to change.
 
 ## goals
 ```
 name, targetMinor, targetDate, priority: 1-5, icon?, notes?,
 links: [{ kind: holding|account, refId, shareBp: 10000 }],   # one item's shares across active goals ≤ 10000
-status: active|achieved|archived, expectedReturnBp: 0
+status: active|achieved|archived, expectedReturnBp: 0,
+kind: one_time|recurring = one_time,
+recurrence?: { every: 1-120, unit: month|year, anchorDate, anchorCycle },   # recurring only, else null
+cycleNo: 0,                                    # open cycle of a recurring goal
+cycles: [{ cycleNo, dueDate, targetMinor, currentAtCloseMinor, status: completed|skipped, closedOn }]
 idx: {userId, status}
 ```
 `targetDate` is a business date key. "achieved" / on-track status is computed on read; the stored status is active or archived.
+Repeating goals (owner request): `targetMinor` is the amount per cycle and `targetDate` is the open cycle's due date
+(docs/04 §13). `cycles` is the closed-cycle history.
 
 ## insurancePolicies
 ```

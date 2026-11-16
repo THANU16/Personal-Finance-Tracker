@@ -24,6 +24,8 @@ export interface EarmarkLike {
 export interface AccountLike {
   type: AccountType;
   countsTowardEmergencyFund: boolean;
+  /** Goal savings account (owner request): its whole balance belongs to this goal. */
+  goalId?: unknown;
   balanceMinor: number;
   archivedAt?: Date | string | null;
 }
@@ -54,13 +56,25 @@ export function dedicatedBucket(
  */
 export const LENT_OUT_TYPES: readonly AccountType[] = ["receivable"];
 
+/** Account types that can be reserved for a goal (goal savings accounts, owner request). */
+export const GOAL_ACCOUNT_TYPES: readonly AccountType[] = ["bank", "cash", "wallet"];
+
+/**
+ * A goal savings account: its whole balance is that goal's money — never free cash, never safe to
+ * spend, no emergency / opportunity earmarks; spending from it asks first (docs/04 §13, §20).
+ */
+export function isGoalAccount(account: Pick<AccountLike, "goalId">): boolean {
+  return account.goalId !== null && account.goalId !== undefined;
+}
+
 /** Can this account type carry explicit earmarks at all (ignoring its balance)? */
 export function canCarryEarmarks(
-  account: Pick<AccountLike, "type" | "countsTowardEmergencyFund">,
+  account: Pick<AccountLike, "type" | "countsTowardEmergencyFund" | "goalId">,
 ): boolean {
   return (
     (EARMARKABLE_TYPES.includes(account.type) || LENT_OUT_TYPES.includes(account.type)) &&
-    dedicatedBucket(account) === null
+    dedicatedBucket(account) === null &&
+    !isGoalAccount(account)
   );
 }
 

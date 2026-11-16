@@ -31,10 +31,14 @@ import { FormField, fieldAria } from "@/components/shared/form-field";
 import { MoneyInput } from "@/components/shared/money-input";
 import { ACCOUNT_TYPES, isLiability, type AccountType } from "@/domain/accounts";
 import { isDateKey } from "@/domain/dates";
+import { GOAL_ACCOUNT_TYPES } from "@/domain/earmarks";
 import { COMMON_CURRENCIES } from "@/lib/constants";
 import { createAccountAction, updateAccountAction } from "@/modules/accounts/actions";
 import { ACCOUNT_TYPE_META } from "@/modules/accounts/components/account-meta";
 import type { AccountDTO } from "@/modules/accounts/schemas";
+import { goalOptionsAction } from "@/modules/goals/actions";
+
+const NO_GOAL = "none";
 
 const day = z
   .number({ error: "Enter a day" })
@@ -55,6 +59,8 @@ const formSchema = z
     openingDate: z.string().refine(isDateKey, "Pick a date"),
     includeInNetWorth: z.boolean(),
     countsTowardEmergencyFund: z.boolean(),
+    /** Goal savings account: goal id, or NO_GOAL. */
+    goalId: z.string(),
     limitMinor: z.number().int("Enter a valid amount").min(0).nullable(),
     statementDay: day,
     dueDay: day,
@@ -75,10 +81,12 @@ function defaults(
   account: AccountDTO | undefined,
   todayKey: string,
   baseCurrency: string,
+  defaultGoalId?: string,
 ): FormValues {
   if (!account) {
     return {
       type: "bank",
+      goalId: defaultGoalId ?? NO_GOAL,
       name: "",
       currency: baseCurrency,
       institution: "",
@@ -105,6 +113,7 @@ function defaults(
     openingDate: account.openingDate,
     includeInNetWorth: account.includeInNetWorth,
     countsTowardEmergencyFund: account.countsTowardEmergencyFund,
+    goalId: account.goalId ?? NO_GOAL,
     limitMinor: account.creditCard?.limitMinor ?? null,
     statementDay: account.creditCard?.statementDay ?? null,
     dueDay: account.creditCard?.dueDay ?? null,
@@ -131,6 +140,8 @@ export interface AccountFormDialogProps {
   todayKey: string;
   baseCurrency: string;
   onSaved?: (account: AccountDTO) => void;
+  /** New goal savings account: pre-select this goal (Goals page shortcut). */
+  defaultGoalId?: string;
 }
 
 export function AccountFormDialog({
@@ -140,6 +151,7 @@ export function AccountFormDialog({
   todayKey,
   baseCurrency,
   onSaved,
+  defaultGoalId,
 }: AccountFormDialogProps) {
   const router = useRouter();
   const editing = Boolean(account);
@@ -152,15 +164,30 @@ export function AccountFormDialog({
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
     resolver: zodResolver(formSchema),
-    defaultValues: defaults(account, todayKey, baseCurrency),
+    defaultValues: defaults(account, todayKey, baseCurrency, defaultGoalId),
   });
   const type = useWatch({ control, name: "type" }) as AccountType;
+  const goalId = useWatch({ control, name: "goalId" });
+  const goalEligible = GOAL_ACCOUNT_TYPES.includes(type);
+  const keptForGoal = goalEligible && goalId !== NO_GOAL;
+  const [goals, setGoals] = React.useState<{ id: string; name: string }[]>([]);
+
+  React.useEffect(() => {
+    if (!open) return;
+    let live = true;
+    void goalOptionsAction().then((r) => {
+      if (live && r.ok) setGoals(r.data);
+    });
+    return () => {
+      live = false;
+    };
+  }, [open]);
   const currency = useWatch({ control, name: "currency" });
   const liability = isLiability(type);
 
   React.useEffect(() => {
-    if (open) reset(defaults(account, todayKey, baseCurrency));
-  }, [open, account, todayKey, baseCurrency, reset]);
+    if (open) reset(defaults(account, todayKey, baseCurrency, defaultGoalId));
+  }, [open, account, todayKey, baseCurrency, defaultGoalId, reset]);
 
   async function onSubmit(v: FormValues) {
     const payload = {
@@ -171,7 +198,8 @@ export function AccountFormDialog({
       openingBalanceMinor: liability ? -v.openingAmountMinor : v.openingAmountMinor,
       openingDate: v.openingDate,
       includeInNetWorth: v.includeInNetWorth,
-      countsTowardEmergencyFund: v.countsTowardEmergencyFund,
+      countsTowardEmergencyFund: keptForGoal ? false : v.countsTowardEmergencyFund,
+      goalId: keptForGoal ? v.goalId : null,
       creditCard:
         v.type === "credit_card"
           ? {
@@ -396,7 +424,48 @@ export function AccountFormDialog({
               )}
             />
           </div>
-          {!liability ? (
+          {goalEligible && (goals.length || keptForGoal) ? (
+            <div className="sm:col-span-2">
+              <FormField
+                id="account-goal"
+                label="Kept for goal"
+                error={err("goalId")}
+                description="The whole balance is that goal's money: not free cash, and spending from it asks first."
+              >
+                <Controller
+                  control={control}
+                  name="goalId"
+                  render={({ field }) => (
+                    <Select
+                      value={field.value}
+                      onValueChange={(v) => field.onChange(String(v))}
+                      items={[
+                        { value: NO_GOAL, label: "No — normal money" },
+                        ...goals.map((g) => ({ value: g.id, label: g.name })),
+                      ]}
+                    >
+                      <SelectTrigger
+                        id="account-goal"
+                        className="w-full"
+                        aria-describedby="account-goal-description"
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={NO_GOAL}>No — normal money</SelectItem>
+                        {goals.map((g) => (
+                          <SelectItem key={g.id} value={g.id}>
+                            {g.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+              </FormField>
+            </div>
+          ) : null}
+          {!liability && !keptForGoal ? (
             <div className="flex items-center justify-between gap-3 rounded-lg border p-3 sm:col-span-2">
               <Label htmlFor="account-emergency">Counts toward emergency fund</Label>
               <Controller

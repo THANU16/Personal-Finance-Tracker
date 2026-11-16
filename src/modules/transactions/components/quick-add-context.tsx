@@ -17,6 +17,15 @@ export type QuickAddRequest =
       holdingId?: string;
       /** Pre-filled amount (e.g. Allocation → Apply). */
       amountMinor?: number;
+      /** Pre-filled description (e.g. Goals → Pay from goal). */
+      description?: string;
+      /**
+       * Goals → Pay from goal: spending from the goal's savings account is the plan, so the
+       * goal-money question is answered already (sends `confirmGoal`).
+       */
+      fromGoal?: boolean;
+      /** Called after a successful save (e.g. Pay from goal offers "Complete cycle"). */
+      onSaved?: () => void;
       duplicateOf?: TransactionDTO;
     }
   | { mode: "edit"; txn: TransactionDTO };

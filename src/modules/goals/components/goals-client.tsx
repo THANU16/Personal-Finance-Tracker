@@ -3,9 +3,10 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { format, parseISO } from "date-fns";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Repeat, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { DatePicker } from "@/components/shared/date-picker";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { EmptyState } from "@/components/shared/empty-state";
 import { FormField } from "@/components/shared/form-field";
 import { Money } from "@/components/shared/money";
@@ -23,6 +24,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select,
   SelectContent,
@@ -30,12 +32,32 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { GoalStatus } from "@/domain/goals";
+import { describeRecurrence, type GoalStatus, type RecurrenceUnit } from "@/domain/goals";
 import { formatPercentBp } from "@/lib/format";
-import { archiveGoalAction, deleteGoalAction, saveGoalAction } from "@/modules/goals/actions";
+import {
+  archiveGoalAction,
+  closeGoalCycleAction,
+  deleteGoalAction,
+  saveGoalAction,
+} from "@/modules/goals/actions";
 import type { GoalDTO, GoalsOverviewDTO } from "@/modules/goals/service";
+import { AccountFormDialog } from "@/modules/accounts/components/account-form-dialog";
+import { useQuickAdd } from "@/modules/transactions/components/quick-add-context";
 
 const fmtDate = (d: string) => format(parseISO(d), "MMM yyyy");
+const fmtDay = (d: string) => format(parseISO(d), "d MMM yyyy");
+
+/** Repeat presets; "custom" = every N months / years. */
+const PRESETS = [
+  { value: "1:year", label: "Every year" },
+  { value: "2:year", label: "Every 2 years" },
+  { value: "6:month", label: "Every 6 months" },
+  { value: "3:month", label: "Every 3 months" },
+  { value: "1:month", label: "Every month" },
+  { value: "custom", label: "Custom…" },
+] as const;
+const presetOf = (every: number, unit: RecurrenceUnit) =>
+  PRESETS.some((p) => p.value === `${every}:${unit}`) ? `${every}:${unit}` : "custom";
 const STATUS: Record<
   GoalStatus,
   { label: string; variant: "secondary" | "outline" | "destructive" | "default" }
@@ -103,6 +125,14 @@ function GoalDialog({
   const [date, setDate] = useState<string | null>(goal?.targetDate ?? null);
   const [ret, setRet] = useState<number | null>(goal?.expectedReturnBp ?? 0);
   const [priority, setPriority] = useState(String(goal?.priority ?? 3));
+  const [kind, setKind] = useState<"one_time" | "recurring">(goal?.kind ?? "one_time");
+  const [every, setEvery] = useState(String(goal?.recurrence?.every ?? 1));
+  const [unit, setUnit] = useState<RecurrenceUnit>(goal?.recurrence?.unit ?? "year");
+  const [preset, setPreset] = useState<string>(
+    goal?.recurrence ? presetOf(goal.recurrence.every, goal.recurrence.unit) : "1:year",
+  );
+  const everyN = Number(every);
+  const repeatValid = Number.isInteger(everyN) && everyN >= 1 && everyN <= 120;
   const [links, setLinks] = useState<LinkState[]>(
     goal?.links.map((l) => ({ key: `${l.kind}:${l.refId}`, shareBp: l.shareBp })) ?? [],
   );
@@ -124,6 +154,8 @@ function GoalDialog({
         targetDate: date ?? "",
         expectedReturnBp: ret ?? 0,
         priority: Number(priority),
+        kind,
+        recurrence: kind === "recurring" ? { every: everyN, unit } : null,
         links: links.map((l) => {
           const [kind, refId] = l.key.split(":") as ["account" | "holding", string];
           return { kind, refId, shareBp: l.shareBp ?? Number.NaN };
@@ -149,13 +181,95 @@ function GoalDialog({
             Link the accounts and investments that fund it, with the share of each.
           </DialogDescription>
         </DialogHeader>
+        <Tabs value={kind} onValueChange={(v) => setKind(v as typeof kind)}>
+          <TabsList aria-label="Goal type">
+            <TabsTrigger value="one_time">One-time</TabsTrigger>
+            <TabsTrigger value="recurring">Repeats</TabsTrigger>
+          </TabsList>
+        </Tabs>
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="sm:col-span-2">
             <FormField id="goal-name" label="Name" error={errors.name?.[0]}>
               <Input id="goal-name" value={name} onChange={(e) => setName(e.target.value)} />
             </FormField>
           </div>
-          <FormField id="goal-target" label="Target amount" error={errors.targetMinor?.[0]}>
+          {kind === "recurring" ? (
+            <div className="space-y-2 sm:col-span-2">
+              <FormField id="goal-repeat" label="Repeats" error={errors.recurrence?.[0]}>
+                <Select
+                  value={preset}
+                  onValueChange={(v) => {
+                    const next = String(v);
+                    setPreset(next);
+                    if (next !== "custom") {
+                      const [n, u] = next.split(":") as [string, RecurrenceUnit];
+                      setEvery(n);
+                      setUnit(u);
+                    }
+                  }}
+                  items={PRESETS.map((p) => ({ value: p.value, label: p.label }))}
+                >
+                  <SelectTrigger id="goal-repeat" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PRESETS.map((p) => (
+                      <SelectItem key={p.value} value={p.value}>
+                        {p.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </FormField>
+              {preset === "custom" ? (
+                <div className="grid grid-cols-2 gap-2">
+                  <FormField
+                    id="goal-every"
+                    label="Every"
+                    error={
+                      errors["recurrence.every"]?.[0] ?? (repeatValid ? undefined : "1 to 120")
+                    }
+                  >
+                    <Input
+                      id="goal-every"
+                      inputMode="numeric"
+                      value={every}
+                      onChange={(e) => setEvery(e.target.value)}
+                    />
+                  </FormField>
+                  <FormField id="goal-unit" label="Unit">
+                    <Select
+                      value={unit}
+                      onValueChange={(v) => setUnit(v as RecurrenceUnit)}
+                      items={[
+                        { value: "month", label: "Months" },
+                        { value: "year", label: "Years" },
+                      ]}
+                    >
+                      <SelectTrigger id="goal-unit" className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="month">Months</SelectItem>
+                        <SelectItem value="year">Years</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </FormField>
+                </div>
+              ) : null}
+              {repeatValid ? (
+                <p className="text-xs text-muted-foreground">
+                  {describeRecurrence({ every: everyN, unit })}. When a cycle is done, the due date
+                  moves forward and the goal starts again.
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+          <FormField
+            id="goal-target"
+            label={kind === "recurring" ? "Amount each time" : "Target amount"}
+            error={errors.targetMinor?.[0]}
+          >
             <MoneyInput
               id="goal-target"
               currency={data.currency}
@@ -163,7 +277,17 @@ function GoalDialog({
               onChange={setTarget}
             />
           </FormField>
-          <FormField id="goal-date" label="Target date" error={errors.targetDate?.[0]}>
+          <FormField
+            id="goal-date"
+            label={
+              kind !== "recurring"
+                ? "Target date"
+                : goal?.kind === "recurring"
+                  ? "Next due date"
+                  : "First due date"
+            }
+            error={errors.targetDate?.[0]}
+          >
             <DatePicker id="goal-date" value={date} onChange={setDate} />
           </FormField>
           <FormField
@@ -242,7 +366,7 @@ function GoalDialog({
           <Button variant="outline" onClick={onClose}>
             Cancel
           </Button>
-          <Button onClick={save} disabled={pending}>
+          <Button onClick={save} disabled={pending || (kind === "recurring" && !repeatValid)}>
             {pending ? "Saving…" : goal ? "Save goal" : "Add goal"}
           </Button>
         </DialogFooter>
@@ -255,6 +379,8 @@ export function GoalsClient({ data }: { data: GoalsOverviewDTO }) {
   const router = useRouter();
   const [editing, setEditing] = useState<GoalDTO | "new" | null>(null);
   const [, start] = useTransition();
+  const [newAccountFor, setNewAccountFor] = useState<string | null>(null);
+  const quickAdd = useQuickAdd();
   const active = data.goals.filter((g) => !g.archived);
   const archived = data.goals.filter((g) => g.archived);
   const act = (p: Promise<{ ok: boolean; error?: { message: string } }>, msg: string) =>
@@ -266,6 +392,34 @@ export function GoalsClient({ data }: { data: GoalsOverviewDTO }) {
         router.refresh();
       }
     });
+
+  /**
+   * Pay from goal: Quick add as an expense from the goal's savings account, amount and name filled
+   * in; the goal-money question is already answered. Repeating goals then offer Complete cycle.
+   */
+  function payFromGoal(g: GoalDTO) {
+    const account = g.accounts[0];
+    if (!account) return;
+    quickAdd.open({
+      mode: "create",
+      type: "expense",
+      accountId: account.id,
+      amountMinor: g.targetMinor,
+      description: g.name,
+      fromGoal: true,
+      onSaved: g.recurrence
+        ? () =>
+            toast(`Paid from ${g.name}`, {
+              description: "Close this cycle and move to the next due date?",
+              action: {
+                label: "Complete cycle",
+                onClick: () => act(closeGoalCycleAction(g.id, "completed"), "Cycle completed"),
+              },
+              duration: 10_000,
+            })
+        : undefined,
+    });
+  }
 
   return (
     <div className="space-y-4">
@@ -285,9 +439,15 @@ export function GoalsClient({ data }: { data: GoalsOverviewDTO }) {
                     {g.name}
                   </CardTitle>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    <Money valueMinor={g.targetMinor} currency={g.currency} /> by{" "}
-                    {fmtDate(g.targetDate)}
+                    <Money valueMinor={g.targetMinor} currency={g.currency} />{" "}
+                    {g.recurrence ? `due ${fmtDay(g.targetDate)}` : `by ${fmtDate(g.targetDate)}`}
                   </p>
+                  {g.recurrence ? (
+                    <Badge variant="outline" className="mt-1.5 gap-1">
+                      <Repeat aria-hidden className="size-3" />
+                      {g.recurrence.label}
+                    </Badge>
+                  ) : null}
                 </div>
                 <Ring bp={g.progressBp} />
               </CardHeader>
@@ -316,6 +476,34 @@ export function GoalsClient({ data }: { data: GoalsOverviewDTO }) {
                     <Money valueMinor={g.avgMonthlyContributionMinor} currency={g.currency} />
                   </dd>
                 </dl>
+                <div className="rounded-md border px-3 py-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-medium">Funded by</span>
+                    <Button
+                      size="sm"
+                      variant="link"
+                      className="h-auto p-0"
+                      onClick={() => setNewAccountFor(g.id)}
+                    >
+                      + Goal savings account
+                    </Button>
+                  </div>
+                  {g.accounts.length ? (
+                    <ul className="mt-1 space-y-0.5">
+                      {g.accounts.map((a) => (
+                        <li key={a.id} className="flex justify-between gap-2">
+                          <span className="truncate">{a.name}</span>
+                          <Money valueMinor={a.balanceMinor} currency={a.currency} />
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Keep this goal&apos;s money in its own account: its whole balance counts here
+                      and stays out of your free cash.
+                    </p>
+                  )}
+                </div>
                 <details>
                   <summary className="cursor-pointer text-muted-foreground max-md:py-3.5">
                     Linked items ({g.links.length})
@@ -334,7 +522,58 @@ export function GoalsClient({ data }: { data: GoalsOverviewDTO }) {
                     ) : null}
                   </ul>
                 </details>
+                {g.recurrence && g.cycles.length ? (
+                  <details>
+                    <summary className="cursor-pointer text-muted-foreground max-md:py-3.5">
+                      Past cycles ({g.cycles.length})
+                    </summary>
+                    <ul className="mt-1 space-y-0.5">
+                      {g.cycles.map((c) => (
+                        <li key={c.cycleNo} className="flex justify-between gap-2">
+                          <span>
+                            {fmtDay(c.dueDate)} · {c.status === "completed" ? "Done" : "Skipped"}
+                          </span>
+                          <span className="text-muted-foreground">
+                            <Money valueMinor={c.currentAtCloseMinor} currency={g.currency} /> of{" "}
+                            <Money valueMinor={c.targetMinor} currency={g.currency} />
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                ) : null}
                 <div className="flex flex-wrap gap-1 pt-1">
+                  {g.accounts.length ? (
+                    <Button size="sm" variant="secondary" onClick={() => payFromGoal(g)}>
+                      Pay from goal
+                    </Button>
+                  ) : null}
+                  {g.recurrence ? (
+                    <>
+                      <ConfirmDialog
+                        trigger={<Button size="sm">Complete cycle</Button>}
+                        title={`Complete this cycle of "${g.name}"?`}
+                        description={`Records the ${fmtDay(g.targetDate)} cycle as done and moves the goal to its next due date (${g.recurrence.label.toLowerCase()}). No money moves.`}
+                        confirmLabel="Complete cycle"
+                        onConfirm={() =>
+                          act(closeGoalCycleAction(g.id, "completed"), "Cycle completed")
+                        }
+                      />
+                      <ConfirmDialog
+                        trigger={
+                          <Button size="sm" variant="ghost">
+                            Skip
+                          </Button>
+                        }
+                        title={`Skip this cycle of "${g.name}"?`}
+                        description={`Records the ${fmtDay(g.targetDate)} cycle as skipped and moves the goal to its next due date.`}
+                        confirmLabel="Skip cycle"
+                        onConfirm={() =>
+                          act(closeGoalCycleAction(g.id, "skipped"), "Cycle skipped")
+                        }
+                      />
+                    </>
+                  ) : null}
                   <Button size="sm" variant="outline" onClick={() => setEditing(g)}>
                     Edit
                   </Button>
@@ -353,7 +592,7 @@ export function GoalsClient({ data }: { data: GoalsOverviewDTO }) {
       ) : (
         <EmptyState
           title="No goals yet"
-          description="Set a target (house deposit, car, education) and link the savings and investments that fund it."
+          description="Set a target (house deposit, car, education) or a repeating one (yearly insurance, school fees) and link the savings and investments that fund it."
           action={<Button onClick={() => setEditing("new")}>New goal</Button>}
         />
       )}
@@ -392,6 +631,13 @@ export function GoalsClient({ data }: { data: GoalsOverviewDTO }) {
           onClose={() => setEditing(null)}
         />
       ) : null}
+      <AccountFormDialog
+        open={newAccountFor !== null}
+        onOpenChange={(o) => !o && setNewAccountFor(null)}
+        todayKey={data.todayKey}
+        baseCurrency={data.currency}
+        defaultGoalId={newAccountFor ?? undefined}
+      />
     </div>
   );
 }

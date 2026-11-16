@@ -18,6 +18,7 @@ const text = (max: number) =>
 const confirmFlags = {
   confirmOpportunity: z.boolean().optional(),
   confirmEmergency: z.boolean().optional(),
+  confirmGoal: z.boolean().optional(),
 };
 
 export const createDebtSchema = z

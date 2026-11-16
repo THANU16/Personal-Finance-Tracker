@@ -145,9 +145,21 @@ const EMPTY_SPLITS = [
   { categoryId: "", amountMinor: null },
 ];
 
+/** Goal savings accounts are never picked by default (owner request); explicit requests may. */
+const normalAccounts = (options: QuickAddOptions) => options.accounts.filter((a) => !a.goalId);
+
+/** Remembered picks without goal savings accounts. */
+function readLastNormal(options: QuickAddOptions): LastAccounts {
+  const goal = new Set(options.accounts.filter((a) => a.goalId).map((a) => a.id));
+  return Object.fromEntries(
+    Object.entries(readLast()).filter(([, id]) => !goal.has(id ?? "")),
+  ) as LastAccounts;
+}
+
 function initialValues(request: QuickAddRequest, options: QuickAddOptions): FormValues {
   const ids = new Set(options.accounts.map((a) => a.id));
-  const pick = (id: string | undefined, fallback = options.accounts[0]?.id ?? "") =>
+  const firstNormal = normalAccounts(options)[0]?.id ?? options.accounts[0]?.id ?? "";
+  const pick = (id: string | undefined, fallback = firstNormal) =>
     id && ids.has(id) ? id : fallback;
   const fromTxn = (t: TransactionDTO, date: string): FormValues => ({
     type: (["income", "transfer", ...INVESTMENT_TYPES] as string[]).includes(t.type)
@@ -181,7 +193,7 @@ function initialValues(request: QuickAddRequest, options: QuickAddOptions): Form
   if (request.mode === "edit") return fromTxn(request.txn, request.txn.date);
   if (request.duplicateOf) return fromTxn(request.duplicateOf, options.todayKey);
 
-  const last = readLast();
+  const last = readLastNormal(options);
   const type = request.type ?? "expense";
   const holdingIds = new Set(options.holdings.map((h) => h.id));
   const holdingId =
@@ -196,7 +208,7 @@ function initialValues(request: QuickAddRequest, options: QuickAddOptions): Form
       options.accounts.some((a) => a.id === id && (!holding || a.currency === holding.currency));
     return ok(remembered)
       ? remembered!
-      : (options.accounts.find((a) => !holding || a.currency === holding.currency)?.id ??
+      : (normalAccounts(options).find((a) => !holding || a.currency === holding.currency)?.id ??
           pick(undefined));
   };
   const endpointIds = new Set([
@@ -209,7 +221,7 @@ function initialValues(request: QuickAddRequest, options: QuickAddOptions): Form
     type === "transfer" && !request.accountId
       ? pickEndpoint(last.transferFrom, pick(undefined))
       : pick(request.accountId ?? (type === "transfer" ? last.transferFrom : last.expense));
-  const toFallback = options.accounts.find((a) => a.id !== from)?.id ?? "";
+  const toFallback = normalAccounts(options).find((a) => a.id !== from)?.id ?? "";
   return {
     type,
     date: options.todayKey,
@@ -225,7 +237,7 @@ function initialValues(request: QuickAddRequest, options: QuickAddOptions): Form
     categoryId: "",
     splitMode: false,
     splits: EMPTY_SPLITS,
-    description: "",
+    description: request.description ?? "",
     counterparty: "",
     tags: "",
     notes: "",
@@ -443,6 +455,8 @@ function AccountSelect({
   invalid?: boolean;
 }) {
   const isMobile = useIsMobile();
+  const plainAccounts = accounts.filter((a) => !a.goalId);
+  const goalAccounts = accounts.filter((a) => a.goalId);
   if (isMobile) {
     return (
       <ResponsiveSelect
@@ -456,8 +470,14 @@ function AccountSelect({
           ...accounts.map((a) => ({
             value: a.id,
             label: a.name,
-            description: formatMoney(a.balanceMinor, a.currency),
-            group: holdings?.length ? "Accounts" : undefined,
+            description: a.goalName
+              ? `${formatMoney(a.balanceMinor, a.currency)} · for ${a.goalName}`
+              : formatMoney(a.balanceMinor, a.currency),
+            group: a.goalId
+              ? "Goal savings"
+              : holdings?.length || goalAccounts.length
+                ? "Accounts"
+                : undefined,
           })),
           ...(holdings ?? []).map((h) => ({
             value: `${HOLDING_PREFIX}${h.id}`,
@@ -498,29 +518,40 @@ function AccountSelect({
         <SelectValue placeholder={holdings ? "Choose an account or asset" : "Choose an account"} />
       </SelectTrigger>
       <SelectContent className="max-h-80">
-        {holdings?.length ? (
+        {holdings?.length || goalAccounts.length ? (
           <>
             <SelectGroup>
               <SelectLabel>Accounts</SelectLabel>
-              {accounts.map(accountItem)}
+              {plainAccounts.map(accountItem)}
             </SelectGroup>
-            <SelectSeparator />
-            <SelectGroup>
-              <SelectLabel>Assets</SelectLabel>
-              {holdings.map((h) => (
-                <SelectItem key={h.id} value={`${HOLDING_PREFIX}${h.id}`}>
-                  <span className="flex w-full justify-between gap-4">
-                    <span>{h.name}</span>
-                    <Money
-                      valueMinor={h.currentValueMinor}
-                      currency={h.currency}
-                      className="text-muted-foreground"
-                      colorNegative={false}
-                    />
-                  </span>
-                </SelectItem>
-              ))}
-            </SelectGroup>
+            {goalAccounts.length ? (
+              <>
+                <SelectSeparator />
+                <SelectGroup>
+                  <SelectLabel>Goal savings</SelectLabel>
+                  {goalAccounts.map(accountItem)}
+                </SelectGroup>
+              </>
+            ) : null}
+            {holdings?.length ? <SelectSeparator /> : null}
+            {holdings?.length ? (
+              <SelectGroup>
+                <SelectLabel>Assets</SelectLabel>
+                {holdings.map((h) => (
+                  <SelectItem key={h.id} value={`${HOLDING_PREFIX}${h.id}`}>
+                    <span className="flex w-full justify-between gap-4">
+                      <span>{h.name}</span>
+                      <Money
+                        valueMinor={h.currentValueMinor}
+                        currency={h.currency}
+                        className="text-muted-foreground"
+                        colorNegative={false}
+                      />
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            ) : null}
           </>
         ) : (
           accounts.map(accountItem)
@@ -799,9 +830,14 @@ function QuickAddForm({
       balanceMinor: a.balanceMinor,
       currency: a.currency,
       freeMinor: setAside > 0 ? Math.max(0, a.balanceMinor - setAside) : null,
-      note: a.type === "opportunity_fund" ? "Opportunity money" : undefined,
+      note: a.goalName
+        ? `For ${a.goalName}`
+        : a.type === "opportunity_fund"
+          ? "Opportunity money"
+          : undefined,
     };
   };
+  const goalTiles = options.accounts.filter((a) => a.goalId).map(accountTile);
   const holdingTile = (
     h: QuickAddOptions["holdings"][number],
     prefix: string,
@@ -820,13 +856,15 @@ function QuickAddForm({
    */
   function carryAccounts(next: QuickAddType) {
     const cur = getValues();
-    const last = readLast();
+    const last = readLastNormal(options);
     const valid = (id: string | undefined): id is string =>
       Boolean(id) && options.accounts.some((a) => a.id === id);
     const validEndpoint = (id: string | undefined): id is string =>
       valid(id) || Boolean(id && options.holdings.some((h) => `${HOLDING_PREFIX}${h.id}` === id));
     const picked = cur.type === "income" ? cur.toAccountId : cur.fromAccountId;
-    const current = valid(picked) ? picked : (options.accounts[0]?.id ?? "");
+    const current = valid(picked)
+      ? picked
+      : (normalAccounts(options)[0]?.id ?? options.accounts[0]?.id ?? "");
     if (next === "income") setValue("toAccountId", valid(last.income) ? last.income : current);
     if (next === "expense") setValue("fromAccountId", valid(last.expense) ? last.expense : current);
     if (next === "invest") setValue("fromAccountId", valid(last.invest) ? last.invest : current);
@@ -836,7 +874,7 @@ function QuickAddForm({
     }
     if (next === "transfer") {
       const from = validEndpoint(last.transferFrom) ? last.transferFrom : current;
-      const other = options.accounts.find((a) => a.id !== from)?.id ?? "";
+      const other = normalAccounts(options).find((a) => a.id !== from)?.id ?? "";
       setValue("fromAccountId", from);
       setValue(
         "toAccountId",
@@ -875,7 +913,11 @@ function QuickAddForm({
     flags?: DipConfirmation,
     again = false,
   ) {
-    const payload = flags ? { ...input, ...flags } : input;
+    const payload = {
+      ...input,
+      ...(request.mode === "create" && request.fromGoal ? { confirmGoal: true } : {}),
+      ...flags,
+    };
     const result =
       request.mode === "edit"
         ? await updateTransactionAction(request.txn.id, payload)
@@ -893,6 +935,7 @@ function QuickAddForm({
     }
     rememberLast(v);
     rememberCategory(v);
+    if (request.mode === "create") request.onSaved?.();
     toast.success(
       editing ? "Transaction updated" : `${v.type[0]!.toUpperCase()}${v.type.slice(1)} saved`,
     );
@@ -1594,13 +1637,19 @@ function QuickAddForm({
         groups={
           type === "transfer"
             ? [
-                { label: "Accounts", items: options.accounts.map(accountTile) },
+                { label: "Accounts", items: normalAccounts(options).map(accountTile) },
+                ...(goalTiles.length ? [{ label: "Goal savings", items: goalTiles }] : []),
                 {
                   label: "Assets",
                   items: transferHoldings.map((h) => holdingTile(h, HOLDING_PREFIX)),
                 },
               ]
-            : [{ items: options.accounts.map(accountTile) }]
+            : goalTiles.length
+              ? [
+                  { label: "Accounts", items: normalAccounts(options).map(accountTile) },
+                  { label: "Goal savings", items: goalTiles },
+                ]
+              : [{ items: options.accounts.map(accountTile) }]
         }
         value={panel === "from" ? fromId : toId}
         disabledValue={type === "transfer" ? (panel === "from" ? toId : fromId) : undefined}

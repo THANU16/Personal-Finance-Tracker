@@ -31,6 +31,9 @@ One person (the owner) managing personal finances in LKR, with optional foreign-
 - **Earmarks (cash buckets):** split an account's balance between Emergency fund, Opportunity fund
   and Free cash without moving money. Accounts of type `opportunity_fund` are implicitly 100% opportunity; accounts flagged
   `countsTowardEmergencyFund` are implicitly 100% emergency. A dip guard warns before spending earmarked money.
+- **Goal savings accounts** (owner request): a bank, cash or wallet account can be "Kept for goal" X. Its whole balance is
+  that goal's money: it counts in full toward the goal, never as free cash or safe to spend, and spending from it asks
+  first (Pay from goal on the goal card does not ask). Archiving or deleting the goal turns it back into normal money.
 - **Auth:** Forgot/reset password, optional email verification, TOTP two-factor with backup codes,
   active sessions list.
 
@@ -112,10 +115,16 @@ Types: `income`, `expense`, `transfer`, `invest`, `redeem`, `investment_income`,
 ### 4.9 Budgets
 - Monthly budget per expense category (copy forward each month). Budget vs actual, % used,
   alerts at 80% and 100%. Unbudgeted spending shown.
+- **Repeating budgets** (owner request): a budget can apply every month from a month on, or every month until an end
+  month, so it is set once instead of copied. A "this month only" amount overrides it for one month; removing it asks
+  "only this month" or "this and later months". Earlier months never change.
 
 ### 4.10 Goals
 - Name, target amount, target date, priority, linked holdings/accounts (with optional % of each).
 - Progress, shortfall, required monthly contribution, on-track status.
+- **Repeating goals** (owner request): a goal can repeat every N months or years (yearly insurance, school fees every
+  6 months, a car service every 8 months, a licence every 2 years). The target is per cycle; "Complete cycle" or
+  "Skip" records the cycle in the goal's history and moves the due date one period forward.
 
 ### 4.11 Essentials
 - Emergency fund: months target (default 6) × average monthly *essential* expenses (categories

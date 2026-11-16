@@ -120,6 +120,7 @@ export const executeInputSchema = z
       .nullish(),
     confirmOpportunity: z.boolean().optional(),
     confirmEmergency: z.boolean().optional(),
+    confirmGoal: z.boolean().optional(),
   })
   .strict();
 export type ExecuteInput = z.input<typeof executeInputSchema>;

@@ -1,23 +1,28 @@
 import "server-only";
-import { Types } from "mongoose";
+import { Types, type ClientSession } from "mongoose";
 import { z } from "zod";
 import { businessDateToUtc, utcToBusinessDate } from "@/domain/dates";
 import { fdValue } from "@/domain/fd";
 import {
+  RECURRENCE_UNITS,
+  describeRecurrence,
+  dueDateOfCycle,
   goalCurrent,
   goalStatus,
   monthsLeft,
   requiredMonthly,
   type GoalStatus,
+  type Recurrence,
 } from "@/domain/goals";
 import { effectOn } from "@/domain/ledger";
 import { dateKey } from "@/modules/accounts/schemas";
 import { AccountModel, type AccountDoc } from "@/modules/accounts/model";
 import { loadToBase } from "@/modules/fx/service";
-import { GoalModel, type GoalDoc } from "@/modules/goals/model";
+import { GoalModel, type GoalCycle, type GoalDoc, type GoalKind } from "@/modules/goals/model";
 import { HoldingModel, type HoldingDoc } from "@/modules/holdings/model";
 import { TransactionModel, type TransactionDoc } from "@/modules/transactions/model";
 import { parseInput } from "@/server/action-result";
+import { writeAudit } from "@/server/audit/model";
 import type { Ctx } from "@/server/ctx";
 import { connectDb } from "@/server/db/connect";
 import { toObjectId } from "@/server/db/ids";
@@ -40,7 +45,17 @@ export const goalInputSchema = z
       .int()
       .positive("Above zero")
       .max(Number.MAX_SAFE_INTEGER),
+    /** One-time: the target date. Repeating: the (next) due date. */
     targetDate: dateKey,
+    kind: z.enum(["one_time", "recurring"]).default("one_time"),
+    /** Repeating goals: every N months / years. */
+    recurrence: z
+      .object({
+        every: z.number().int().min(1, "At least 1").max(120, "At most 120"),
+        unit: z.enum(RECURRENCE_UNITS),
+      })
+      .strict()
+      .nullish(),
     priority: z.number().int().min(1).max(5).default(3),
     icon: z.string().trim().max(8).nullish(),
     notes: z.string().trim().max(500).nullish(),
@@ -62,6 +77,10 @@ export const goalInputSchema = z
   .refine((v) => new Set(v.links.map((l) => l.refId)).size === v.links.length, {
     path: ["links"],
     message: "Link each item once",
+  })
+  .refine((v) => v.kind === "one_time" || Boolean(v.recurrence), {
+    path: ["recurrence"],
+    message: "Choose how often it repeats",
   });
 export type GoalInput = z.input<typeof goalInputSchema>;
 
@@ -73,6 +92,12 @@ export interface GoalDTO {
   priority: number;
   targetMinor: number;
   targetDate: string;
+  kind: GoalKind;
+  /** Repeating goals; null for one-time goals. */
+  recurrence: { every: number; unit: Recurrence["unit"]; label: string } | null;
+  cycleNo: number;
+  /** Closed cycles, newest first. */
+  cycles: GoalCycle[];
   expectedReturnBp: number;
   currency: string;
   currentMinor: number;
@@ -89,6 +114,15 @@ export interface GoalDTO {
     name: string;
     shareBp: number;
     valueMinor: number;
+    countedMinor: number;
+  }[];
+  /** Goal savings accounts kept for this goal: they count in full (owner request). */
+  accounts: {
+    id: string;
+    name: string;
+    currency: string;
+    balanceMinor: number;
+    /** Base currency, never below 0. */
     countedMinor: number;
   }[];
 }
@@ -170,8 +204,15 @@ async function linkValues(
   return { value, contribution, names };
 }
 
-function toDTO(ctx: Ctx, g: GoalDoc, v: Values): GoalDTO {
+function toDTO(ctx: Ctx, g: GoalDoc, v: Values, reserved: AccountDoc[] = []): GoalDTO {
   const today = todayOf(ctx);
+  const accounts = reserved.map((a) => ({
+    id: String(a._id),
+    name: a.name,
+    currency: a.currency,
+    balanceMinor: a.balanceMinor,
+    countedMinor: Math.max(0, v.value.get(String(a._id)) ?? 0),
+  }));
   const links = g.links.map((l) => {
     const valueMinor = v.value.get(String(l.refId)) ?? 0;
     return {
@@ -183,13 +224,17 @@ function toDTO(ctx: Ctx, g: GoalDoc, v: Values): GoalDTO {
       countedMinor: Math.round((Math.max(0, valueMinor) * l.shareBp) / 10_000),
     };
   });
-  const current = goalCurrent(links.map((l) => ({ valueMinor: l.valueMinor, shareBp: l.shareBp })));
+  // Goal savings accounts count in full next to the linked shares.
+  const current =
+    goalCurrent(links.map((l) => ({ valueMinor: l.valueMinor, shareBp: l.shareBp }))) +
+    accounts.reduce((s, a) => s + a.countedMinor, 0);
   const months = monthsLeft(today, g.targetDate);
   const required = requiredMonthly(g.targetMinor, current, months, g.expectedReturnBp);
-  const contribution = g.links.reduce(
-    (s, l) => s + Math.round(((v.contribution.get(String(l.refId)) ?? 0) * l.shareBp) / 10_000),
-    0,
-  );
+  const contribution =
+    g.links.reduce(
+      (s, l) => s + Math.round(((v.contribution.get(String(l.refId)) ?? 0) * l.shareBp) / 10_000),
+      0,
+    ) + accounts.reduce((s, a) => s + (v.contribution.get(a.id) ?? 0), 0);
   return {
     id: String(g._id),
     name: g.name,
@@ -198,6 +243,17 @@ function toDTO(ctx: Ctx, g: GoalDoc, v: Values): GoalDTO {
     priority: g.priority,
     targetMinor: g.targetMinor,
     targetDate: g.targetDate,
+    kind: g.kind ?? "one_time",
+    recurrence:
+      g.kind === "recurring" && g.recurrence
+        ? {
+            every: g.recurrence.every,
+            unit: g.recurrence.unit,
+            label: describeRecurrence(g.recurrence),
+          }
+        : null,
+    cycleNo: g.cycleNo ?? 0,
+    cycles: [...(g.cycles ?? [])].reverse(),
     expectedReturnBp: g.expectedReturnBp,
     currency: ctx.baseCurrency,
     currentMinor: current,
@@ -215,7 +271,19 @@ function toDTO(ctx: Ctx, g: GoalDoc, v: Values): GoalDTO {
     }),
     archived: g.status === "archived",
     links,
+    accounts,
   };
+}
+
+/** Goal savings accounts per goal id. */
+function reservedByGoal(accounts: readonly AccountDoc[]): Map<string, AccountDoc[]> {
+  const out = new Map<string, AccountDoc[]>();
+  for (const a of accounts) {
+    if (!a.goalId) continue;
+    const key = String(a.goalId);
+    out.set(key, [...(out.get(key) ?? []), a]);
+  }
+  return out;
 }
 
 export async function listGoals(ctx: Ctx): Promise<GoalsOverviewDTO> {
@@ -227,6 +295,7 @@ export async function listGoals(ctx: Ctx): Promise<GoalsOverviewDTO> {
     HoldingModel.find({ userId, status: "active" }).sort({ name: 1 }).lean<HoldingDoc[]>(),
   ]);
   const v = await linkValues(ctx, accounts, holdings);
+  const reserved = reservedByGoal(accounts);
   const used = new Map<string, number>();
   for (const g of goals) {
     if (g.status === "archived") continue;
@@ -236,10 +305,11 @@ export async function listGoals(ctx: Ctx): Promise<GoalsOverviewDTO> {
   return {
     currency: ctx.baseCurrency,
     todayKey: todayOf(ctx),
-    goals: goals.map((g) => toDTO(ctx, g, v)),
+    goals: goals.map((g) => toDTO(ctx, g, v, reserved.get(String(g._id)) ?? [])),
     options: [
       ...accounts
-        .filter((a) => !["credit_card", "loan", "payable"].includes(a.type))
+        // A goal savings account already counts in full for its goal.
+        .filter((a) => !["credit_card", "loan", "payable"].includes(a.type) && !a.goalId)
         .map((a) => ({
           kind: "account" as const,
           id: String(a._id),
@@ -269,6 +339,17 @@ async function saveGoal(ctx: Ctx, id: string | null, input: unknown): Promise<{ 
         throw new AppError("VALIDATION", "Linked item not found", {
           [`links.${i}.refId`]: ["Not found"],
         });
+      if (
+        l.kind === "account" &&
+        (await AccountModel.exists({
+          _id: toObjectId(l.refId, "Item"),
+          userId,
+          goalId: { $ne: null },
+        }).session(session))
+      ) {
+        const message = "This account is kept for a goal and counts in full there";
+        throw new AppError("VALIDATION", message, { [`links.${i}.refId`]: [message] });
+      }
     }
     // One item's shares across active goals cannot exceed 100% (owner-approved): no double counting.
     const others = await GoalModel.find({
@@ -293,10 +374,18 @@ async function saveGoal(ctx: Ctx, id: string | null, input: unknown): Promise<{ 
         );
       }
     }
+    const existing = id
+      ? await GoalModel.findOne({ _id: toObjectId(id, "Goal"), userId })
+          .session(session)
+          .lean<GoalDoc>()
+      : null;
+    if (id && !existing) throw new AppError("NOT_FOUND", "Goal not found");
     const fields = {
       name: data.name,
       targetMinor: data.targetMinor,
       targetDate: data.targetDate,
+      kind: data.kind,
+      recurrence: nextRecurrence(existing, data),
       priority: data.priority,
       icon: data.icon ?? null,
       notes: data.notes ?? null,
@@ -321,26 +410,160 @@ async function saveGoal(ctx: Ctx, id: string | null, input: unknown): Promise<{ 
   });
 }
 
+/**
+ * Repeating schedule after a save. The due date entered is the current cycle's due date: a new
+ * repeating goal (or a goal switched to repeating) anchors there; an edit that changes the date or
+ * the period re-anchors at the current cycle; otherwise the anchor is kept (no drift).
+ */
+function nextRecurrence(
+  existing: GoalDoc | null,
+  data: z.infer<typeof goalInputSchema>,
+): Recurrence | null {
+  if (data.kind !== "recurring" || !data.recurrence) return null;
+  const cycleNo = existing?.cycleNo ?? 0;
+  const old = existing?.kind === "recurring" ? existing.recurrence : null;
+  if (
+    old &&
+    old.every === data.recurrence.every &&
+    old.unit === data.recurrence.unit &&
+    dueDateOfCycle(old, cycleNo) === data.targetDate
+  ) {
+    return old;
+  }
+  return { ...data.recurrence, anchorDate: data.targetDate, anchorCycle: cycleNo };
+}
+
 export const createGoal = (ctx: Ctx, input: unknown) => saveGoal(ctx, null, input);
 export const updateGoal = (ctx: Ctx, id: string, input: unknown) => saveGoal(ctx, id, input);
 
+/**
+ * Closes the open cycle of a repeating goal: records it in the history (with today's progress),
+ * moves `targetDate` to the next due date and opens the next cycle. No money moves — paying the
+ * bill from a linked account lowers its balance, so progress starts again by itself.
+ */
+async function closeCycle(
+  ctx: Ctx,
+  id: string,
+  status: GoalCycle["status"],
+): Promise<{ id: string; nextDueDate: string }> {
+  await connectDb();
+  const userId = uid(ctx);
+  const goal = await GoalModel.findOne({ _id: toObjectId(id, "Goal"), userId }).lean<GoalDoc>();
+  if (!goal) throw new AppError("NOT_FOUND", "Goal not found");
+  if (goal.kind !== "recurring" || !goal.recurrence) {
+    throw new AppError("CONFLICT", "Only repeating goals have cycles");
+  }
+  if (goal.status === "archived") throw new AppError("CONFLICT", "Restore the goal first");
+  const ids = (kind: "account" | "holding") =>
+    goal.links.filter((l) => l.kind === kind).map((l) => l.refId);
+  const [accounts, holdings] = await Promise.all([
+    AccountModel.find({
+      userId,
+      archivedAt: null,
+      $or: [{ _id: { $in: ids("account") } }, { goalId: goal._id }],
+    }).lean<AccountDoc[]>(),
+    HoldingModel.find({ userId, status: "active", _id: { $in: ids("holding") } }).lean<
+      HoldingDoc[]
+    >(),
+  ]);
+  const current = toDTO(
+    ctx,
+    goal,
+    await linkValues(ctx, accounts, holdings),
+    accounts.filter((a) => a.goalId && a.goalId.equals(goal._id)),
+  ).currentMinor;
+  const cycleNo = goal.cycleNo ?? 0;
+  const nextDueDate = dueDateOfCycle(goal.recurrence, cycleNo + 1);
+  const entry: GoalCycle = {
+    cycleNo,
+    dueDate: goal.targetDate,
+    targetMinor: goal.targetMinor,
+    currentAtCloseMinor: current,
+    status,
+    closedOn: todayOf(ctx),
+  };
+  return withTransaction(async (session) => {
+    // Guarded by the cycle number so a double click cannot close the same cycle twice.
+    const res = await GoalModel.updateOne(
+      { _id: goal._id, userId, cycleNo },
+      { $push: { cycles: entry }, $set: { cycleNo: cycleNo + 1, targetDate: nextDueDate } },
+      { session, runValidators: true },
+    );
+    if (!res.modifiedCount) throw new AppError("CONFLICT", "This cycle was already closed");
+    return { id, nextDueDate };
+  });
+}
+
+export const completeGoalCycle = (ctx: Ctx, id: string) => closeCycle(ctx, id, "completed");
+export const skipGoalCycle = (ctx: Ctx, id: string) => closeCycle(ctx, id, "skipped");
+
+/**
+ * Goal savings accounts go back to normal money when their goal is archived or deleted (owner
+ * decision). Same DB transaction; audited.
+ */
+async function releaseGoalAccounts(
+  ctx: Ctx,
+  goalId: Types.ObjectId,
+  session: ClientSession,
+): Promise<number> {
+  const userId = uid(ctx);
+  const accounts = await AccountModel.find({ userId, goalId })
+    .session(session)
+    .select({ _id: 1 })
+    .lean<Pick<AccountDoc, "_id">[]>();
+  if (!accounts.length) return 0;
+  await AccountModel.updateMany({ userId, goalId }, { $set: { goalId: null } }, { session });
+  await writeAudit(
+    {
+      userId: ctx.userId,
+      action: "goal_accounts_released",
+      entity: "goal",
+      entityId: goalId,
+      before: { accountIds: accounts.map((a) => a._id) },
+    },
+    session,
+  );
+  return accounts.length;
+}
+
+/** Archiving releases the goal's savings accounts; restoring does not take them back. */
 export async function setGoalArchived(
   ctx: Ctx,
   id: string,
   archived: boolean,
-): Promise<{ id: string }> {
-  await connectDb();
-  const res = await GoalModel.updateOne(
-    { _id: toObjectId(id, "Goal"), userId: uid(ctx) },
-    { $set: { status: archived ? "archived" : "active" } },
-  );
-  if (!res.matchedCount) throw new AppError("NOT_FOUND", "Goal not found");
-  return { id };
+): Promise<{ id: string; releasedAccounts: number }> {
+  return withTransaction(async (session) => {
+    const goalId = toObjectId(id, "Goal");
+    const res = await GoalModel.updateOne(
+      { _id: goalId, userId: uid(ctx) },
+      { $set: { status: archived ? "archived" : "active" } },
+      { session },
+    );
+    if (!res.matchedCount) throw new AppError("NOT_FOUND", "Goal not found");
+    const releasedAccounts = archived ? await releaseGoalAccounts(ctx, goalId, session) : 0;
+    return { id, releasedAccounts };
+  });
 }
 
-/** Goals are plans, not ledger records: deleting one removes only the plan. */
+/**
+ * Goals are plans, not ledger records: deleting one removes the plan; its savings accounts go back
+ * to normal money.
+ */
 export async function deleteGoal(ctx: Ctx, id: string): Promise<{ id: string }> {
+  return withTransaction(async (session) => {
+    const goalId = toObjectId(id, "Goal");
+    const res = await GoalModel.deleteOne({ _id: goalId, userId: uid(ctx) }, { session });
+    if (res.deletedCount) await releaseGoalAccounts(ctx, goalId, session);
+    return { id };
+  });
+}
+
+/** Active goals for pickers (account form: "Kept for goal"). */
+export async function listGoalOptions(ctx: Ctx): Promise<{ id: string; name: string }[]> {
   await connectDb();
-  await GoalModel.deleteOne({ _id: toObjectId(id, "Goal"), userId: uid(ctx) });
-  return { id };
+  const goals = await GoalModel.find({ userId: uid(ctx), status: { $ne: "archived" } })
+    .sort({ priority: 1, name: 1 })
+    .select({ name: 1 })
+    .lean<Pick<GoalDoc, "_id" | "name">[]>();
+  return goals.map((g) => ({ id: String(g._id), name: g.name }));
 }

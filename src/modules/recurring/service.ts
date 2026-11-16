@@ -230,6 +230,7 @@ export async function confirmRule(
           description: t.description ?? rule.name,
           confirmOpportunity: data.confirmOpportunity,
           confirmEmergency: data.confirmEmergency,
+          confirmGoal: data.confirmGoal,
           source,
         },
         session,
@@ -251,6 +252,7 @@ export async function confirmRule(
           source,
           confirmOpportunity: data.confirmOpportunity,
           confirmEmergency: data.confirmEmergency,
+          confirmGoal: data.confirmGoal,
         },
         session,
       );

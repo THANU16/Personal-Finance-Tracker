@@ -18,6 +18,8 @@ export const WARNING_CODES = [
   "DIPS_INTO_EMERGENCY",
   "WITHDRAWS_FROM_OPPORTUNITY",
   "WITHDRAWS_FROM_EMERGENCY",
+  /** Goal savings account (owner request): names the goal in `goalName`. */
+  "WITHDRAWS_FROM_GOAL",
 ] as const;
 export type WarningCode = (typeof WARNING_CODES)[number];
 
@@ -27,6 +29,8 @@ export interface ActionWarning {
   amountMinor: number;
   currency: string;
   accountName: string;
+  /** WITHDRAWS_FROM_GOAL only. */
+  goalName?: string;
 }
 
 /** Expected, user-facing failure thrown by services. Actions map it to `{ ok: false, error }`. */

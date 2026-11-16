@@ -6,7 +6,7 @@ import type { ToBase } from "@/domain/fx";
 import { AccountModel, type AccountDoc } from "@/modules/accounts/model";
 import { loadToBase } from "@/modules/fx/service";
 import type { AccountDTO } from "@/modules/accounts/schemas";
-import { listAccounts, toAccountDTO } from "@/modules/accounts/service";
+import { goalNamesOf, listAccounts, toAccountDTO } from "@/modules/accounts/service";
 import { TransactionModel, type TransactionDoc } from "@/modules/transactions/model";
 import { loadRefMaps, toTransactionDTO } from "@/modules/transactions/queries";
 import type { TransactionDTO } from "@/modules/transactions/schemas";
@@ -58,19 +58,34 @@ export async function getAccountsOverview(
   ]);
   const todayKey = utcToBusinessDate(new Date(), ctx.tz);
   const visible = opts.includeArchived ? all : all.filter((a) => !a.archived);
-  const groups = ACCOUNT_GROUPS.map((g) => {
-    const accounts = visible.filter((a) => (g.types as readonly string[]).includes(a.type));
-    return {
-      key: g.key,
-      label: g.label,
-      accounts,
-      ...baseTotal(
-        accounts.filter((a) => !a.archived),
-        toBase,
-        ctx.baseCurrency,
-        todayKey,
-      ),
-    };
+  const group = (key: string, label: string, accounts: AccountDTO[]) => ({
+    key,
+    label,
+    accounts,
+    ...baseTotal(
+      accounts.filter((a) => !a.archived),
+      toBase,
+      ctx.baseCurrency,
+      todayKey,
+    ),
+  });
+  // Goal savings accounts (owner request) get their own group after Cash & bank.
+  const groups = ACCOUNT_GROUPS.flatMap((g) => {
+    const own = group(
+      g.key,
+      g.label,
+      visible.filter((a) => (g.types as readonly string[]).includes(a.type) && !a.goalId),
+    );
+    return g.key === "cash"
+      ? [
+          own,
+          group(
+            "goal_savings",
+            "Goal savings",
+            visible.filter((a) => a.goalId),
+          ),
+        ]
+      : [own];
   }).filter((g) => g.accounts.length > 0);
   return { groups, archivedCount: all.filter((a) => a.archived).length };
 }
@@ -138,7 +153,7 @@ export async function getAccountDetail(ctx: Ctx, id: string, page = 1): Promise<
     }));
 
   return {
-    account: toAccountDTO(doc, ctx.tz, today),
+    account: toAccountDTO(doc, ctx.tz, today, await goalNamesOf(ctx, [doc])),
     rows,
     total: running.length,
     page: safePage,

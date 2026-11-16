@@ -41,6 +41,7 @@ function toDraft(ctx: Ctx, data: TransactionData): LedgerDraft {
     tags: data.tags,
     confirmOpportunity: data.confirmOpportunity ?? false,
     confirmEmergency: data.confirmEmergency ?? false,
+    confirmGoal: data.confirmGoal ?? false,
   };
   switch (data.type) {
     case "income":
@@ -130,6 +131,7 @@ async function postAssetTransfer(
     tags: data.tags,
     confirmOpportunity: data.confirmOpportunity ?? false,
     confirmEmergency: data.confirmEmergency ?? false,
+    confirmGoal: data.confirmGoal ?? false,
   };
   const amount = data.amountMinor;
   const fee = data.feeMinor;

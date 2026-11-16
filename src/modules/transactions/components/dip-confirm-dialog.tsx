@@ -21,14 +21,18 @@ const TEXT: Record<ActionWarning["code"], string> = {
   DIPS_INTO_EMERGENCY: "of your emergency money",
   WITHDRAWS_FROM_OPPORTUNITY: "from an Opportunity Fund account",
   WITHDRAWS_FROM_EMERGENCY: "from an emergency fund account",
+  WITHDRAWS_FROM_GOAL: "of goal money",
 };
 
 const isEmergency = (w: ActionWarning) =>
   w.code === "DIPS_INTO_EMERGENCY" || w.code === "WITHDRAWS_FROM_EMERGENCY";
+const isGoal = (w: ActionWarning) => w.code === "WITHDRAWS_FROM_GOAL";
 
 export interface DipConfirmation {
   confirmOpportunity: boolean;
   confirmEmergency: boolean;
+  /** Goal savings account (owner request). */
+  confirmGoal: boolean;
 }
 
 /**
@@ -49,13 +53,15 @@ export function DipConfirmDialog({
   const open = warnings !== null && warnings.length > 0;
   const needsEmergency = (warnings ?? []).some(isEmergency);
   const account = warnings?.[0]?.accountName ?? "this account";
+  const goalName = (warnings ?? []).find(isGoal)?.goalName ?? null;
 
   async function confirm() {
     setPending(true);
     try {
       await onConfirm({
-        confirmOpportunity: (warnings ?? []).some((w) => !isEmergency(w)),
+        confirmOpportunity: (warnings ?? []).some((w) => !isEmergency(w) && !isGoal(w)),
         confirmEmergency: needsEmergency,
+        confirmGoal: (warnings ?? []).some(isGoal),
       });
     } finally {
       setPending(false);
@@ -75,11 +81,15 @@ export function DipConfirmDialog({
     >
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Use earmarked money?</AlertDialogTitle>
+          <AlertDialogTitle>
+            {goalName ? "Use goal money?" : "Use earmarked money?"}
+          </AlertDialogTitle>
           <AlertDialogDescription>
             {(warnings ?? []).some((w) => w.code.startsWith("DIPS_"))
               ? `This is more than the free cash in ${account}. Confirming records it and lowers the earmarks it uses.`
-              : `${account} is money you set aside. Confirm that you want to take it out.`}
+              : goalName
+                ? `${account} is kept for ${goalName}. Confirm that you want to use that money.`
+                : `${account} is money you set aside. Confirm that you want to take it out.`}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <ul className="grid gap-1.5 text-sm" aria-label="What this uses">
@@ -87,7 +97,7 @@ export function DipConfirmDialog({
             <li key={w.code} className="rounded-md bg-muted px-3 py-2">
               Uses{" "}
               <Money valueMinor={w.amountMinor} currency={w.currency} className="font-medium" />{" "}
-              {TEXT[w.code]}
+              {isGoal(w) && w.goalName ? `for ${w.goalName}` : TEXT[w.code]}
             </li>
           ))}
         </ul>

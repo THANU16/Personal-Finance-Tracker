@@ -56,6 +56,9 @@ with drill-down, top categories (click filters Transactions with the same range)
 - Actions: Add account (type-driven form), Reconcile, Archive.
 - Detail: balance history line, transactions table filtered to the account, running balance column.
 - BucketBar per earmarkable account; "Earmark / Move between buckets" dialog; over-earmarked badge.
+- Goal savings accounts (owner request): the account form (bank, cash, wallet) has a "Kept for goal" picker (No — normal
+  money, or an active goal; hides "Counts toward emergency fund"). They are listed in their own **Goal savings** group after
+  Cash & bank, each row "For <goal>".
 
 ## 4. Transactions `/transactions`
 - **Day-by-day list** (owner request, 2026-11-05, after the owner's reference app): rows grouped by day; each day header
@@ -69,7 +72,10 @@ with drill-down, top categories (click filters Transactions with the same range)
 - Table: date · description · type icon · category/holding · account(s) · amount (signed per context) · tags · attachment icon · menu (edit, duplicate, void).
 - Grouped lines (SIP execution, deployment) show a group chip linking to the owner.
 - Monthly summary strip: income, expense, net.
-- Quick add and transaction forms: ConfirmDialog for NEEDS_CONFIRMATION warnings.
+- Quick add and transaction forms: ConfirmDialog for NEEDS_CONFIRMATION warnings ("Use goal money?" for
+  WITHDRAWS_FROM_GOAL, naming the goal).
+- Quick add never picks a goal savings account by default (nor from the remembered last accounts); they are listed last in
+  a **Goal savings** section of the account pickers (phone tiles too, "For <goal>").
 - Import `/transactions/import`: upload CSV → choose account → map columns → preview with duplicates
   flagged and categories auto-suggested → import → result summary (undo batch).
 
@@ -174,10 +180,22 @@ Skip, Pause, Edit. Calendar view of the month optional tab.
 ## 11. Budgets `/budgets`
 Month picker · "Copy last month" · rows: category, budget, spent, remaining, progress bar (amber ≥80%,
 red ≥100%) · Unbudgeted spending row · total.
+Repeating budgets (owner request): the budget dialog has "Applies to" — Every month from now on (default for a new
+budget) · Every month until… (a month picker) · This month only. Repeating rows show a chip ("Every month" / "Until Jun
+2027"). Removing a repeating row asks "Only <month>" or "<month> and later months"; a one-month row is removed directly.
 
 ## 12. Goals `/goals`
 Cards: name, target, date, progress ring, current, required monthly, status chip; detail drawer with
 linked items and shares.
+Repeating goals (owner request): the goal form has a **One-time / Repeats** switch; Repeats shows presets (Every year,
+Every 2 years, Every 6 months, Every 3 months, Every month, Custom: every N months/years), "Amount each time" and
+"First due date" ("Next due date" when editing). The card shows "Amount due <date>", a "Repeats every …" chip,
+**Complete cycle** and **Skip** buttons (each behind a confirm stating the next due date moves on and no money moves) and
+a "Past cycles" list (due date, Done/Skipped, progress of target).
+Goal savings accounts on the card: a **Funded by** box listing them with balances and a "+ Goal savings account" link (the
+account form with this goal chosen); **Pay from goal** (when the goal has one) opens Quick add as an Expense from the first
+of them with the target amount and the goal name filled in and no goal-money question; for a repeating goal the success
+toast offers **Complete cycle**.
 
 ## 13. Essentials `/essentials`
 Health score gauge with 4 sub-scores · Emergency fund (target, current, coverage months, which accounts

@@ -4,12 +4,14 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { format, parse } from "date-fns";
-import { ChevronLeft, ChevronRight, Copy, Plus, Trash2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Copy, Plus, Repeat, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { FormField } from "@/components/shared/form-field";
 import { Money } from "@/components/shared/money";
 import { MoneyInput } from "@/components/shared/money-input";
+import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
@@ -41,6 +43,19 @@ const nextMonth = (m: string) => {
   const [y, mm] = m.split("-").map(Number) as [number, number];
   return mm === 12 ? `${y + 1}-01` : `${y}-${String(mm + 1).padStart(2, "0")}`;
 };
+const monthShort = (m: string) => format(parse(m, "yyyy-MM", new Date(2000, 0, 1)), "MMM yyyy");
+
+/** How long a budget applies (owner request: set once instead of copying every month). */
+type Applies = "repeat" | "until" | "month";
+const APPLIES: { value: Applies; label: string }[] = [
+  { value: "repeat", label: "Every month from now on" },
+  { value: "until", label: "Every month until…" },
+  { value: "month", label: "This month only" },
+];
+
+const repeatLabel = (r: NonNullable<BudgetRowDTO["repeat"]>) =>
+  r.untilMonth ? `Until ${monthShort(r.untilMonth)}` : "Every month";
+
 const STATUS_TEXT: Record<BudgetStatus, string> = {
   ok: "On budget",
   warn: "80% used",
@@ -78,6 +93,11 @@ function BudgetDialog({
   const choices = data.categories.filter((c) => !taken.has(c.id) || c.id === row?.categoryId);
   const [categoryId, setCategoryId] = useState(row?.categoryId ?? "");
   const [amount, setAmount] = useState<number | null>(row?.budgetMinor ?? null);
+  // New budgets repeat by default; an existing row keeps what it is.
+  const [applies, setApplies] = useState<Applies>(
+    !row ? "repeat" : !row.repeat ? "month" : row.repeat.untilMonth ? "until" : "repeat",
+  );
+  const [until, setUntil] = useState(row?.repeat?.untilMonth ?? data.month);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
   return (
@@ -86,7 +106,7 @@ function BudgetDialog({
         <DialogHeader>
           <DialogTitle>{row ? `Budget for ${row.name}` : "Add budget"}</DialogTitle>
           <DialogDescription>
-            {monthLabel(data.month)}. Spending in sub-categories counts too.
+            From {monthLabel(data.month)}. Spending in sub-categories counts too.
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-3">
@@ -118,6 +138,43 @@ function BudgetDialog({
               onChange={setAmount}
             />
           </FormField>
+          <FormField
+            id="budget-applies"
+            label="Applies to"
+            description={
+              applies === "month"
+                ? `Only ${monthLabel(data.month)}; other months are not changed.`
+                : "Earlier months keep their budgets. Change or stop it any time."
+            }
+          >
+            <Select value={applies} onValueChange={(v) => setApplies(v as Applies)} items={APPLIES}>
+              <SelectTrigger
+                id="budget-applies"
+                className="w-full"
+                aria-describedby="budget-applies-description"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {APPLIES.map((a) => (
+                  <SelectItem key={a.value} value={a.value}>
+                    {a.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </FormField>
+          {applies === "until" ? (
+            <FormField id="budget-until" label="Last month">
+              <Input
+                id="budget-until"
+                type="month"
+                min={data.month}
+                value={until}
+                onChange={(e) => setUntil(e.target.value)}
+              />
+            </FormField>
+          ) : null}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>
@@ -131,9 +188,15 @@ function BudgetDialog({
                   month: data.month,
                   categoryId,
                   amountMinor: amount ?? Number.NaN,
+                  applies: applies === "month" ? "month" : "repeat",
+                  untilMonth: applies === "until" ? until : null,
                 });
                 if (!res.ok) {
-                  setError(res.error.fieldErrors?.amountMinor?.[0] ?? res.error.message);
+                  setError(
+                    res.error.fieldErrors?.amountMinor?.[0] ??
+                      res.error.fieldErrors?.untilMonth?.[0] ??
+                      res.error.message,
+                  );
                   return;
                 }
                 toast.success("Budget saved");
@@ -153,8 +216,22 @@ function BudgetDialog({
 export function BudgetsClient({ data }: { data: BudgetMonthDTO }) {
   const router = useRouter();
   const [editing, setEditing] = useState<BudgetRowDTO | "new" | null>(null);
+  const [removing, setRemoving] = useState<BudgetRowDTO | null>(null);
   const [pending, start] = useTransition();
   const ccy = data.currency;
+  const remove = (r: BudgetRowDTO, scope: "month" | "onwards") =>
+    start(async () => {
+      const res = await removeBudgetAction({
+        month: data.month,
+        categoryId: r.categoryId,
+        scope,
+      });
+      if (!res.ok) toast.error(res.error.message);
+      else {
+        setRemoving(null);
+        router.refresh();
+      }
+    });
 
   return (
     <div className="space-y-4">
@@ -234,6 +311,12 @@ export function BudgetsClient({ data }: { data: BudgetMonthDTO }) {
                     {r.parentName ? (
                       <p className="text-xs text-muted-foreground">in {r.parentName}</p>
                     ) : null}
+                    {r.repeat ? (
+                      <Badge variant="outline" className="mt-1 gap-1">
+                        <Repeat aria-hidden className="size-3" />
+                        {repeatLabel(r.repeat)}
+                      </Badge>
+                    ) : null}
                   </div>
                   <div>
                     <Bar usedBp={r.usedBp} status={r.status} />
@@ -274,16 +357,8 @@ export function BudgetsClient({ data }: { data: BudgetMonthDTO }) {
                       size="icon"
                       variant="ghost"
                       aria-label={`Remove budget for ${r.name}`}
-                      onClick={() =>
-                        start(async () => {
-                          const res = await removeBudgetAction({
-                            month: data.month,
-                            categoryId: r.categoryId,
-                          });
-                          if (!res.ok) toast.error(res.error.message);
-                          else router.refresh();
-                        })
-                      }
+                      disabled={pending}
+                      onClick={() => (r.repeat ? setRemoving(r) : remove(r, "month"))}
                     >
                       <Trash2 aria-hidden />
                     </Button>
@@ -295,8 +370,8 @@ export function BudgetsClient({ data }: { data: BudgetMonthDTO }) {
             <p className="text-sm text-muted-foreground">
               No budgets for {monthLabel(data.month)}.{" "}
               {data.previousMonthBudgets
-                ? "Copy last month’s or add one."
-                : "Add one per expense category."}
+                ? "Copy last month’s or add one (it can repeat every month)."
+                : "Add one per expense category; it can repeat every month."}
             </p>
           )}
         </CardContent>
@@ -333,6 +408,33 @@ export function BudgetsClient({ data }: { data: BudgetMonthDTO }) {
           </p>
         </CardContent>
       </Card>
+      <Dialog open={removing !== null} onOpenChange={(o) => !o && setRemoving(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Remove the {removing?.name} budget?</DialogTitle>
+            <DialogDescription>
+              It repeats {removing?.repeat ? repeatLabel(removing.repeat).toLowerCase() : ""}.
+              Earlier months keep their budgets either way.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:flex-col sm:items-stretch">
+            <Button
+              variant="outline"
+              disabled={pending}
+              onClick={() => removing && remove(removing, "month")}
+            >
+              Only {monthLabel(data.month)}
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={pending}
+              onClick={() => removing && remove(removing, "onwards")}
+            >
+              {monthLabel(data.month)} and later months
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       {editing ? (
         <BudgetDialog
           data={data}

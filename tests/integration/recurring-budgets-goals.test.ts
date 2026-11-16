@@ -4,7 +4,14 @@ import { CategoryModel } from "@/modules/categories/model";
 import { copyLastMonth, getBudgetMonth, setBudget } from "@/modules/budgets/service";
 import { createDebt } from "@/modules/debts/service";
 import { getUpcoming } from "@/modules/dashboard/queries";
-import { createGoal, listGoals } from "@/modules/goals/service";
+import {
+  completeGoalCycle,
+  createGoal,
+  listGoals,
+  setGoalArchived,
+  skipGoalCycle,
+  updateGoal,
+} from "@/modules/goals/service";
 import { RecurringRuleModel, type RecurringRuleDoc } from "@/modules/recurring/model";
 import {
   confirmRule,
@@ -291,5 +298,136 @@ describe("goals", () => {
       status: "achieved",
       requiredMonthlyMinor: 0,
     });
+  });
+});
+
+describe("repeating goals", () => {
+  const find = async (ctx: Ctx, id: string) =>
+    (await listGoals(ctx)).goals.find((g) => g.id === id)!;
+
+  it("a yearly goal: complete a cycle → history saved, due date moves exactly one year", async () => {
+    const ctx = await makeUser();
+    const savings = await makeAccount(ctx, { name: "Savings", openingBalanceMinor: 15_000_000 });
+    const { id } = await createGoal(ctx, {
+      name: "Insurance premium",
+      targetMinor: 15_000_000,
+      targetDate: "2027-03-01",
+      kind: "recurring",
+      recurrence: { every: 1, unit: "year" },
+      links: [{ kind: "account", refId: savings.id, shareBp: 10_000 }],
+    });
+    expect(await find(ctx, id)).toMatchObject({
+      kind: "recurring",
+      recurrence: { every: 1, unit: "year", label: "Every year" },
+      cycleNo: 0,
+      targetDate: "2027-03-01",
+      currentMinor: 15_000_000,
+      status: "achieved",
+      cycles: [],
+    });
+
+    const r = await completeGoalCycle(ctx, id);
+    expect(r.nextDueDate).toBe("2028-03-01");
+    const g = await find(ctx, id);
+    expect(g).toMatchObject({ cycleNo: 1, targetDate: "2028-03-01", targetMinor: 15_000_000 });
+    expect(g.cycles).toEqual([
+      expect.objectContaining({
+        cycleNo: 0,
+        dueDate: "2027-03-01",
+        targetMinor: 15_000_000,
+        currentAtCloseMinor: 15_000_000,
+        status: "completed",
+      }),
+    ]);
+  });
+
+  it("every 8 months; skip records a skipped cycle; one-time goals have no cycles", async () => {
+    const ctx = await makeUser();
+    const { id } = await createGoal(ctx, {
+      name: "Car service",
+      targetMinor: 50_000,
+      targetDate: "2026-12-05",
+      kind: "recurring",
+      recurrence: { every: 8, unit: "month" },
+    });
+    await skipGoalCycle(ctx, id);
+    await completeGoalCycle(ctx, id);
+    const g = await find(ctx, id);
+    expect(g).toMatchObject({
+      cycleNo: 2,
+      targetDate: "2028-04-05",
+      recurrence: { label: "Every 8 months" },
+    });
+    expect(g.cycles.map((c) => [c.cycleNo, c.dueDate, c.status])).toEqual([
+      [1, "2027-08-05", "completed"],
+      [0, "2026-12-05", "skipped"],
+    ]);
+
+    const once = await createGoal(ctx, {
+      name: "Laptop",
+      targetMinor: 1,
+      targetDate: "2027-01-01",
+    });
+    expect(await find(ctx, once.id)).toMatchObject({
+      kind: "one_time",
+      recurrence: null,
+      cycles: [],
+    });
+    expect(
+      ((await completeGoalCycle(ctx, once.id).catch((e: unknown) => e)) as AppError).code,
+    ).toBe("CONFLICT");
+  });
+
+  it("every 2 years; editing the due date re-anchors, an unchanged edit keeps the schedule", async () => {
+    const ctx = await makeUser();
+    const base = {
+      name: "Licence",
+      targetMinor: 20_000,
+      kind: "recurring" as const,
+      recurrence: { every: 2, unit: "year" as const },
+    };
+    const { id } = await createGoal(ctx, { ...base, targetDate: "2027-01-31" });
+    await completeGoalCycle(ctx, id);
+    expect((await find(ctx, id)).targetDate).toBe("2029-01-31");
+    // Saving without changing the date or period keeps the anchor.
+    await updateGoal(ctx, id, { ...base, name: "Vehicle licence", targetDate: "2029-01-31" });
+    await completeGoalCycle(ctx, id);
+    expect((await find(ctx, id)).targetDate).toBe("2031-01-31");
+    // A new due date re-anchors from the current cycle.
+    await updateGoal(ctx, id, { ...base, targetDate: "2031-06-15" });
+    await completeGoalCycle(ctx, id);
+    expect((await find(ctx, id)).targetDate).toBe("2033-06-15");
+    // Switching back to one-time drops the schedule but keeps the history.
+    await updateGoal(ctx, id, {
+      ...base,
+      kind: "one_time",
+      recurrence: null,
+      targetDate: "2034-01-01",
+    });
+    expect(await find(ctx, id)).toMatchObject({ kind: "one_time", recurrence: null });
+    expect((await find(ctx, id)).cycles).toHaveLength(3);
+  });
+
+  it("repeating needs a period; archived goals cannot close a cycle", async () => {
+    const ctx = await makeUser();
+    const bad = (await createGoal(ctx, {
+      name: "X",
+      targetMinor: 1,
+      targetDate: "2027-01-01",
+      kind: "recurring",
+    }).catch((e: unknown) => e)) as AppError;
+    expect(bad.code).toBe("VALIDATION");
+    expect(bad.fieldErrors?.recurrence).toBeDefined();
+    const { id } = await createGoal(ctx, {
+      name: "Y",
+      targetMinor: 1,
+      targetDate: "2027-01-01",
+      kind: "recurring",
+      recurrence: { every: 1, unit: "year" },
+    });
+    await setGoalArchived(ctx, id, true);
+    expect(((await completeGoalCycle(ctx, id).catch((e: unknown) => e)) as AppError).code).toBe(
+      "CONFLICT",
+    );
   });
 });

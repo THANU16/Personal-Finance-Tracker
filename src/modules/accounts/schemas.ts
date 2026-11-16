@@ -51,6 +51,11 @@ const accountFields = {
   openingDate: dateKey,
   includeInNetWorth: z.boolean(),
   countsTowardEmergencyFund: z.boolean(),
+  /** Goal savings account: reserved for this goal (bank, cash, wallet only). */
+  goalId: z
+    .string()
+    .regex(/^[a-f0-9]{24}$/i, "Choose a goal")
+    .nullable(),
   creditCard: creditCardSchema.nullable(),
   counterparty: optionalText(80),
 };
@@ -64,6 +69,7 @@ export const createAccountSchema = z
     color: accountFields.color.default(null),
     includeInNetWorth: accountFields.includeInNetWorth.default(true),
     countsTowardEmergencyFund: accountFields.countsTowardEmergencyFund.default(false),
+    goalId: accountFields.goalId.default(null),
     creditCard: accountFields.creditCard.default(null),
     counterparty: accountFields.counterparty.default(null),
   })
@@ -118,6 +124,9 @@ export interface AccountDTO {
   openingDate: string;
   includeInNetWorth: boolean;
   countsTowardEmergencyFund: boolean;
+  /** Goal savings account: the goal it is reserved for. */
+  goalId: string | null;
+  goalName: string | null;
   creditCard: { limitMinor: number; statementDay: number; dueDay: number } | null;
   counterparty: string | null;
   balanceMinor: number;

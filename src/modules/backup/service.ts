@@ -45,6 +45,7 @@ export const BACKUP_COLLECTIONS = [
   "debts",
   "recurringRules",
   "budgets",
+  "budgetRules",
   "goals",
   "insurancePolicies",
   "snapshots",

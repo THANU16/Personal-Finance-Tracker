@@ -808,7 +808,7 @@ async function keepOpportunity(
     description: string;
     executionId: Types.ObjectId;
     groupId: Types.ObjectId;
-    confirm: { confirmOpportunity?: boolean; confirmEmergency?: boolean };
+    confirm: { confirmOpportunity?: boolean; confirmEmergency?: boolean; confirmGoal?: boolean };
     session: ClientSession;
   },
 ): Promise<ExecutionOpportunityDoc> {
@@ -1035,6 +1035,7 @@ export async function executeSip(
         source: "sip_execution",
         confirmOpportunity: data.confirmOpportunity,
         confirmEmergency: data.confirmEmergency,
+        confirmGoal: data.confirmGoal,
       },
       session,
     );
@@ -1075,6 +1076,7 @@ export async function executeSip(
           confirm: {
             confirmOpportunity: data.confirmOpportunity,
             confirmEmergency: data.confirmEmergency,
+            confirmGoal: data.confirmGoal,
           },
           session,
         })

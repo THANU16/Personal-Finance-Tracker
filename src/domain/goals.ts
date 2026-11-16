@@ -56,3 +56,50 @@ export function goalStatus(input: {
     ? "on_track"
     : "off_track";
 }
+
+// ------------------------------------------------------------------------------- repeating goals
+// A repeating goal (yearly insurance, school fees every 6 months, a car service every 8 months…)
+// has a per-cycle target and a due date that moves forward by `every` months/years each cycle.
+
+export const RECURRENCE_UNITS = ["month", "year"] as const;
+export type RecurrenceUnit = (typeof RECURRENCE_UNITS)[number];
+
+export interface Recurrence {
+  every: number;
+  unit: RecurrenceUnit;
+  /** Due date of cycle `anchorCycle` (`YYYY-MM-DD`); later due dates are counted from it. */
+  anchorDate: string;
+  anchorCycle: number;
+}
+
+const daysInMonth = (y: number, m: number) => new Date(Date.UTC(y, m, 0)).getUTCDate();
+
+/**
+ * `YYYY-MM-DD` + n months, clamped to the month's last day (31 Jan + 1 month = 28/29 Feb).
+ * Always counted from the given date, so repeating from an anchor never drifts.
+ */
+export function addMonthsToDate(date: string, months: number): string {
+  if (!Number.isInteger(months)) throw new RangeError("months must be an integer");
+  const [y, m, d] = date.split("-").map(Number) as [number, number, number];
+  const total = y * 12 + (m - 1) + months;
+  const ny = Math.floor(total / 12);
+  const nm = (total % 12) + 1;
+  const nd = Math.min(d, daysInMonth(ny, nm));
+  return `${String(ny).padStart(4, "0")}-${String(nm).padStart(2, "0")}-${String(nd).padStart(2, "0")}`;
+}
+
+/** Months in one period: every N months, or every N years × 12. */
+export function periodMonths(r: Pick<Recurrence, "every" | "unit">): number {
+  return r.unit === "year" ? r.every * 12 : r.every;
+}
+
+/** Due date of cycle `cycleNo` = anchorDate + (cycleNo − anchorCycle) periods. */
+export function dueDateOfCycle(r: Recurrence, cycleNo: number): string {
+  return addMonthsToDate(r.anchorDate, (cycleNo - r.anchorCycle) * periodMonths(r));
+}
+
+/** "Every year", "Every 2 years", "Every month", "Every 8 months". */
+export function describeRecurrence(r: Pick<Recurrence, "every" | "unit">): string {
+  if (r.every === 1) return `Every ${r.unit}`;
+  return `Every ${r.every} ${r.unit}s`;
+}

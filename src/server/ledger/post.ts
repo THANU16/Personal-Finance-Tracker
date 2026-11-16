@@ -10,6 +10,7 @@ import {
   earmarksAfterBucketSpend,
   earmarksAfterDip,
   isEarmarkable,
+  isGoalAccount,
   LENT_OUT_TYPES,
   type Bucket,
 } from "@/domain/earmarks";
@@ -25,6 +26,7 @@ import { PRICE_SCALE, redeemByAmount, redeemByUnits, roundUnits } from "@/domain
 import { AccountModel, type AccountDoc } from "@/modules/accounts/model";
 import { assertUsableCategory, getSystemCategoryId } from "@/modules/categories/service";
 import { SYSTEM_CATEGORY } from "@/modules/categories/seed";
+import { GoalModel, type GoalDoc } from "@/modules/goals/model";
 import { HoldingModel, type HoldingDoc } from "@/modules/holdings/model";
 import {
   TransactionModel,
@@ -89,6 +91,8 @@ export interface LedgerDraft {
   /** Dip guard confirmations (docs/04 §20). Emergency money needs its own flag. */
   confirmOpportunity?: boolean;
   confirmEmergency?: boolean;
+  /** Spending from a goal savings account (owner request). "Pay from goal" sends it itself. */
+  confirmGoal?: boolean;
   /** Edit (void + repost): the voided original, so only an increase on the same account is guarded. */
   replaces?: { fromAccountId: string; outflowMinor: number } | null;
   /**
@@ -151,6 +155,20 @@ async function guardOutflow(
     accountName: from.name,
   });
 
+  if (isGoalAccount(from)) {
+    if (draft.confirmGoal) return;
+    const goal = await GoalModel.findOne({ _id: from.goalId, userId: from.userId })
+      .session(session)
+      .lean<GoalDoc>();
+    const goalName = goal?.name ?? "a goal";
+    throw new AppError(
+      "NEEDS_CONFIRMATION",
+      `"${from.name}" is kept for ${goalName}. Confirm to use that money.`,
+      undefined,
+      { warnings: [{ ...warn("WITHDRAWS_FROM_GOAL", outflowMinor), goalName }] },
+    );
+  }
+
   const dedicated = dedicatedBucket(from);
   if (dedicated) {
     const confirmed = dedicated === "emergency" ? draft.confirmEmergency : draft.confirmOpportunity;
@@ -204,6 +222,9 @@ function bucketAccount(account: AccountDoc, bucket: Bucket, field: string): void
   const dedicated = dedicatedBucket(account);
   if (dedicated) {
     fail(field, `"${account.name}" is all ${dedicated} money already; leave the bucket empty`);
+  }
+  if (isGoalAccount(account)) {
+    fail(field, `"${account.name}" is goal money; leave the bucket empty`);
   }
   if (!canCarryEarmarks(account)) {
     fail(
@@ -349,7 +370,12 @@ export async function guardGroupOutflow(
   ctx: Ctx,
   accountId: string,
   outflowMinor: number,
-  opts: { source: SourceKind; confirmOpportunity?: boolean; confirmEmergency?: boolean },
+  opts: {
+    source: SourceKind;
+    confirmOpportunity?: boolean;
+    confirmEmergency?: boolean;
+    confirmGoal?: boolean;
+  },
   session: ClientSession,
 ): Promise<void> {
   const account = await AccountModel.findOne({
@@ -370,6 +396,7 @@ export async function guardGroupOutflow(
       source: { kind: opts.source },
       confirmOpportunity: opts.confirmOpportunity,
       confirmEmergency: opts.confirmEmergency,
+      confirmGoal: opts.confirmGoal,
     },
     session,
   );

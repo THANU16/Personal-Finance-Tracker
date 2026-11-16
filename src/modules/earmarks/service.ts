@@ -196,6 +196,12 @@ function assertCanCarry(account: AccountDoc) {
         : `"${account.name}" counts toward your emergency fund: all of it is emergency money already`,
     );
   }
+  if (account.goalId) {
+    throw new AppError(
+      "VALIDATION",
+      `"${account.name}" is kept for a goal: all of it is that goal's money already`,
+    );
+  }
   if (!canCarryEarmarks(account)) {
     throw new AppError(
       "VALIDATION",

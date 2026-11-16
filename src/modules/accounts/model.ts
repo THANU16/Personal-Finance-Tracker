@@ -18,6 +18,8 @@ export interface AccountDoc {
   openingDate: Date;
   includeInNetWorth: boolean;
   countsTowardEmergencyFund: boolean;
+  /** Goal savings account (owner request): the whole balance is this goal's money. */
+  goalId: Types.ObjectId | null;
   creditCard: { limitMinor: number; statementDay: number; dueDay: number } | null;
   counterparty: string | null;
   /** cache — recomputeAccount */
@@ -43,6 +45,7 @@ const accountSchema = new Schema<AccountDoc>(
     openingDate: { type: Date, required: true },
     includeInNetWorth: { type: Boolean, required: true, default: true },
     countsTowardEmergencyFund: { type: Boolean, required: true, default: false },
+    goalId: { type: Schema.Types.ObjectId, default: null },
     creditCard: {
       type: new Schema(
         {

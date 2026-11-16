@@ -371,6 +371,7 @@ export interface DebtPaymentInput {
   description?: string | null;
   confirmOpportunity?: boolean;
   confirmEmergency?: boolean;
+  confirmGoal?: boolean;
   source?: { kind: SourceKind; refId?: Types.ObjectId | null };
 }
 
@@ -415,6 +416,7 @@ export async function postDebtPayment(
       notes: data.notes ?? null,
       confirmOpportunity: data.confirmOpportunity,
       confirmEmergency: data.confirmEmergency,
+      confirmGoal: data.confirmGoal,
       source: data.source,
     },
     session,
@@ -529,6 +531,7 @@ export async function recordPrepayment(
         description: `${d.name} prepayment (${data.mode === "reduce_emi" ? "lower EMI" : "shorter term"})`,
         confirmOpportunity: data.confirmOpportunity,
         confirmEmergency: data.confirmEmergency,
+        confirmGoal: data.confirmGoal,
       },
       session,
     );
@@ -854,6 +857,7 @@ export async function settleCounterparty(ctx: Ctx, input: unknown): Promise<{ id
         counterparty: cp.counterparty,
         confirmOpportunity: data.confirmOpportunity,
         confirmEmergency: data.confirmEmergency,
+        confirmGoal: data.confirmGoal,
       },
       session,
     );

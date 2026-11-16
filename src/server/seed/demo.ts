@@ -695,12 +695,14 @@ export async function seedDemoData(ctx: Ctx, todayKey: string): Promise<SeedSumm
       categoryId: cat("Restaurants", "expense"),
       amountMinor: 18_000_00,
     });
-    await setBudget(ctx, {
-      month,
-      categoryId: cat("Utilities", "expense"),
-      amountMinor: 20_000_00,
-    });
   }
+  // A repeating budget (owner request): set once, applies every month from two months ago.
+  await setBudget(ctx, {
+    month: format(addMonths(today, -2), "yyyy-MM"),
+    categoryId: cat("Utilities", "expense"),
+    amountMinor: 20_000_00,
+    applies: "repeat",
+  });
   await createGoal(ctx, {
     name: "House down payment",
     targetMinor: 5_000_000_00,
